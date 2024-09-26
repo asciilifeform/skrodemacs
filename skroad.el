@@ -58,6 +58,15 @@ If something was removed, returns T, otherwise nil."
          (end-expanded (skroad--get-end-of-line ,end)))
      ,@body))
 
+(defmacro skroad--silence-modifications (function)
+  "Prevent FUNCTION from triggering modification hooks while in this mode."
+  `(advice-add ,function :around
+               (lambda (orig-fun &rest args)
+                 (if (eq major-mode 'skroad-mode)
+                     (with-silent-modifications
+                       (apply orig-fun args))
+                   (apply orig-fun args)))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--follow-link (data)
@@ -103,15 +112,6 @@ If something was removed, returns T, otherwise nil."
                           'button-data target
                           ))
       t)))
-
-(defmacro skroad--silence-modifications (function)
-  "Prevent FUNCTION from triggering modification hooks while in this mode."
-  `(advice-add ,function :around
-               (lambda (orig-fun &rest args)
-                 (if (eq major-mode 'skroad-mode)
-                     (with-silent-modifications
-                       (apply orig-fun args))
-                   (apply orig-fun args)))))
 
 (defun skroad--extract-region-links (start end &optional object)
   "Extract links from OBJECT, as (CATEGORY . TARGET), from START...END."
