@@ -164,10 +164,10 @@ If something was removed, returns T, otherwise nil."
   )
 
 (defvar-local skroad--links-propose-create nil
-  "New links (which may be dupes of existing links) created by a command.")
+  "Links (may be dupes of existing) introduced to the buffer by a command.")
 
 (defvar-local skroad--links-propose-destroy nil
-  "Links removed from the buffer by a command; copies of them may remain.")
+  "Links removed from the buffer by a command; other instances may remain.")
 
 (defun skroad--open-node ()
   "Open a skroad node."
