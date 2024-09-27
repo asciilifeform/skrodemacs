@@ -240,6 +240,7 @@ If something was removed, returns T, otherwise nil."
 
 (defvar skroad--current-link-overlay-keymap
   (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map (button-type-get 'skroad 'keymap))
     (define-key map (kbd "<backspace>") #'skroad--current-link-delete)
     (define-key map (kbd "<left>") #'skroad--current-link-skip-left)
     (define-key map (kbd "<right>") #'skroad--current-link-skip-right)
