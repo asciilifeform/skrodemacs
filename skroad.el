@@ -213,7 +213,7 @@ If something was removed, returns T, otherwise nil."
          )
         (t nil)))
 
-(defmacro skroad--with-current-link-overlay (&rest body)
+(defmacro skroad--with-current-link (&rest body)
   "Use in a command which operates on the current link overlay, if it exists."
   `(when (skroad--current-link-overlay-active-p)
      (let ((start (overlay-start skroad--current-link--overlay))
@@ -223,20 +223,28 @@ If something was removed, returns T, otherwise nil."
 (defun skroad--current-link-delete ()
   "Delete the link under the current link overlay, if one is active."
   (interactive)
-  (skroad--with-current-link-overlay
+  (skroad--with-current-link
    (delete-region start end)))
 
 (defun skroad--current-link-skip-left ()
   "Move the point to the left of the current link overlay, if active."
   (interactive)
-  (skroad--with-current-link-overlay
+  (skroad--with-current-link
    (goto-char (max (point-min) (1- start)))))
 
 (defun skroad--current-link-skip-right ()
   "Move the point to the right of the current link overlay, if active."
   (interactive)
-  (skroad--with-current-link-overlay
-   (goto-char (min (point-max) (1+ end)))))
+  (skroad--with-current-link
+   (goto-char end)))
+
+(defun skroad--current-link-set-selection ()
+  "Select the current link, if active."
+  (interactive)
+  (skroad--with-current-link
+   (push-mark start)
+   (goto-char end)
+   (activate-mark)))
 
 (defvar skroad--current-link-overlay-keymap
   (let ((map (make-sparse-keymap)))
@@ -244,6 +252,7 @@ If something was removed, returns T, otherwise nil."
     (define-key map (kbd "<backspace>") #'skroad--current-link-delete)
     (define-key map (kbd "<left>") #'skroad--current-link-skip-left)
     (define-key map (kbd "<right>") #'skroad--current-link-skip-right)
+    (define-key map (kbd "SPC") #'skroad--current-link-set-selection)
     (define-key map [remap delete-forward-char] #'skroad--current-link-delete)
     (define-key map [remap self-insert-command] 'ignore)
     map)
