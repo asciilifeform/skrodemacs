@@ -92,11 +92,10 @@ If something was removed, returns T, otherwise nil."
   'action 'skroad--follow-link
   'help-echo 'skroad--help-echo
   'follow-link t
-  'cursor-sensor-functions '(skroad--cursor-link-sensor)
   )
 
 (defconst skroad--text-properties
-  '(button category face button-data cursor-sensor-functions)
+  '(button category face button-data id)
   "Properties added by font-lock that must be removed when unfontifying.")
 
 ;; TODO: eat whitespace between link and delimiters
@@ -111,17 +110,19 @@ If something was removed, returns T, otherwise nil."
           (match (match-string-no-properties 0))
           (target (match-string-no-properties 1)))
       (with-silent-modifications
-        ;; Get rid of old text property intervals:
-        ;; TODO: check whether we actually need to do it in this region?
-        (save-mark-and-excursion (replace-match match))
+        ;; Get rid of old text property intervals when in undo:
+        (when undo-in-progress
+          (save-mark-and-excursion (replace-match match)))
         
         ;; Buttonize the match:
         (make-text-button start end
                           :type 'skroad
                           'button-data target
+                          'id (gensym)
                           ))
       t)))
 
+;;; TODO: next-single-property-change?
 (defun skroad--extract-region-links (start end &optional object)
   "Extract links from OBJECT, as (CATEGORY . TARGET), from START...END."
   (let ((buf (or object (current-buffer)))
@@ -131,7 +132,8 @@ If something was removed, returns T, otherwise nil."
                               (plist-get properties 'button-data))))
              (when (car link)
                (push link links))
-             (< (setq start (next-property-change start buf end))
+             (< (setq start (next-single-property-change
+                             start 'button-data buf end))
                 end)))
     links))
 
@@ -170,6 +172,9 @@ If something was removed, returns T, otherwise nil."
                      skroad--links-propose-create))
     (setq-local skroad--links-propose-create nil)
     )
+
+  ;; Handle consequences of point motion and/or link create/destroy:
+  (skroad--update-current-link)
   )
 
 (defvar-local skroad--current-link-overlay nil
@@ -187,32 +192,35 @@ If something was removed, returns T, otherwise nil."
   "Return nil if the current link overlay is deactivated; otherwise buffer."
   (overlay-buffer skroad--current-link-overlay))
 
-(defvar-local skroad--cursor-original cursor-type
-  "Default cursor, for hiding/unhiding.")
+(defun skroad--link-at-pos-p (pos)
+  "Determine whether there is a link at the given POS."
+  (get-text-property pos 'button))
 
-(defun skroad--hide-cursor ()
-  "Hide the text cursor."
-  (setq-local skroad--cursor-original cursor-type)
-  (setq-local cursor-type nil))
+(defun skroad--link-start (pos)
+  "Get the start of the link found at the given POS."
+  (or (previous-single-property-change (1+ pos) 'id)
+      (point-min)))
 
-(defun skroad--unhide-cursor ()
-  "Unhide the text cursor."
-  (setq-local cursor-type skroad--cursor-original))
+(defun skroad--link-end (pos)
+  "Get the end of the link found at the given POS."
+  (or (next-single-property-change pos 'id)
+      (point-max)))
 
-(defun skroad--cursor-link-sensor (win position direction)
-  "Hook called after the cursor has moved into or out of a link."
-  (cond ((eq direction 'entered)
-         (let* ((p (point))
-                (start (button-start p))
-                (end (button-end p)))
-           (skroad--hide-cursor)
-           (goto-char start)
-           (skroad--current-link-overlay-activate start end)))
-        ((eq direction 'left)
-         (skroad--current-link-overlay-deactivate)
-         (skroad--unhide-cursor)
-         )
-        (t nil)))
+(defun skroad--update-current-link ()
+  "Update the current link overlay."
+  (let* ((p (point))
+         (l (skroad--link-at-pos-p p)))
+    (cond ((and (skroad--current-link-overlay-active-p) (not l))
+           (skroad--current-link-overlay-deactivate)
+           (setq-local cursor-type t)
+           )
+          (l
+           (let ((link-start (skroad--link-start p))
+                 (link-end (skroad--link-end p)))
+             (skroad--current-link-overlay-activate link-start link-end)
+             (goto-char link-start)
+             (setq-local cursor-type nil)
+             )))))
 
 (defmacro skroad--with-current-link (&rest body)
   "Use in a command which operates on the current link overlay, if it exists."
@@ -221,11 +229,13 @@ If something was removed, returns T, otherwise nil."
            (end (overlay-end skroad--current-link-overlay)))
        ,@body)))
 
-;; (defun skroad--current-link-delete ()
-;;   "Delete the link under the current link overlay, if one is active."
-;;   (interactive)
-;;   (skroad--with-current-link
-;;    (delete-region start end)))
+(defun skroad--current-link-insert-space ()
+  "Insert a space to the left of the current link."
+  (interactive)
+  (save-mark-and-excursion
+    (skroad--with-current-link
+     (goto-char start)
+     (insert " "))))
 
 (defun skroad--current-link-skip-left ()
   "Move the point to the left of the current link overlay, if active."
@@ -244,6 +254,7 @@ If something was removed, returns T, otherwise nil."
     (set-keymap-parent map (button-type-get 'skroad 'keymap))
     (define-key map (kbd "<left>") #'skroad--current-link-skip-left)
     (define-key map (kbd "<right>") #'skroad--current-link-skip-right)
+    (define-key map (kbd "SPC") #'skroad--current-link-insert-space)
     (define-key map [remap self-insert-command] 'ignore)
     map)
   "Keymap automatically activated inside the current link overlay.")
@@ -258,7 +269,6 @@ If something was removed, returns T, otherwise nil."
 (defun skroad--open-node ()
   "Open a skroad node."
   (button-mode)
-  (cursor-sensor-mode t)
   (skroad--current-link-overlay-deactivate)
   (font-lock-ensure)
   )
@@ -314,7 +324,8 @@ If something was removed, returns T, otherwise nil."
                             (skroad--with-whole-lines
                              start end
                              (font-lock-ensure
-                              start-expanded end-expanded))))))
+                              start-expanded end-expanded))
+                            ))))
 
   ;; Buffer-local hooks:
   (add-hook 'before-change-functions 'skroad--before-change-function nil t)
