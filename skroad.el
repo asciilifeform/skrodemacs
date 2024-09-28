@@ -98,7 +98,6 @@ If something was removed, returns T, otherwise nil."
   '(button category face button-data id)
   "Properties added by font-lock that must be removed when unfontifying.")
 
-;; TODO: eat whitespace between link and delimiters
 (defconst skroad--live-links-regex "\\[\\[\\([^][\n\t]+\\)\\]\\]"
   "Regex used to find live links in a node.")
 
@@ -108,7 +107,7 @@ If something was removed, returns T, otherwise nil."
     (let ((start (match-beginning 0))
           (end (match-end 0))
           (match (match-string-no-properties 0))
-          (target (match-string-no-properties 1)))
+          (target (string-trim (match-string-no-properties 1))))
       (with-silent-modifications
         ;; Get rid of old text property intervals when in undo:
         (when undo-in-progress
@@ -181,7 +180,7 @@ If something was removed, returns T, otherwise nil."
   "Overlay active when a link is under the point.")
 
 (defun skroad--current-link-overlay-activate (start end)
-  "Activate the current link overlay from START...END."
+  "Activate (if inactive) or move the current link overlay from START...END."
   (move-overlay skroad--current-link-overlay start end))
 
 (defun skroad--current-link-overlay-deactivate ()
