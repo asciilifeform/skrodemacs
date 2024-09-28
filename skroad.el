@@ -95,9 +95,7 @@ If something was removed, returns T, otherwise nil."
   "Face for dead links in skroad mode.")
 
 ;; Fundamental link type.
-;; TODO: derive all link types from this in the highlighter.
 (define-button-type 'skroad
-  ;; 'face nil
   'action 'skroad--follow-link
   'help-echo 'skroad--help-echo
   'follow-link t
