@@ -210,17 +210,20 @@ If something was removed, returns T, otherwise nil."
   "Update the current link overlay."
   (let* ((p (point))
          (l (skroad--link-at-pos-p p)))
+    ;; Overlay is active, but there is currently no link at point:
     (cond ((and (skroad--current-link-overlay-active-p) (not l))
-           (skroad--current-link-overlay-deactivate)
-           (setq-local cursor-type t)
-           )
+           (skroad--current-link-overlay-deactivate))
+          ;; Overlay may or may not be active, but there is a link at point:
           (l
            (let ((link-start (skroad--link-start p))
                  (link-end (skroad--link-end p)))
              (skroad--current-link-overlay-activate link-start link-end)
              (goto-char link-start)
-             (setq-local cursor-type nil)
-             )))))
+             ))))
+
+  ;; Show cursor if and only if the overlay is not active:
+  (setq-local cursor-type (not (skroad--current-link-overlay-active-p)))
+  )
 
 (defmacro skroad--with-current-link (&rest body)
   "Use in a command which operates on the current link overlay, if it exists."
