@@ -276,6 +276,14 @@ If something was removed, returns T, otherwise nil."
               (lambda (v)
                 (or v (and (eq major-mode 'skroad-mode)
                            (skroad--current-link-overlay-active-p)))))
+
+  (advice-add 'mark :filter-return
+              (lambda (v)
+                (cond (v v)
+                      ((and (eq major-mode 'skroad-mode)
+                            (skroad--current-link-overlay-active-p))
+                       (overlay-start skroad--current-link-overlay))
+                      (t nil))))
   
   (advice-add 'region-beginning :around
               (lambda (orig-fun &rest args)
