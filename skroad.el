@@ -77,7 +77,7 @@ If something was removed, returns T, otherwise nil."
 
 (defun skroad--follow-link (data)
   "User clicked, or pressed ENTER on, a link."
-  (message (format "Link '%s' pushed!" data)))
+  (message (format "Link '%s' pushed!" (string-trim data))))
 
 (defun skroad--help-echo (window buf position)
   "User is mousing over a link."
@@ -86,12 +86,31 @@ If something was removed, returns T, otherwise nil."
       (if target
 	  (button-get target 'button-data)))))
 
+(defface skroad--live-link-face
+  '((t :inherit link))
+  "Face for live links in skroad mode.")
+
+(defface skroad--dead-link-face
+  '((t :inherit link :foreground "red"))
+  "Face for dead links in skroad mode.")
+
 ;; Fundamental link type.
 ;; TODO: derive all link types from this in the highlighter.
 (define-button-type 'skroad
+  ;; 'face nil
   'action 'skroad--follow-link
   'help-echo 'skroad--help-echo
   'follow-link t
+  )
+
+(define-button-type 'skroad-live
+  'face 'skroad--live-link-face
+  :supertype 'skroad
+  )
+
+(define-button-type 'skroad-dead
+  'face 'skroad--dead-link-face
+  :supertype 'skroad
   )
 
 (defconst skroad--text-properties
@@ -101,25 +120,30 @@ If something was removed, returns T, otherwise nil."
 (defconst skroad--live-links-regex "\\[\\[\\([^][\n\t]+\\)\\]\\]"
   "Regex used to find live links in a node.")
 
-(defun skroad--next-live-link (limit)
-  "Buttonify links during fontification."
-  (when (re-search-forward skroad--live-links-regex limit t)
-    (let ((start (match-beginning 0))
-          (end (match-end 0))
-          (match (match-string-no-properties 0))
-          (target (string-trim (match-string-no-properties 1))))
-      (with-silent-modifications
-        ;; Get rid of old text property intervals when in undo:
-        (when undo-in-progress
-          (save-mark-and-excursion (replace-match match)))
-        
-        ;; Buttonize the match:
-        (make-text-button start end
-                          :type 'skroad
-                          'button-data target
-                          'id (gensym)
-                          ))
-      t)))
+(defconst skroad--dead-links-regex "\\[-\\[\\([^][\n\t]+\\)\\]-\\]"
+  "Regex used to find live links in a node.")
+
+;; TODO: can we enable lexical scope and make this a defun with a lambda?
+(defmacro skroad--make-regex-matcher (regex button-type)
+  "Make a regex matcher for given REGEX and BUTTON-TYPE for use in font-lock."
+  `(lambda (limit)
+     (when (re-search-forward ,regex limit t)
+       (let ((start (match-beginning 0))
+             (end (match-end 0))
+             (match (match-string-no-properties 0))
+             (target (match-string-no-properties 1)))
+         (with-silent-modifications
+           ;; Get rid of old text property intervals when in undo:
+           (when undo-in-progress
+             (save-mark-and-excursion (replace-match match)))
+           
+           ;; Buttonize the match:
+           (make-text-button start end
+                             :type ,button-type
+                             'button-data target
+                             'id (gensym)
+                             ))
+         t))))
 
 ;;; TODO: next-single-property-change?
 (defun skroad--extract-region-links (start end &optional object)
@@ -346,9 +370,13 @@ If something was removed, returns T, otherwise nil."
   ;; Fontification rules:
   (font-lock-add-keywords
    nil
-   '((skroad--next-live-link (0 'link t))) ;; Live skroad links
+   `((,(skroad--make-regex-matcher skroad--live-links-regex 'skroad-live)
+      (0 'nil 'append))
+     (,(skroad--make-regex-matcher skroad--dead-links-regex 'skroad-dead)
+      (0 'nil 'append))
+     )
    'set)
-
+  
   ;; Buffer-local hooks:
   (add-hook 'skroad-mode-hook 'skroad--open-node 0 t)
   )
