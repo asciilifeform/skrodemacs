@@ -172,22 +172,22 @@ If something was removed, returns T, otherwise nil."
     )
   )
 
-(defvar-local skroad--current-link--overlay nil
+(defvar-local skroad--current-link-overlay nil
   "Overlay active when a link is under the point.")
 
 (defun skroad--current-link-overlay-activate (start end)
   "Activate the current link overlay from START...END."
-  (move-overlay skroad--current-link--overlay start end))
+  (move-overlay skroad--current-link-overlay start end))
 
 (defun skroad--current-link-overlay-deactivate ()
   "Deactivate the current link overlay; it can be reactivated again."
-  (delete-overlay skroad--current-link--overlay))
+  (delete-overlay skroad--current-link-overlay))
 
 (defun skroad--current-link-overlay-active-p ()
   "Return nil if the current link overlay is deactivated; otherwise buffer."
-  (overlay-buffer skroad--current-link--overlay))
+  (overlay-buffer skroad--current-link-overlay))
 
-(defvar-local skroad--cursor-original nil
+(defvar-local skroad--cursor-original cursor-type
   "Default cursor, for hiding/unhiding.")
 
 (defun skroad--hide-cursor ()
@@ -206,6 +206,7 @@ If something was removed, returns T, otherwise nil."
                 (start (button-start p))
                 (end (button-end p)))
            (skroad--hide-cursor)
+           (goto-char start)
            (skroad--current-link-overlay-activate start end)))
         ((eq direction 'left)
          (skroad--current-link-overlay-deactivate)
@@ -216,15 +217,15 @@ If something was removed, returns T, otherwise nil."
 (defmacro skroad--with-current-link (&rest body)
   "Use in a command which operates on the current link overlay, if it exists."
   `(when (skroad--current-link-overlay-active-p)
-     (let ((start (overlay-start skroad--current-link--overlay))
-           (end (overlay-end skroad--current-link--overlay)))
+     (let ((start (overlay-start skroad--current-link-overlay))
+           (end (overlay-end skroad--current-link-overlay)))
        ,@body)))
 
-(defun skroad--current-link-delete ()
-  "Delete the link under the current link overlay, if one is active."
-  (interactive)
-  (skroad--with-current-link
-   (delete-region start end)))
+;; (defun skroad--current-link-delete ()
+;;   "Delete the link under the current link overlay, if one is active."
+;;   (interactive)
+;;   (skroad--with-current-link
+;;    (delete-region start end)))
 
 (defun skroad--current-link-skip-left ()
   "Move the point to the left of the current link overlay, if active."
@@ -238,37 +239,27 @@ If something was removed, returns T, otherwise nil."
   (skroad--with-current-link
    (goto-char end)))
 
-(defun skroad--current-link-set-selection ()
-  "Select the current link, if active."
-  (interactive)
-  (skroad--with-current-link
-   (push-mark start)
-   (goto-char end)
-   (activate-mark)))
-
 (defvar skroad--current-link-overlay-keymap
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map (button-type-get 'skroad 'keymap))
-    (define-key map (kbd "<backspace>") #'skroad--current-link-delete)
     (define-key map (kbd "<left>") #'skroad--current-link-skip-left)
     (define-key map (kbd "<right>") #'skroad--current-link-skip-right)
-    (define-key map (kbd "SPC") #'skroad--current-link-set-selection)
-    (define-key map [remap delete-forward-char] #'skroad--current-link-delete)
     (define-key map [remap self-insert-command] 'ignore)
     map)
   "Keymap automatically activated inside the current link overlay.")
 
 (defconst skroad--current-link-overlay-properties
-  (list 'face 'highlight
-        'evaporate t
-        'keymap skroad--current-link-overlay-keymap
-        )
+  `((face highlight)
+    (evaporate t)
+    (keymap ,skroad--current-link-overlay-keymap)
+    )
   "Text properties of the current link overlay.")
 
 (defun skroad--open-node ()
   "Open a skroad node."
   (button-mode)
   (cursor-sensor-mode t)
+  (skroad--current-link-overlay-deactivate)
   (font-lock-ensure)
   )
 
@@ -280,6 +271,27 @@ If something was removed, returns T, otherwise nil."
   (skroad--silence-modifications 'remove-list-of-text-properties)
   (skroad--silence-modifications 'set-text-properties)
   (skroad--silence-modifications 'add-face-text-property)
+  
+  (advice-add 'use-region-p :filter-return
+              (lambda (v)
+                (or v (and (eq major-mode 'skroad-mode)
+                           (skroad--current-link-overlay-active-p)))))
+  
+  (advice-add 'region-beginning :around
+              (lambda (orig-fun &rest args)
+                (if (and (eq major-mode 'skroad-mode)
+                         (not mark-active)
+                         (skroad--current-link-overlay-active-p))
+                    (overlay-start skroad--current-link-overlay)
+                  (apply orig-fun args))))
+  
+  (advice-add 'region-end :around
+              (lambda (orig-fun &rest args)
+                (if (and (eq major-mode 'skroad-mode)
+                         (not mark-active)
+                         (skroad--current-link-overlay-active-p))
+                    (overlay-end skroad--current-link-overlay)
+                  (apply orig-fun args))))
   
   ;; Zap properties during unfontification:
   (setq-local font-lock-extra-managed-props skroad--text-properties)
@@ -302,15 +314,13 @@ If something was removed, returns T, otherwise nil."
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
 
   ;; Overlay for when a link is under the point. Initially inactive:
-  (setq-local skroad--current-link--overlay
+  (setq-local skroad--current-link-overlay
               (make-overlay (point-min) (point-min)))
   (skroad--current-link-overlay-deactivate)
 
   ;; Properties for selected link overlay
-  (while skroad--current-link-overlay-properties
-      (overlay-put skroad--current-link--overlay
-                  (pop skroad--current-link-overlay-properties)
-                  (pop skroad--current-link-overlay-properties)))
+  (dolist (p skroad--current-link-overlay-properties)
+    (overlay-put skroad--current-link-overlay (car p) (cadr p)))
   
   ;; Fontification rules:
   (font-lock-add-keywords
