@@ -94,18 +94,20 @@ If something was removed, returns T, otherwise nil."
   '((t :inherit link :foreground "red"))
   "Face for dead links in skroad mode.")
 
-;; Fundamental link type.
+;; Fundamental skroad link type:
 (define-button-type 'skroad
   'action 'skroad--follow-link
   'help-echo 'skroad--help-echo
   'follow-link t
   )
 
+;; Live (i.e. node exists) links:
 (define-button-type 'skroad-live
   'face 'skroad--live-link-face
   :supertype 'skroad
   )
 
+;; Dead (i.e. placeholder) links:
 (define-button-type 'skroad-dead
   'face 'skroad--dead-link-face
   :supertype 'skroad
@@ -131,11 +133,12 @@ If something was removed, returns T, otherwise nil."
              (match (match-string-no-properties 0))
              (target (match-string-no-properties 1)))
          (with-silent-modifications
-           ;; Get rid of old text property intervals when in undo:
+           ;; Scrub old text property intervals when in undo:
            (when undo-in-progress
              (save-mark-and-excursion (replace-match match)))
            
-           ;; Buttonize the match:
+           ;; Buttonize the match.
+           ;; Gensym makes duplicate abutting links distinguishable:
            (make-text-button start end
                              :type ,button-type
                              'button-data target
@@ -143,7 +146,6 @@ If something was removed, returns T, otherwise nil."
                              ))
          t))))
 
-;;; TODO: next-single-property-change?
 (defun skroad--extract-region-links (start end &optional object)
   "Extract links from OBJECT, as (CATEGORY . TARGET), from START...END."
   (let ((buf (or object (current-buffer)))
@@ -180,9 +182,8 @@ If something was removed, returns T, otherwise nil."
      (setq-local skroad--links-propose-create
                  (nconc skroad--links-propose-create links)))))
 
-;; Currently we just print the proposed link changes and do nothing else.
 (defun skroad--post-command-hook ()
-  "Process proposed creation and destruction of links."
+  "Triggers following every user-interactive command."
   (when skroad--links-propose-destroy
     (message (format "proposed destroy: %s"
                      skroad--links-propose-destroy))
@@ -194,7 +195,7 @@ If something was removed, returns T, otherwise nil."
     (setq-local skroad--links-propose-create nil)
     )
 
-  ;; Handle consequences of point motion and/or link create/destroy:
+  ;; Update the current link overlay and toggle the cursor when required:
   (skroad--update-current-link)
   )
 
@@ -228,23 +229,22 @@ If something was removed, returns T, otherwise nil."
       (point-max)))
 
 (defun skroad--update-current-link ()
-  "Update the current link overlay."
+  "Update the current link overlay, because the point,
+the text under the point, or both, may have changed."
   (let* ((p (point))
-         (l (skroad--link-at-pos-p p)))
-    ;; Overlay is active, but there is currently no link at point:
-    (cond ((and (skroad--current-link-overlay-active-p) (not l))
-           (skroad--current-link-overlay-deactivate))
-          ;; Overlay may or may not be active, but there is a link at point:
-          (l
-           (let ((link-start (skroad--link-start p))
-                 (link-end (skroad--link-end p)))
-             (skroad--current-link-overlay-activate link-start link-end)
-             (goto-char link-start)
-             ))))
-
-  ;; Show cursor if and only if the overlay is not active:
-  (setq-local cursor-type (not (skroad--current-link-overlay-active-p)))
-  )
+         (at-link (skroad--link-at-pos-p p)))
+    (if at-link
+        ;; There is a link is under the point, so activate the overlay:
+        (let ((link-start (skroad--link-start p))
+              (link-end (skroad--link-end p)))
+          ;; Activate/move the overlay and jump to the start of the link:
+          (skroad--current-link-overlay-activate link-start link-end)
+          (goto-char link-start))
+      ;; When there is no link under the point, deactivate the overlay:
+      (when (skroad--current-link-overlay-active-p)
+        (skroad--current-link-overlay-deactivate))))
+  ;; Enable cursor if and only if it is not currently under the link overlay:
+  (setq-local cursor-type (not (skroad--current-link-overlay-active-p))))
 
 (defmacro skroad--with-current-link (&rest body)
   "Use in a command which operates on the current link overlay, if it exists."
@@ -254,7 +254,7 @@ If something was removed, returns T, otherwise nil."
        ,@body)))
 
 (defun skroad--current-link-insert-space ()
-  "Insert a space to the left of the current link."
+  "Insert a space immediately behind the current link."
   (interactive)
   (save-mark-and-excursion
     (skroad--with-current-link
@@ -262,13 +262,13 @@ If something was removed, returns T, otherwise nil."
      (insert " "))))
 
 (defun skroad--current-link-skip-left ()
-  "Move the point to the left of the current link overlay, if active."
+  "Move the point to the immediate left of the current link, if active."
   (interactive)
   (skroad--with-current-link
    (goto-char (max (point-min) (1- start)))))
 
 (defun skroad--current-link-skip-right ()
-  "Move the point to the right of the current link overlay, if active."
+  "Move the point to the immediate right of the current link, if active."
   (interactive)
   (skroad--with-current-link
    (goto-char end)))
@@ -281,7 +281,7 @@ If something was removed, returns T, otherwise nil."
     (define-key map (kbd "SPC") #'skroad--current-link-insert-space)
     (define-key map [remap self-insert-command] 'ignore)
     map)
-  "Keymap automatically activated inside the current link overlay.")
+  "Keymap automatically activated when the point is above a link.")
 
 (defconst skroad--current-link-overlay-properties
   `((face highlight)
