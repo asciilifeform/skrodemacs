@@ -75,17 +75,6 @@ If something was removed, returns T, otherwise nil."
 (defvar-local skroad--links-propose-destroy nil
   "Links removed from the buffer by a command; other instances may remain.")
 
-(defun skroad--follow-link (data)
-  "User clicked, or pressed ENTER on, a link."
-  (message (format "Link '%s' pushed!" (string-trim data))))
-
-(defun skroad--help-echo (window buf position)
-  "User is mousing over a link."
-  (with-current-buffer buf
-    (let ((target (button-at position)))
-      (if target
-	  (button-get target 'button-data)))))
-
 (defun skroad--link-at-pos-p (pos)
   "Determine whether there is a link at the given POS."
   (get-text-property pos 'id))
@@ -104,6 +93,20 @@ If something was removed, returns T, otherwise nil."
   "Get the end of the link found at the given POS."
   (or (next-single-property-change pos 'id)
       (point-max)))
+
+(defun skroad--link-at-pos (pos)
+  "Get the payload of the link found at the given POS."
+  (get-text-property pos 'button-data))
+
+(defun skroad--follow-link (data)
+  "User clicked, or pressed ENTER on, a link."
+  (message (format "Link '%s' pushed!" (string-trim data))))
+
+(defun skroad--help-echo (window buf position)
+  "User is mousing over a link in WINDOW, BUF, at POSITION."
+  (with-current-buffer buf
+      (if (skroad--link-at-pos-p position)
+	  (skroad--link-at-pos position))))
 
 (defmacro skroad--make-link-region-cmd (command)
   "Wrap COMMAND to use region if one exists, or use link at point as region."
@@ -204,15 +207,15 @@ If something was removed, returns T, otherwise nil."
   '(button category face button-data id)
   "Properties added by font-lock that must be removed when unfontifying.")
 
-(defconst skroad--link-payload "\\([^][\n\t]+\\)"
+(defconst skroad--link-payload "\\([^][\n\t]+?\\)"
   "Regex used for the payload of any link.")
 
 (defconst skroad--live-links-regex
-  (concat "\\[\\[" skroad--link-payload "\\]\\]")
+  (concat "\\[\\[\s*" skroad--link-payload "\s*\\]\\]")
   "Regex used to find live links in a node.")
 
 (defconst skroad--dead-links-regex
-  (concat "\\[-\\[" skroad--link-payload "\\]-\\]")
+  (concat "\\[-\\[\s*" skroad--link-payload "\s*\\]-\\]")
   "Regex used to find live links in a node.")
 
 ;; TODO: replace with a table-generated thing
