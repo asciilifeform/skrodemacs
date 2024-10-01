@@ -155,6 +155,7 @@ If something was removed, returns T, otherwise nil."
     (define-key map [mouse-2] 'ignore)
     (define-key map [mouse-3] 'ignore)
     (define-key map (kbd "RET") 'ignore)
+    (define-key map (kbd "t") #'skroad--link-to-plain-text)
     (skroad--remap-cmd-link-region map kill-region)
     (skroad--remap-cmd-link-region map kill-ring-save)
     map)
@@ -177,6 +178,18 @@ If something was removed, returns T, otherwise nil."
   (interactive)
   (goto-char (skroad--link-end (point))))
 
+(defun skroad--link-to-plain-text ()
+  "Transform the link under the point to plain text."
+  (interactive)
+  (let* ((p (point))
+         (start (skroad--link-start p))
+         (end (skroad--link-end p))
+         (text (skroad--link-at-pos p)))
+    (save-mark-and-excursion
+      (goto-char start)
+      (delete-region start end)
+      (insert text))))
+
 ;; Fundamental skroad link type:
 (define-button-type 'skroad
   'help-echo 'skroad--help-echo
@@ -191,15 +204,31 @@ If something was removed, returns T, otherwise nil."
   '((t :inherit link :foreground "red"))
   "Face for dead links in skroad mode.")
 
+(defvar skroad--live-link-keymap
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map skroad--link-keymap)
+    (define-key map (kbd "l") #'skroad--live-link-to-dead)
+    map)
+  "Keymap activated when the point is above a live link.")
+
+(defvar skroad--dead-link-keymap
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map skroad--link-keymap)
+    (define-key map (kbd "l") #'skroad--dead-link-to-live)
+    map)
+  "Keymap activated when the point is above a dead link.")
+
 ;; Live (i.e. node exists) links:
 (define-button-type 'skroad-live
   'face 'skroad--live-link-face
+  'keymap skroad--live-link-keymap
   :supertype 'skroad
   )
 
 ;; Dead (i.e. placeholder) links:
 (define-button-type 'skroad-dead
   'face 'skroad--dead-link-face
+  'keymap skroad--dead-link-keymap
   :supertype 'skroad
   )
 
@@ -207,16 +236,53 @@ If something was removed, returns T, otherwise nil."
   '(button category face button-data id)
   "Properties added by font-lock that must be removed when unfontifying.")
 
-(defconst skroad--link-payload "\s*\\([^][\n\t\s]+[^][\n\t]*?\\)\s*"
+(defconst skroad--link-payload-regex "\\([^][\n\t\s]+[^][\n\t]*?\\)"
   "Regex used for the payload of any link.")
 
+(defconst skroad--live-link-left-regex "\\[\\[\s*")
+(defconst skroad--live-link-right-regex "\s*\\]\\]")
+(defconst skroad--dead-link-left-regex "\\[-\\[\s*")
+(defconst skroad--dead-link-right-regex "\s*\\]-\\]")
+
+(defun skroad--make-live-link-regex (subexp)
+  "Make a regex that finds live links with given SUBEXP as payload."
+  (concat skroad--live-link-left-regex
+          subexp
+          skroad--live-link-right-regex))
+
+(defun skroad--make-dead-link-regex (subexp)
+  "Make a regex that finds dead links with given SUBEXP as payload."
+  (concat skroad--dead-link-left-regex
+          subexp
+          skroad--dead-link-right-regex))
+
 (defconst skroad--live-links-regex
-  (concat "\\[\\[" skroad--link-payload "\\]\\]")
-  "Regex used to find live links in a node.")
+  (skroad--make-live-link-regex skroad--link-payload-regex)
+  "Regex used to find any live links.")
 
 (defconst skroad--dead-links-regex
-  (concat "\\[-\\[" skroad--link-payload "\\]-\\]")
-  "Regex used to find dead links in a node.")
+  (skroad--make-dead-link-regex skroad--link-payload-regex)
+  "Regex used to find any dead links.")
+
+(defun skroad--dead-link-to-live ()
+  "Transform all dead links with payload LINK to live links."
+  (interactive)
+  (let ((link (skroad--link-at-pos (point))))
+    (when link
+      (save-mark-and-excursion
+        (goto-char (point-min))
+        (while (re-search-forward (skroad--make-dead-link-regex link) nil t)
+          (replace-match (concat "[[" link "]]")))))))
+
+(defun skroad--live-link-to-dead ()
+  "Transform all live links with payload LINK to dead links."
+  (interactive)
+  (let ((link (skroad--link-at-pos (point))))
+    (when link
+      (save-mark-and-excursion
+        (goto-char (point-min))
+        (while (re-search-forward (skroad--make-live-link-regex link) nil t)
+          (replace-match (concat "[-[" link "]-]")))))))
 
 ;; TODO: replace with a table-generated thing
 (defmacro skroad--make-regex-matcher (regex button-type)
@@ -308,20 +374,20 @@ If something was removed, returns T, otherwise nil."
 ;;   `(define-key ,map [remap ,command]
 ;;                (skroad--make-region-cmd ,command)))
 
-(defvar skroad--current-link-overlay-keymap
-  (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map skroad--link-keymap)
-    ;; (define-key map (kbd "<deletechar>") (skroad--make-region-cmd delete-region))
-    ;; (define-key map (kbd "<backspace>") (skroad--make-region-cmd delete-region))
-    ;; (skroad--remap-cmd-active-region map kill-region)
-    ;; (skroad--remap-cmd-active-region map kill-ring-save)
-    map)
-  "Keymap automatically activated when the point is above a selected link.")
+;; (defvar skroad--current-link-overlay-keymap
+;;   (let ((map (make-sparse-keymap)))
+;;     (set-keymap-parent map skroad--link-keymap)
+;;     ;; (define-key map (kbd "<deletechar>") (skroad--make-region-cmd delete-region))
+;;     ;; (define-key map (kbd "<backspace>") (skroad--make-region-cmd delete-region))
+;;     ;; (skroad--remap-cmd-active-region map kill-region)
+;;     ;; (skroad--remap-cmd-active-region map kill-ring-save)
+;;     map)
+;;   "Keymap automatically activated when the point is above a selected link.")
 
 (defconst skroad--current-link-overlay-properties
   `((face highlight)
     (evaporate t)
-    (keymap ,skroad--current-link-overlay-keymap)
+    ;; (keymap ,skroad--current-link-overlay-keymap)
     )
   "Text properties of the current link overlay.")
 
