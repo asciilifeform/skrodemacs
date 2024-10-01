@@ -207,7 +207,7 @@ If something was removed, returns T, otherwise nil."
   '(button category face button-data id)
   "Properties added by font-lock that must be removed when unfontifying.")
 
-(defconst skroad--link-payload "\\([^][\n\t]+?\\)"
+(defconst skroad--link-payload "\\([^][\n\t\s]+[^][\n\t]*?\\)"
   "Regex used for the payload of any link.")
 
 (defconst skroad--live-links-regex
@@ -216,7 +216,7 @@ If something was removed, returns T, otherwise nil."
 
 (defconst skroad--dead-links-regex
   (concat "\\[-\\[\s*" skroad--link-payload "\s*\\]-\\]")
-  "Regex used to find live links in a node.")
+  "Regex used to find dead links in a node.")
 
 ;; TODO: replace with a table-generated thing
 (defmacro skroad--make-regex-matcher (regex button-type)
