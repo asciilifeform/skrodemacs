@@ -69,12 +69,6 @@ If something was removed, returns T, otherwise nil."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (defvar skroad--mode-syntax-table
-;;   (let ((table (make-syntax-table)))
-;;     (modify-syntax-entry ?\[ "(]" table)
-;;     (modify-syntax-entry ?\] ")[" table)
-;;     table))
-
 (defvar-local skroad--links-propose-create nil
   "Links (may be dupes of existing) introduced to the buffer by a command.")
 
@@ -112,6 +106,7 @@ If something was removed, returns T, otherwise nil."
       (point-max)))
 
 (defmacro skroad--make-link-region-cmd (command)
+  "Wrap COMMAND to use region if one exists, or use link at point as region."
   `#'(lambda ()
        (interactive)
         (apply #',command
@@ -121,11 +116,12 @@ If something was removed, returns T, otherwise nil."
                        (skroad--link-end (point)))))))
 
 (defmacro skroad--remap-cmd-link-region (map command)
+  "Remap COMMAND in keymap MAP using `skroad--make-link-region-cmd'."
   `(define-key ,map [remap ,command]
                (skroad--make-link-region-cmd ,command)))
 
 (defun skroad--backspace ()
-  "If previous position contains a link, delete it. Otherwise backspace."
+  "If prev point contains a link, delete the link. Otherwise backspace."
   (interactive)
   (let ((p (point)))
     (cond ((use-region-p)
@@ -155,6 +151,7 @@ If something was removed, returns T, otherwise nil."
     (define-key map [mouse-1] 'ignore)
     (define-key map [mouse-2] 'ignore)
     (define-key map [mouse-3] 'ignore)
+    (define-key map (kbd "RET") 'ignore)
     (skroad--remap-cmd-link-region map kill-region)
     (skroad--remap-cmd-link-region map kill-ring-save)
     map)
@@ -179,9 +176,7 @@ If something was removed, returns T, otherwise nil."
 
 ;; Fundamental skroad link type:
 (define-button-type 'skroad
-  'action 'skroad--follow-link
   'help-echo 'skroad--help-echo
-  'follow-link t
   'keymap skroad--link-keymap
   )
 
@@ -413,8 +408,7 @@ the text under the point, or both, may have changed."
     (let ((link (skroad--link-at-pos-p pos))
           (fwd (<= pos limit)))
       (cond ((and link fwd)
-             (goto-char (skroad--link-end pos))
-             (forward-char))
+             (goto-char (skroad--link-end pos)))
             (link
              (goto-char (skroad--link-start pos)))
             (fwd
