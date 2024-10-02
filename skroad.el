@@ -245,13 +245,13 @@ If something was removed, returns T, otherwise nil."
 (defconst skroad--dead-link-right-regex "\s*\\]-\\]")
 
 (defun skroad--make-live-link-regex (subexp)
-  "Make a regex that finds live links with given SUBEXP as payload."
+  "Make a regex to find live links with given SUBEXP as payload."
   (concat skroad--live-link-left-regex
           subexp
           skroad--live-link-right-regex))
 
 (defun skroad--make-dead-link-regex (subexp)
-  "Make a regex that finds dead links with given SUBEXP as payload."
+  "Make a regex to find dead links with given SUBEXP as payload."
   (concat skroad--dead-link-left-regex
           subexp
           skroad--dead-link-right-regex))
@@ -426,16 +426,15 @@ the text under the point, or both, may have changed."
               (skroad--current-link-overlay-deactivate)
             (skroad--current-link-overlay-activate link-start link-end))
           ;; jump to the start of the link, or skip if abutting in region:
-          ;; (goto-char (if (eq p (mark))
-          ;;                link-end
-          ;;              link-start))
-          ;; (if (eq p (mark))
-          ;;     (message "p=m"))
-          ;; (if (eq p skroad--alt-mark)
-          ;;     (message "p=am"))
-          (goto-char link-start)
-          (message (format "oldp=%s p=%s m=%s am=%s"
-                           p (point) (mark) skroad--alt-mark))
+          (goto-char (if (eq p (mark))
+                         link-end
+                       link-start))
+          ;; if skipping left over marked link and there is an abutting link:
+          (if (and skroad--alt-mark
+                   (eq (point) (mark))
+                   (< p skroad--alt-mark)
+                   (skroad--link-at-prev-pos-p (point)))
+              (goto-char (skroad--link-start (1- (point)))))
           )
       ;; When there is no link under the point, deactivate the overlay:
       (skroad--current-link-overlay-deactivate)))
@@ -473,7 +472,7 @@ the text under the point, or both, may have changed."
 
 (defun skroad-find-word-boundary (pos limit)
   "Function for use in `find-word-boundary-function-table'."
-  (save-excursion
+  (save-mark-and-excursion
     (let ((link (skroad--link-at-pos-p pos))
           (fwd (<= pos limit)))
       (cond ((and link fwd)
