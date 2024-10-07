@@ -69,34 +69,166 @@ If something was removed, returns T, otherwise nil."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defvar skroad--text-type-table nil
+  "Definitions for all text types used in skroad.")
+
+(defun skroad--text-type-get (type-name property)
+  "Get value of PROPERTY from text type TYPE-NAME, or from its supertype(s)."
+  (let ((type-props (plist-get skroad--text-type-table type-name)))
+    (when type-props
+      (or (plist-get type-props property)
+          (let ((parent (plist-get type-props :supertype)))
+            (when parent
+              (skroad--text-type-get parent property)))))))
+
+(defun skroad--text-type-set (type-name property value)
+  "Set value of PROPERTY of text type TYPE-NAME to VALUE."
+  (let ((type-props (plist-get skroad--text-type-table type-name)))
+    (when (not type-props)
+      (error (format "Type %s not defined!" type-name)))
+    (setq skroad--text-type-table
+          (plist-put skroad--text-type-table type-name
+                     (plist-put type-props property value)))
+    value))
+
+(defmacro skroad--with-text-type (type-name properties &rest body)
+  "Bind each of the given text type PROPERTIES -- e.g. (:foo :bar ...)
+as (foo (skroad--text-type-get TYPE-NAME :foo)) etc., and evaluate BODY."
+  `(let ,(mapcar
+          #'(lambda (p)
+              (cons (read (substring (symbol-name p) 1))
+                    `((skroad--text-type-get ,type-name ,p))))
+          properties)
+     (progn
+       ,@body)))
+
+(defmacro skroad--with-each-text-type (properties &rest body)
+  "Evaluate BODY with bound PROPERTIES for every known text type."
+  `(dolist (table-entry skroad--text-type-table)
+     (skroad--with-text-type
+      table-entry ,properties
+      ,@body)))
+
+;; (defun skroad--text-type-keymap (type-name)
+;;   (skroad--with-text-type
+;;    type-name
+;;    (:keys :supertype)
+;;    `(let ((map (make-sparse-keymap)))
+;;       ;; ,(when parent-keymap
+;;       ;;    `(set-keymap-parent map ,parent-keymap)
+;;       ;;    )
+;;       ,@(mapcar #'(lambda (p) `(define-key map ,@p)) keys)
+;;       map)
+;;    ))
+
+(defun skroad--text-type-regex (type-name &optional payload)
+  "Regex to find all text of given TYPE-NAME; if PAYLOAD given, one instance."
+  (skroad--with-text-type
+   type-name (:start-delim :payload-regex :end-delim)
+   (concat (regexp-quote start-delim)
+           (if payload
+               payload
+               payload-regex)
+           (regexp-quote end-delim))))
+
+(defun skroad--text-type-generate (type-name payload)
+  "Generate text of given TYPE-NAME with given PAYLOAD."
+  (skroad--with-text-type
+   type-name (:start-delim :end-delim)
+   (concat start-delim payload end-delim)))
+
+(defmacro skroad--define-text-type (type-name &rest args)
+  "Define a text type for use in skroad."
+  (setq skroad--text-type-table
+        (plist-put skroad--text-type-table type-name args))
+  
+  (skroad--with-text-type
+   type-name
+   (:supertype :face :buttonized :title
+               :keymap :help-echo :mouse-face
+               :keys :display)
+   
+   `(progn
+      ,(when buttonized
+         `(define-button-type ',type-name
+            'face ,face
+            ,@(if keymap
+               `('keymap ,keymap))
+            ,@(if help-echo
+               `('help-echo ',help-echo))
+            ,@(if mouse-face
+               `('mouse-face ',mouse-face))
+            ,@(if supertype
+               `(:supertype ',supertype))
+            ))
+
+      ,(when display
+         (skroad--text-type-set
+          type-name :font-lock-rule
+          `((lambda (limit)
+              ,(when (not title)
+                 `(when (eq (line-beginning-position) (point-min))
+                    (setq limit (min (+ limit (line-end-position))
+                                     (point-max)))
+                    (goto-char (line-end-position))))
+              (when (and
+                     ,(if title
+                          `(eq (line-beginning-position) (point-min))
+                        t)
+                     (re-search-forward
+                      ,(skroad--text-type-regex type-name)
+                      limit t))
+                (with-silent-modifications
+                  ,(if buttonized
+                       `(make-text-button
+                         (match-beginning 0) (match-end 0)
+                         :type ',type-name
+                         'button-data (match-string-no-properties 1)
+                         'button (gensym))
+                     `(put-text-property
+                       (match-beginning 0) (match-end 0)
+                       'font-lock-face ,face)))
+                t))
+            (0 'nil 'append))
+          )
+         t
+         )
+      )))
+
+;; (macroexpand
+;;  '
+;;  (let (
+;;        (parent-keymap nil)
+;;        ;(parent-keymap skroad--link-keymap)
+;;        (keys '(((kbd "l") #'skroad--live-link-to-dead)
+;;                ((kbd "k") #'skroad--dead-link-to-live)
+;;                )))
+;;    `(let ((map (make-sparse-keymap)))
+;;       ,(when parent-keymap
+;;          `(set-keymap-parent map ,parent-keymap)
+;;          )
+;;       ,@(mapcar #'(lambda (p) `(define-key map ,@p)) keys)
+;;       map)
+;;    )
+;;    ;; keys
+;;    )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defvar-local skroad--links-propose-create nil
   "Links (may be dupes of existing) introduced to the buffer by a command.")
 
 (defvar-local skroad--links-propose-destroy nil
   "Links removed from the buffer by a command; other instances may remain.")
 
-(defun skroad--link-at-pos-p (pos)
-  "Determine whether there is a link at the given POS."
-  (get-text-property pos 'id))
+(defun skroad--link-at (pos)
+  "Get the payload of the link found at the given POS, or nil if none."
+  (get-text-property pos 'button-data))
 
-(defun skroad--link-at-prev-pos-p (pos)
+(defun skroad--link-at-prev (pos)
   "Determine whether there is a link at the position prior to POS."
   (and (> pos (point-min))
-       (get-text-property (1- pos) 'id)))
-
-(defun skroad--link-start (pos)
-  "Get the start of the link found at the given POS."
-  (or (previous-single-property-change (1+ pos) 'id)
-      (point-min)))
-
-(defun skroad--link-end (pos)
-  "Get the end of the link found at the given POS."
-  (or (next-single-property-change pos 'id)
-      (point-max)))
-
-(defun skroad--link-at-pos (pos)
-  "Get the payload of the link found at the given POS."
-  (get-text-property pos 'button-data))
+       (skroad--link-at (1- pos))))
 
 (defun skroad--follow-link (data)
   "User clicked, or pressed ENTER on, a link."
@@ -105,18 +237,17 @@ If something was removed, returns T, otherwise nil."
 (defun skroad--help-echo (window buf position)
   "User is mousing over a link in WINDOW, BUF, at POSITION."
   (with-current-buffer buf
-      (if (skroad--link-at-pos-p position)
-	  (skroad--link-at-pos position))))
+    (skroad--link-at position)))
 
 (defmacro skroad--make-link-region-cmd (command)
   "Wrap COMMAND to use region if one exists, or use link at point as region."
   `#'(lambda ()
        (interactive)
-        (apply #',command
-               (if (use-region-p)
-                   (list (region-beginning) (region-end))
-                 (list (skroad--link-start (point))
-                       (skroad--link-end (point)))))))
+       (apply #',command
+              (if (use-region-p)
+                  (list (region-beginning) (region-end))
+                (list (button-start (point))
+                      (button-end (point)))))))
 
 (defmacro skroad--remap-cmd-link-region (map command)
   "Remap COMMAND in keymap MAP using `skroad--make-link-region-cmd'."
@@ -129,10 +260,51 @@ If something was removed, returns T, otherwise nil."
   (let ((p (point)))
     (cond ((use-region-p)
            (delete-region (region-beginning) (region-end)))
-          ((skroad--link-at-prev-pos-p p)
-           (delete-region (skroad--link-start (1- p)) p))
+          ((skroad--link-at-prev p)
+           (delete-region (button-start (1- p)) p))
           (t
            (delete-char -1)))))
+
+(defun skroad--link-insert-space ()
+  "Insert a space immediately behind the link under the point."
+  (interactive)
+  (save-mark-and-excursion
+    (goto-char (button-start (point)))
+    (insert " ")))
+
+(defun skroad--link-to-plain-text ()
+  "Transform the link under the point to plain text."
+  (interactive)
+  (let* ((p (point))
+         (start (button-start p))
+         (end (button-end p))
+         (text (skroad--link-at p)))
+    (save-mark-and-excursion
+      (goto-char start)
+      (delete-region start end)
+      (insert text))))
+
+(defun skroad--dead-link-to-live ()
+  "Transform all dead links with payload LINK to live links."
+  (interactive)
+  (let ((link (skroad--link-at (point))))
+    (when link
+      (save-mark-and-excursion
+        (goto-char (point-min))
+        (while (re-search-forward
+                (skroad--text-type-regex 'skroad-dead link) nil t)
+          (replace-match (skroad--text-type-generate 'skroad-live link)))))))
+
+(defun skroad--live-link-to-dead ()
+  "Transform all live links with payload LINK to dead links."
+  (interactive)
+  (let ((link (skroad--link-at (point))))
+    (when link
+      (save-mark-and-excursion
+        (goto-char (point-min))
+        (while (re-search-forward
+                (skroad--text-type-regex 'skroad-live link) nil t)
+          (replace-match (skroad--text-type-generate 'skroad-dead link)))))))
 
 (defvar skroad--mode-keymap
   (let ((map (make-sparse-keymap)))
@@ -143,8 +315,6 @@ If something was removed, returns T, otherwise nil."
 (defvar skroad--link-keymap
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map skroad--mode-keymap)
-    (define-key map (kbd "<left>") #'skroad--link-skip-left)
-    (define-key map (kbd "<right>") #'skroad--link-skip-right)
     (define-key map (kbd "SPC") #'skroad--link-insert-space)
     (define-key map [remap self-insert-command] 'ignore)
     (define-key map (kbd "<deletechar>")
@@ -161,159 +331,100 @@ If something was removed, returns T, otherwise nil."
     map)
   "Keymap automatically activated when the point is above any link.")
 
-(defun skroad--link-insert-space ()
-  "Insert a space immediately behind the link under the point."
-  (interactive)
-  (save-mark-and-excursion
-    (goto-char (skroad--link-start (point)))
-    (insert " ")))
-
-(defun skroad--link-skip-left ()
-  "Move the point to the immediate left of the link under the point."
-  (interactive)
-  (goto-char (max (point-min) (1- (skroad--link-start (point))))))
-
-(defun skroad--link-skip-right ()
-  "Move the point to the immediate right of the link under the point."
-  (interactive)
-  (goto-char (skroad--link-end (point))))
-
-(defun skroad--link-to-plain-text ()
-  "Transform the link under the point to plain text."
-  (interactive)
-  (let* ((p (point))
-         (start (skroad--link-start p))
-         (end (skroad--link-end p))
-         (text (skroad--link-at-pos p)))
-    (save-mark-and-excursion
-      (goto-char start)
-      (delete-region start end)
-      (insert text))))
-
-;; Fundamental skroad link type:
-(define-button-type 'skroad
-  'help-echo 'skroad--help-echo
-  'keymap skroad--link-keymap
-  )
-
-(defface skroad--live-link-face
-  '((t :inherit link))
-  "Face for live links in skroad mode.")
-
-(defface skroad--dead-link-face
-  '((t :inherit link :foreground "red"))
-  "Face for dead links in skroad mode.")
-
-(defvar skroad--live-link-keymap
-  (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map skroad--link-keymap)
-    (define-key map (kbd "l") #'skroad--live-link-to-dead)
-    map)
-  "Keymap activated when the point is above a live link.")
-
-(defvar skroad--dead-link-keymap
-  (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map skroad--link-keymap)
-    (define-key map (kbd "l") #'skroad--dead-link-to-live)
-    map)
-  "Keymap activated when the point is above a dead link.")
-
-;; Live (i.e. node exists) links:
-(define-button-type 'skroad-live
-  'face 'skroad--live-link-face
-  'keymap skroad--live-link-keymap
-  :supertype 'skroad
-  )
-
-;; Dead (i.e. placeholder) links:
-(define-button-type 'skroad-dead
-  'face 'skroad--dead-link-face
-  'keymap skroad--dead-link-keymap
-  :supertype 'skroad
-  )
-
 (defconst skroad--text-properties
-  '(button category face button-data id)
+  '(button category face font-lock-face button-data)
   "Properties added by font-lock that must be removed when unfontifying.")
 
-(defconst skroad--link-payload-regex "\\([^][\n\t\s]+[^][\n\t]*?\\)"
-  "Regex used for the payload of any link.")
+(skroad--define-text-type
+ skroad-link
+ :doc "Fundamental type for skroad links."
+ :buttonized t
+ :track t
+ :display nil
+ :face 'link
+ :help-echo skroad--help-echo
+ :mouse-face highlight
+ :keymap skroad--link-keymap
+ :payload-regex "\s*\\([^][\n\t\s]+[^][\n\t]*?\\)\s*"
+ )
 
-(defconst skroad--live-link-left-regex "\\[\\[\s*")
-(defconst skroad--live-link-right-regex "\s*\\]\\]")
-(defconst skroad--dead-link-left-regex "\\[-\\[\s*")
-(defconst skroad--dead-link-right-regex "\s*\\]-\\]")
+(skroad--define-text-type
+ skroad-live
+ :doc "Live skroad link."
+ :supertype skroad-link
+ :display t
+ :start-delim "[[" :end-delim "]]"
+ :keymap (let ((map (make-sparse-keymap)))
+           (set-keymap-parent map skroad--link-keymap)
+           (define-key map (kbd "l") #'skroad--live-link-to-dead)
+           map)
+ )
 
-(defun skroad--make-live-link-regex (subexp)
-  "Make a regex to find live links with given SUBEXP as payload."
-  (concat skroad--live-link-left-regex
-          subexp
-          skroad--live-link-right-regex))
+(skroad--define-text-type
+ skroad-dead
+ :doc "Dead skroad link."
+ :supertype skroad-link
+ :display t
+ :start-delim "[-[" :end-delim "]-]"
+ :face '(:inherit link :foreground "red")
+ :keymap (let ((map (make-sparse-keymap)))
+           (set-keymap-parent map skroad--link-keymap)
+           (define-key map (kbd "l") #'skroad--dead-link-to-live)
+           map)
+ )
 
-(defun skroad--make-dead-link-regex (subexp)
-  "Make a regex to find dead links with given SUBEXP as payload."
-  (concat skroad--dead-link-left-regex
-          subexp
-          skroad--dead-link-right-regex))
+(skroad--define-text-type
+ skroad-node-title
+ :doc "Node title."
+ :track t
+ :display t
+ :title t
+ :face '(:weight bold :foreground "purple"
+                 :height 1.5 :inverse-video t :extend t)
+ :start-delim "" :end-delim "\n"
+ :payload-regex "\\([^\n]+\\)"
+ )
 
-(defconst skroad--live-links-regex
-  (skroad--make-live-link-regex skroad--link-payload-regex)
-  "Regex used to find any live links.")
+(skroad--define-text-type
+ skroad-italic
+ :doc "Italicized text."
+ :display t
+ :face '(:slant italic)
+ :start-delim "__" :end-delim "__"
+ :payload-regex "\\([^\\_]+\\)"
+ )
 
-(defconst skroad--dead-links-regex
-  (skroad--make-dead-link-regex skroad--link-payload-regex)
-  "Regex used to find any dead links.")
+(skroad--define-text-type
+ skroad-bold
+ :doc "Bold text."
+ :display t
+ :face '(:weight bold)
+ :start-delim "**" :end-delim "**"
+ :payload-regex "\\([^\\*]+\\)"
+ )
 
-(defun skroad--dead-link-to-live ()
-  "Transform all dead links with payload LINK to live links."
-  (interactive)
-  (let ((link (skroad--link-at-pos (point))))
-    (when link
-      (save-mark-and-excursion
-        (goto-char (point-min))
-        (while (re-search-forward (skroad--make-dead-link-regex link) nil t)
-          (replace-match (concat "[[" link "]]")))))))
-
-(defun skroad--live-link-to-dead ()
-  "Transform all live links with payload LINK to dead links."
-  (interactive)
-  (let ((link (skroad--link-at-pos (point))))
-    (when link
-      (save-mark-and-excursion
-        (goto-char (point-min))
-        (while (re-search-forward (skroad--make-live-link-regex link) nil t)
-          (replace-match (concat "[-[" link "]-]")))))))
-
-;; TODO: replace with a table-generated thing
-(defmacro skroad--make-regex-matcher (regex button-type)
-  "Make a regex matcher for given REGEX and BUTTON-TYPE for use in font-lock."
-  `(lambda (limit)
-     (when (re-search-forward ,regex limit t)
-       (let ((start (match-beginning 0))
-             (end (match-end 0))
-             (match (match-string-no-properties 0))
-             (target (match-string-no-properties 1)))
-         (with-silent-modifications
-           (make-text-button start end
-                             :type ,button-type
-                             'button-data target
-                             'id (gensym)
-                             ))
-         t))))
+(skroad--define-text-type
+ skroad-heading
+ :doc "Heading text."
+ :display t
+ :face '(:weight bold :height 1.2)
+ :start-delim "" :end-delim "\n"
+ :payload-regex "^##\\([^\n\\#]+\\)"
+ )
 
 ;; TODO: replace with a table-generated thing
 (defun skroad--extract-region-links (start end)
   (let ((links nil))
     (save-mark-and-excursion
       (goto-char start)
-      (while (re-search-forward skroad--live-links-regex end t)
+      (while (re-search-forward (skroad--text-type-regex 'skroad-live) end t)
         (push (cons 'live (match-string-no-properties 1)) links))
       (goto-char start)
-      (while (re-search-forward skroad--dead-links-regex end t)
+      (while (re-search-forward (skroad--text-type-regex 'skroad-dead) end t)
         (push (cons 'dead (match-string-no-properties 1)) links))
-    )
+      )
     links
-  ))
+    ))
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in a skroad buffer in region START...END."
@@ -334,6 +445,13 @@ If something was removed, returns T, otherwise nil."
      (skroad--delete-intersection skroad--links-propose-destroy links)
      (setq-local skroad--links-propose-create
                  (nconc skroad--links-propose-create links)))))
+
+(defvar-local skroad--prev-point (point-min)
+  "Point prior to the current command.")
+
+(defun skroad--pre-command-hook ()
+  "Triggers prior to every user-interactive command."
+  (setq-local skroad--prev-point (point)))
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
@@ -357,48 +475,23 @@ If something was removed, returns T, otherwise nil."
 (defvar-local skroad--current-link-overlay nil
   "Overlay active when a link is under the point.")
 
-(defmacro skroad--with-current-link (&rest body)
-  "Use in a command which operates on the current link overlay, if it exists."
-  `(when (skroad--current-link-overlay-active-p)
-     (let ((link-start (overlay-start skroad--current-link-overlay))
-           (link-end (overlay-end skroad--current-link-overlay)))
-       ,@body)))
-
-;; (defmacro skroad--make-region-cmd (command)
-;;   `#'(lambda ()
-;;        (interactive)
-;;        (skroad--with-current-link
-;;         (apply #',command (list link-start link-end)))))
-
-;; (defmacro skroad--remap-cmd-active-region (map command)
-;;   `(define-key ,map [remap ,command]
-;;                (skroad--make-region-cmd ,command)))
-
-;; (defvar skroad--current-link-overlay-keymap
-;;   (let ((map (make-sparse-keymap)))
-;;     (set-keymap-parent map skroad--link-keymap)
-;;     ;; (define-key map (kbd "<deletechar>") (skroad--make-region-cmd delete-region))
-;;     ;; (define-key map (kbd "<backspace>") (skroad--make-region-cmd delete-region))
-;;     ;; (skroad--remap-cmd-active-region map kill-region)
-;;     ;; (skroad--remap-cmd-active-region map kill-ring-save)
-;;     map)
-;;   "Keymap automatically activated when the point is above a selected link.")
-
 (defconst skroad--current-link-overlay-properties
   `((face highlight)
-    (evaporate t)
-    ;; (keymap ,skroad--current-link-overlay-keymap)
-    )
+    (evaporate t))
   "Text properties of the current link overlay.")
 
 (defun skroad--current-link-overlay-activate (start end)
   "Activate (if inactive) or move the current link overlay from START...END."
-  (move-overlay skroad--current-link-overlay start end (current-buffer)))
+  (move-overlay skroad--current-link-overlay start end (current-buffer))
+  ;; (setq-local cursor-type nil)
+  )
 
 (defun skroad--current-link-overlay-deactivate ()
   "Deactivate the current link overlay; it can be reactivated again."
   (when (skroad--current-link-overlay-active-p)
-    (delete-overlay skroad--current-link-overlay)))
+    (delete-overlay skroad--current-link-overlay))
+  ;; (setq-local cursor-type t)
+  )
 
 (defun skroad--current-link-overlay-active-p ()
   "Return t if the current link overlay is active; otherwise nil."
@@ -417,29 +510,26 @@ If something was removed, returns T, otherwise nil."
   "Update the current link overlay, because the point,
 the text under the point, or both, may have changed."
   (let* ((p (point)))
-    (if (skroad--link-at-pos-p p)
-        ;; There is a link is under the point:
-        (let ((link-start (skroad--link-start p))
-              (link-end (skroad--link-end p)))
-          ;; Activate/move the overlay, unless a region is active:
-          (if (skroad--region-selection-active-p)
-              (skroad--current-link-overlay-deactivate)
-            (skroad--current-link-overlay-activate link-start link-end))
-          ;; jump to the start of the link, or skip if abutting in region:
-          (goto-char (if (eq p (mark))
-                         link-end
-                       link-start))
-          ;; if skipping left over marked link and there is an abutting link:
-          (if (and skroad--alt-mark
-                   (eq (point) (mark))
-                   (< p skroad--alt-mark)
-                   (skroad--link-at-prev-pos-p (point)))
-              (goto-char (skroad--link-start (1- (point)))))
-          )
-      ;; When there is no link under the point, deactivate the overlay:
-      (skroad--current-link-overlay-deactivate)))
-  ;; Enable cursor if and only if it is not currently under the link overlay:
-  (setq-local cursor-type (not (skroad--current-link-overlay-active-p))))
+    ;; If there is a link under the point, we may have to bounce the point:
+    (when (skroad--link-at p)
+      ;; Moved into link from outside of it, or tried to move left inside it:
+      (cond ((or (not (eq (skroad--link-at p)
+                          (skroad--link-at skroad--prev-point)))
+                 (< p skroad--prev-point))
+             ;; Go to start of link.
+             (goto-char (button-start p)))
+            ;; If tried to move right from anywhere:
+            ((> p skroad--prev-point)
+             ;; Go to end of link.
+             (goto-char (button-end p))))))
+
+  ;; Point may have moved. Enable current link overlay iff on top of a link:
+  (let ((p (point)))
+    (if (and (skroad--link-at p)
+             (not (skroad--region-selection-active-p)))
+        (skroad--current-link-overlay-activate
+         (button-start p) (button-end p))
+      (skroad--current-link-overlay-deactivate))))
 
 (defun skroad--adjust-mark-if-present ()
   "Mark and alt-mark may swap places so that link remains in the region."
@@ -458,27 +548,34 @@ the text under the point, or both, may have changed."
 
 (defun skroad--activate-mark-hook ()
   "Triggers when the mark is activated or reactivated."
+  ;; Turn off mouse highlights and current link overlay:
+  (setq-local mouse-highlight nil)
+  (skroad--current-link-overlay-deactivate)
   (let ((m (mark)))
     ;; When mark is set in a link, set mark to link end and alt-mark to start:
-    (when (skroad--link-at-pos-p m)
-      (set-mark (skroad--link-end m))
-      (setq-local skroad--alt-mark (skroad--link-start m))
-      (skroad--current-link-overlay-deactivate))))
+    (when (skroad--link-at m)
+      (set-mark (button-end m))
+      (setq-local skroad--alt-mark (button-start m))
+      (message "mark adjusted")
+      )))
 
 (defun skroad--deactivate-mark-hook ()
   "Triggers when the mark becomes inactive."
   (setq-local skroad--alt-mark nil)
-  (skroad--update-current-link))
+  (skroad--update-current-link)
+  ;; Turn on mouse highlight
+  (setq-local mouse-highlight t)
+  )
 
-(defun skroad-find-word-boundary (pos limit)
+(defun skroad--find-word-boundary (pos limit)
   "Function for use in `find-word-boundary-function-table'."
   (save-mark-and-excursion
-    (let ((link (skroad--link-at-pos-p pos))
+    (let ((link (skroad--link-at pos))
           (fwd (<= pos limit)))
       (cond ((and link fwd)
-             (goto-char (skroad--link-end pos)))
+             (goto-char (button-end pos)))
             (link
-             (goto-char (skroad--link-start pos)))
+             (goto-char (button-start pos)))
             (fwd
              (forward-word-strictly))
             (t
@@ -487,13 +584,23 @@ the text under the point, or both, may have changed."
 
 (defconst skroad-find-word-boundary-function-table
   (let ((tab (make-char-table nil)))
-    (set-char-table-range tab t #'skroad-find-word-boundary)
+    (set-char-table-range tab t #'skroad--find-word-boundary)
     tab)
   "Assigned to `find-word-boundary-function-table' in skroad mode.")
+
+(defun skroad--font-lock-turn-on ()
+  "Enable font-lock for skroad mode."
+  (let ((keywords nil))
+    (skroad--with-each-text-type
+     (:font-lock-rule)
+     (if font-lock-rule
+         (push font-lock-rule keywords)))
+    (font-lock-add-keywords nil keywords t)))
 
 (defun skroad--open-node ()
   "Open a skroad node."
   (button-mode)
+  (skroad--font-lock-turn-on)
   (font-lock-ensure)
   )
 
@@ -525,6 +632,7 @@ the text under the point, or both, may have changed."
   ;; Buffer-local hooks:
   (add-hook 'before-change-functions 'skroad--before-change-function nil t)
   (add-hook 'after-change-functions 'skroad--after-change-function nil t)
+  (add-hook 'pre-command-hook 'skroad--pre-command-hook nil t)
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
   (add-hook 'activate-mark-hook 'skroad--activate-mark-hook nil t)
   (add-hook 'deactivate-mark-hook 'skroad--deactivate-mark-hook nil t)
@@ -544,17 +652,7 @@ the text under the point, or both, may have changed."
   ;; Handle word boundaries correctly (links are treated as unitary words) :
   (setq-local find-word-boundary-function-table
               skroad-find-word-boundary-function-table)
-  
-  ;; Fontification rules:
-  (font-lock-add-keywords
-   nil
-   `((,(skroad--make-regex-matcher skroad--live-links-regex 'skroad-live)
-      (0 'nil 'append))
-     (,(skroad--make-regex-matcher skroad--dead-links-regex 'skroad-dead)
-      (0 'nil 'append))
-     )
-   'set)
-  
+
   ;; Buffer-local hooks:
   (add-hook 'skroad-mode-hook 'skroad--open-node 0 t)
   )
