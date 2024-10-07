@@ -115,13 +115,11 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
 ;;    ))
 
 (defun skroad--text-type-regex (type-name &optional payload)
-  "Regex to find all text of given TYPE-NAME; if PAYLOAD given, one instance."
+  "Regex to find all text of given TYPE-NAME; if PAYLOAD given: one instance."
   (skroad--with-text-type-props
    type-name (:start-delim :payload-regex :end-delim)
    (concat (regexp-quote start-delim)
-           (if payload
-               payload
-             payload-regex)
+           (or payload payload-regex)
            (regexp-quote end-delim))))
 
 (defmacro skroad--define-text-type (type-name &rest args)
@@ -139,14 +137,14 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
       ,(when buttonized
          `(define-button-type ',type-name
             'face ,face
-            ,@(if keymap
-                  `('keymap ,keymap))
-            ,@(if help-echo
-                  `('help-echo ',help-echo))
-            ,@(if mouse-face
-                  `('mouse-face ',mouse-face))
-            ,@(if supertype
-                  `(:supertype ',supertype))
+            ,@(when keymap
+                `('keymap ,keymap))
+            ,@(when help-echo
+                `('help-echo ',help-echo))
+            ,@(when mouse-face
+                `('mouse-face ',mouse-face))
+            ,@(when supertype
+                `(:supertype ',supertype))
             ))
 
       ,(when display
@@ -597,8 +595,8 @@ the text under the point, or both, may have changed."
   (let ((keywords nil))
     (skroad--with-each-text-type
      (:font-lock-rule)
-     (if font-lock-rule
-         (push font-lock-rule keywords)))
+     (when font-lock-rule
+       (push font-lock-rule keywords)))
     (font-lock-add-keywords nil keywords t)))
 
 (defun skroad--open-node ()
