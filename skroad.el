@@ -72,16 +72,16 @@ If something was removed, returns T, otherwise nil."
 (defvar skroad--text-type-table nil
   "Definitions for all text types used in skroad.")
 
-(defun skroad--text-type-get (type-name property)
+(defun skroad--text-type-get-prop (type-name property)
   "Get value of PROPERTY from text type TYPE-NAME, or from its supertype(s)."
   (let ((type-props (plist-get skroad--text-type-table type-name)))
     (when type-props
       (or (plist-get type-props property)
           (let ((parent (plist-get type-props :supertype)))
             (when parent
-              (skroad--text-type-get parent property)))))))
+              (skroad--text-type-get-prop parent property)))))))
 
-(defun skroad--text-type-set (type-name property value)
+(defun skroad--text-type-set-prop (type-name property value)
   "Set value of PROPERTY of text type TYPE-NAME to VALUE."
   (let ((type-props (plist-get skroad--text-type-table type-name)))
     (when (not type-props)
@@ -91,26 +91,19 @@ If something was removed, returns T, otherwise nil."
                      (plist-put type-props property value)))
     value))
 
-(defmacro skroad--with-text-type (type-name properties &rest body)
+(defmacro skroad--with-text-type-props (type-name properties &rest body)
   "Bind each of the given text type PROPERTIES -- e.g. (:foo :bar ...)
-as (foo (skroad--text-type-get TYPE-NAME :foo)) etc., and evaluate BODY."
+as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
   `(let ,(mapcar
           #'(lambda (p)
               (cons (read (substring (symbol-name p) 1))
-                    `((skroad--text-type-get ,type-name ,p))))
+                    `((skroad--text-type-get-prop ,type-name ,p))))
           properties)
      (progn
        ,@body)))
 
-(defmacro skroad--with-each-text-type (properties &rest body)
-  "Evaluate BODY with bound PROPERTIES for every known text type."
-  `(dolist (table-entry skroad--text-type-table)
-     (skroad--with-text-type
-      table-entry ,properties
-      ,@body)))
-
 ;; (defun skroad--text-type-keymap (type-name)
-;;   (skroad--with-text-type
+;;   (skroad--with-text-type-props
 ;;    type-name
 ;;    (:keys :supertype)
 ;;    `(let ((map (make-sparse-keymap)))
@@ -123,26 +116,20 @@ as (foo (skroad--text-type-get TYPE-NAME :foo)) etc., and evaluate BODY."
 
 (defun skroad--text-type-regex (type-name &optional payload)
   "Regex to find all text of given TYPE-NAME; if PAYLOAD given, one instance."
-  (skroad--with-text-type
+  (skroad--with-text-type-props
    type-name (:start-delim :payload-regex :end-delim)
    (concat (regexp-quote start-delim)
            (if payload
                payload
-               payload-regex)
+             payload-regex)
            (regexp-quote end-delim))))
-
-(defun skroad--text-type-generate (type-name payload)
-  "Generate text of given TYPE-NAME with given PAYLOAD."
-  (skroad--with-text-type
-   type-name (:start-delim :end-delim)
-   (concat start-delim payload end-delim)))
 
 (defmacro skroad--define-text-type (type-name &rest args)
   "Define a text type for use in skroad."
   (setq skroad--text-type-table
         (plist-put skroad--text-type-table type-name args))
   
-  (skroad--with-text-type
+  (skroad--with-text-type-props
    type-name
    (:supertype :face :buttonized :title
                :keymap :help-echo :mouse-face
@@ -153,17 +140,17 @@ as (foo (skroad--text-type-get TYPE-NAME :foo)) etc., and evaluate BODY."
          `(define-button-type ',type-name
             'face ,face
             ,@(if keymap
-               `('keymap ,keymap))
+                  `('keymap ,keymap))
             ,@(if help-echo
-               `('help-echo ',help-echo))
+                  `('help-echo ',help-echo))
             ,@(if mouse-face
-               `('mouse-face ',mouse-face))
+                  `('mouse-face ',mouse-face))
             ,@(if supertype
-               `(:supertype ',supertype))
+                  `(:supertype ',supertype))
             ))
 
       ,(when display
-         (skroad--text-type-set
+         (skroad--text-type-set-prop
           type-name :font-lock-rule
           `((lambda (limit)
               ,(when (not title)
@@ -195,6 +182,29 @@ as (foo (skroad--text-type-get TYPE-NAME :foo)) etc., and evaluate BODY."
          )
       )))
 
+(defun skroad--text-type-generate (type-name payload)
+  "Generate text of given TYPE-NAME with given PAYLOAD."
+  (skroad--with-text-type-props
+   type-name (:start-delim :end-delim)
+   (concat start-delim payload end-delim)))
+
+(defmacro skroad--with-each-text-type (properties &rest body)
+  "Evaluate BODY, binding PROPERTIES, for every known text type."
+  `(dolist (table-entry skroad--text-type-table)
+     (skroad--with-text-type-props
+      table-entry ,properties
+      ,@body)))
+
+(defun skroad--text-type-replace-all
+    (type-name-old payload-old type-name-new payload-new)
+  "Replace all text of TYPE-NAME-OLD having PAYLOAD-OLD with
+instances of TYPE-NAME-NEW having PAYLOAD-NEW."
+  (save-mark-and-excursion
+    (goto-char (point-min))
+    (while (re-search-forward
+            (skroad--text-type-regex type-name-old payload-old) nil t)
+      (replace-match (skroad--text-type-generate type-name-new payload-new)))))
+
 ;; (macroexpand
 ;;  '
 ;;  (let (
@@ -214,12 +224,6 @@ as (foo (skroad--text-type-get TYPE-NAME :foo)) etc., and evaluate BODY."
 ;;    )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defvar-local skroad--links-propose-create nil
-  "Links (may be dupes of existing) introduced to the buffer by a command.")
-
-(defvar-local skroad--links-propose-destroy nil
-  "Links removed from the buffer by a command; other instances may remain.")
 
 (defun skroad--link-at (pos)
   "Get the payload of the link found at the given POS, or nil if none."
@@ -289,22 +293,16 @@ as (foo (skroad--text-type-get TYPE-NAME :foo)) etc., and evaluate BODY."
   (interactive)
   (let ((link (skroad--link-at (point))))
     (when link
-      (save-mark-and-excursion
-        (goto-char (point-min))
-        (while (re-search-forward
-                (skroad--text-type-regex 'skroad-dead link) nil t)
-          (replace-match (skroad--text-type-generate 'skroad-live link)))))))
+      (skroad--text-type-replace-all
+       'skroad-dead link 'skroad-live link))))
 
 (defun skroad--live-link-to-dead ()
   "Transform all live links with payload LINK to dead links."
   (interactive)
   (let ((link (skroad--link-at (point))))
     (when link
-      (save-mark-and-excursion
-        (goto-char (point-min))
-        (while (re-search-forward
-                (skroad--text-type-regex 'skroad-live link) nil t)
-          (replace-match (skroad--text-type-generate 'skroad-dead link)))))))
+      (skroad--text-type-replace-all
+       'skroad-live link 'skroad-dead link))))
 
 (defvar skroad--mode-keymap
   (let ((map (make-sparse-keymap)))
@@ -425,6 +423,12 @@ as (foo (skroad--text-type-get TYPE-NAME :foo)) etc., and evaluate BODY."
       )
     links
     ))
+
+(defvar-local skroad--links-propose-create nil
+  "Links (may be dupes of existing) introduced to the buffer by a command.")
+
+(defvar-local skroad--links-propose-destroy nil
+  "Links removed from the buffer by a command; other instances may remain.")
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in a skroad buffer in region START...END."
