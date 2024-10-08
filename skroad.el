@@ -397,7 +397,8 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :doc "WWW link."
  :display t
  :buttonized t
- :payload-regex "\\(\\(?:ftp://\\|http\\(?:s?://\\)\\|magnet:\\)[^\n\t\s]+\\)"
+ :payload-regex
+ "\\(\\(?:ftp://\\|file://\\|http\\(?:s?://\\)\\|magnet:\\)[^\n\t\s]+\\)"
  :face 'link
  :keymap skroad--link-keymap ;; TODO: change this
  )
