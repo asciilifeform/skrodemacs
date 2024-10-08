@@ -118,9 +118,9 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
   "Regex to find all text of given TYPE-NAME; if PAYLOAD given: one instance."
   (skroad--with-text-type-props
    type-name (:start-delim :payload-regex :end-delim)
-   (concat (regexp-quote start-delim)
+   (concat (regexp-quote (or start-delim ""))
            (or payload payload-regex)
-           (regexp-quote end-delim))))
+           (regexp-quote (or end-delim "")))))
 
 (defmacro skroad--define-text-type (type-name &rest args)
   "Define a text type for use in skroad."
@@ -149,20 +149,32 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
 
       ,(when display
          (skroad--text-type-set-prop
+          type-name :find-next
+          `(lambda (end)
+             ,(when (not title)
+                `(when (eq (line-beginning-position) (point-min))
+                   (goto-char (line-beginning-position 2))))
+             (and
+              ,(if title
+                   `(eq (line-beginning-position) (point-min))
+                 t)
+              (re-search-forward
+               ,(skroad--text-type-regex type-name)
+               ,(if title
+                    `(max end (line-beginning-position 2))
+                  `(if (< (point) end)
+                       end
+                     (skroad--get-end-of-line (point)))
+                  )
+               t))
+             ))
+         
+         (skroad--text-type-set-prop
           type-name :font-lock-rule
           `((lambda (limit)
-              ,(when (not title)
-                 `(when (eq (line-beginning-position) (point-min))
-                    (setq limit (min (+ limit (line-end-position))
-                                     (point-max)))
-                    (goto-char (line-end-position))))
-              (when (and
-                     ,(if title
-                          `(eq (line-beginning-position) (point-min))
-                        t)
-                     (re-search-forward
-                      ,(skroad--text-type-regex type-name)
-                      limit t))
+              (when (funcall
+                     (skroad--text-type-get-prop ',type-name :find-next)
+                     limit)
                 (with-silent-modifications
                   ,(if buttonized
                        `(make-text-button
@@ -172,13 +184,14 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
                          'button (gensym))
                      `(put-text-property
                        (match-beginning 0) (match-end 0)
-                       'font-lock-face ,face)))
-                t))
+                       'font-lock-face ,face)))))
             (0 'nil 'append))
           )
          t
          )
       )))
+
+;; skroad--text-type-table
 
 (defun skroad--text-type-generate (type-name payload)
   "Generate text of given TYPE-NAME with given PAYLOAD."
@@ -188,9 +201,9 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
 
 (defmacro skroad--with-each-text-type (properties &rest body)
   "Evaluate BODY, binding PROPERTIES, for every known text type."
-  `(dolist (table-entry skroad--text-type-table)
+  `(dolist (text-type skroad--text-type-table)
      (skroad--with-text-type-props
-      table-entry ,properties
+      text-type ,properties
       ,@body)))
 
 (defun skroad--text-type-replace-all
@@ -220,6 +233,8 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 ;;    )
 ;;    ;; keys
 ;;    )
+
+;; (skroad--text-type-get-prop 'skroad-live :find-next)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -335,7 +350,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  skroad-link
  :doc "Fundamental type for skroad links."
  :buttonized t
- :track t
+ :track nil
  :display nil
  :face 'link
  :help-echo skroad--help-echo
@@ -349,6 +364,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :doc "Live skroad link."
  :supertype skroad-link
  :display t
+ :track t
  :start-delim "[[" :end-delim "]]"
  :keymap (let ((map (make-sparse-keymap)))
            (set-keymap-parent map skroad--link-keymap)
@@ -361,6 +377,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :doc "Dead skroad link."
  :supertype skroad-link
  :display t
+ :track t
  :start-delim "[-[" :end-delim "]-]"
  :face '(:inherit link :foreground "red")
  :keymap (let ((map (make-sparse-keymap)))
@@ -408,17 +425,17 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :payload-regex "^##\\([^\n\\#]+\\)"
  )
 
-;; TODO: replace with a table-generated thing
 (defun skroad--extract-region-links (start end)
   (let ((links nil))
-    (save-mark-and-excursion
-      (goto-char start)
-      (while (re-search-forward (skroad--text-type-regex 'skroad-live) end t)
-        (push (cons 'live (match-string-no-properties 1)) links))
-      (goto-char start)
-      (while (re-search-forward (skroad--text-type-regex 'skroad-dead) end t)
-        (push (cons 'dead (match-string-no-properties 1)) links))
-      )
+    (skroad--with-whole-lines
+     start end
+     (skroad--with-each-text-type
+      (:track :find-next)
+      (when track
+        (save-mark-and-excursion
+          (goto-char start-expanded)
+          (while (funcall find-next end-expanded)
+            (push (cons `,text-type (match-string-no-properties 1)) links))))))
     links
     ))
 
@@ -430,23 +447,17 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in a skroad buffer in region START...END."
-  (skroad--with-whole-lines
-   start end
-   (let ((links (skroad--extract-region-links
-                 start-expanded end-expanded)))
-     (skroad--delete-intersection skroad--links-propose-create links)
-     (setq-local skroad--links-propose-destroy
-                 (nconc skroad--links-propose-destroy links)))))
+  (let ((links (skroad--extract-region-links start end)))
+    (skroad--delete-intersection skroad--links-propose-create links)
+    (setq-local skroad--links-propose-destroy
+                (nconc skroad--links-propose-destroy links))))
 
 (defun skroad--after-change-function (start end length)
   "Triggers following a change in a skroad buffer in region START...END."
-  (skroad--with-whole-lines
-   start end
-   (let ((links (skroad--extract-region-links
-                 start-expanded end-expanded)))
-     (skroad--delete-intersection skroad--links-propose-destroy links)
-     (setq-local skroad--links-propose-create
-                 (nconc skroad--links-propose-create links)))))
+  (let ((links (skroad--extract-region-links start end)))
+    (skroad--delete-intersection skroad--links-propose-destroy links)
+    (setq-local skroad--links-propose-create
+                (nconc skroad--links-propose-create links))))
 
 (defvar-local skroad--prev-point (point-min)
   "Point prior to the current command.")
