@@ -393,8 +393,8 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  )
 
 (skroad--define-text-type
- skroad-www-link
- :doc "WWW link."
+ skroad-url-link
+ :doc "URL."
  :display t
  :buttonized t
  :payload-regex
