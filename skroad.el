@@ -346,6 +346,8 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
     map)
   "Keymap automatically activated when the point is above any link.")
 
+;;; Text Types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defconst skroad--text-properties
   '(button category face font-lock-face button-data)
   "Properties added by font-lock that must be removed when unfontifying.")
@@ -429,6 +431,8 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :payload-regex "^##\\([^\n\\#]+\\)"
  )
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun skroad--get-tracked-in-region (start end)
   "Find all tracked text type instances in region START...END."
   (let ((tracked nil))
@@ -465,15 +469,8 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
     (setq-local skroad--tracked-propose-create
                 (nconc skroad--tracked-propose-create tracked))))
 
-(defvar-local skroad--prev-point (point-min)
-  "Point prior to the current command.")
-
-(defun skroad--pre-command-hook ()
-  "Triggers prior to every user-interactive command."
-  (setq-local skroad--prev-point (point)))
-
-(defun skroad--post-command-hook ()
-  "Triggers following every user-interactive command."
+(defun skroad--sync-proposed-tracked-changes ()
+  "Process proposed create/destroy of tracked text type items."
   (when skroad--tracked-propose-destroy
     (message (format "proposed destroy: %s"
                      skroad--tracked-propose-destroy))
@@ -484,9 +481,19 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
                      skroad--tracked-propose-create))
     (setq-local skroad--tracked-propose-create nil)
     )
+  )
 
-  ;; Update the current link overlay and toggle the cursor when required:
+(defvar-local skroad--prev-point (point-min)
+  "Point prior to the current command.")
+
+(defun skroad--pre-command-hook ()
+  "Triggers prior to every user-interactive command."
+  (setq-local skroad--prev-point (point)))
+
+(defun skroad--post-command-hook ()
+  "Triggers following every user-interactive command."
   (font-lock-ensure)
+  (skroad--sync-proposed-tracked-changes)
   (skroad--update-current-link)
   (skroad--adjust-mark-if-present)
   )
