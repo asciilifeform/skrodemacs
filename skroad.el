@@ -114,14 +114,6 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
 ;;       map)
 ;;    ))
 
-(defun skroad--text-type-regex (type-name &optional payload)
-  "Regex to find all text of given TYPE-NAME; if PAYLOAD given: one instance."
-  (skroad--with-text-type-props
-   type-name (:start-delim :payload-regex :end-delim)
-   (concat (regexp-quote (or start-delim ""))
-           (or payload payload-regex)
-           (regexp-quote (or end-delim "")))))
-
 (defmacro skroad--define-text-type (type-name &rest args)
   "Define a text type for use in skroad."
   (setq skroad--text-type-table
@@ -131,7 +123,9 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
    type-name
    (:supertype :face :buttonized :title
                :keymap :help-echo :mouse-face
-               :keys :display)
+               :keys :display
+               :start-delim :payload-regex :end-delim
+               )
    
    `(progn
       ,(when buttonized
@@ -149,8 +143,15 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
 
       ,(when display
          (skroad--text-type-set-prop
+          type-name :make-regex
+          `(lambda (&optional payload)
+             (concat ,(regexp-quote (or start-delim ""))
+                     (or payload ,payload-regex)
+                     ,(regexp-quote (or end-delim "")))))
+
+         (skroad--text-type-set-prop
           type-name :find-next
-          `(lambda (end)
+          `(lambda (end &optional payload)
              ,(when (not title)
                 `(when (eq (line-beginning-position) (point-min))
                    (goto-char (line-beginning-position 2))))
@@ -159,7 +160,9 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
                    `(eq (line-beginning-position) (point-min))
                  t)
               (re-search-forward
-               ,(skroad--text-type-regex type-name)
+               (funcall
+                (skroad--text-type-get-prop ',type-name :make-regex)
+                payload)
                ,(if title
                     `(max end (line-beginning-position 2))
                   `(if (< (point) end)
@@ -191,8 +194,6 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
          )
       )))
 
-;; skroad--text-type-table
-
 (defun skroad--text-type-generate (type-name payload)
   "Generate text of given TYPE-NAME with given PAYLOAD."
   (skroad--with-text-type-props
@@ -212,9 +213,12 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
 instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   (save-mark-and-excursion
     (goto-char (point-min))
-    (while (re-search-forward
-            (skroad--text-type-regex type-name-old payload-old) nil t)
-      (replace-match (skroad--text-type-generate type-name-new payload-new)))))
+    (while (funcall
+            (skroad--text-type-get-prop type-name-old :find-next)
+            (point-max) payload-old)
+      (replace-match
+       (skroad--text-type-generate type-name-new payload-new)))))
+
 
 ;; (macroexpand
 ;;  '
@@ -425,8 +429,9 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :payload-regex "^##\\([^\n\\#]+\\)"
  )
 
-(defun skroad--extract-region-links (start end)
-  (let ((links nil))
+(defun skroad--get-tracked-in-region (start end)
+  "Find all tracked text type instances in region START...END."
+  (let ((tracked nil))
     (skroad--with-whole-lines
      start end
      (skroad--with-each-text-type
@@ -435,29 +440,30 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
         (save-mark-and-excursion
           (goto-char start-expanded)
           (while (funcall find-next end-expanded)
-            (push (cons `,text-type (match-string-no-properties 1)) links))))))
-    links
+            (push (cons text-type (match-string-no-properties 1))
+                  tracked))))))
+    tracked
     ))
 
-(defvar-local skroad--links-propose-create nil
-  "Links (may be dupes of existing) introduced to the buffer by a command.")
+(defvar-local skroad--tracked-propose-create nil
+  "Tracked items (may be dupes) introduced to the buffer by a command.")
 
-(defvar-local skroad--links-propose-destroy nil
-  "Links removed from the buffer by a command; other instances may remain.")
+(defvar-local skroad--tracked-propose-destroy nil
+  "Tracked items removed from the buffer by a command; dupes may remain.")
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in a skroad buffer in region START...END."
-  (let ((links (skroad--extract-region-links start end)))
-    (skroad--delete-intersection skroad--links-propose-create links)
-    (setq-local skroad--links-propose-destroy
-                (nconc skroad--links-propose-destroy links))))
+  (let ((tracked (skroad--get-tracked-in-region start end)))
+    (skroad--delete-intersection skroad--tracked-propose-create tracked)
+    (setq-local skroad--tracked-propose-destroy
+                (nconc skroad--tracked-propose-destroy tracked))))
 
 (defun skroad--after-change-function (start end length)
   "Triggers following a change in a skroad buffer in region START...END."
-  (let ((links (skroad--extract-region-links start end)))
-    (skroad--delete-intersection skroad--links-propose-destroy links)
-    (setq-local skroad--links-propose-create
-                (nconc skroad--links-propose-create links))))
+  (let ((tracked (skroad--get-tracked-in-region start end)))
+    (skroad--delete-intersection skroad--tracked-propose-destroy tracked)
+    (setq-local skroad--tracked-propose-create
+                (nconc skroad--tracked-propose-create tracked))))
 
 (defvar-local skroad--prev-point (point-min)
   "Point prior to the current command.")
@@ -468,15 +474,15 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
-  (when skroad--links-propose-destroy
+  (when skroad--tracked-propose-destroy
     (message (format "proposed destroy: %s"
-                     skroad--links-propose-destroy))
-    (setq-local skroad--links-propose-destroy nil)
+                     skroad--tracked-propose-destroy))
+    (setq-local skroad--tracked-propose-destroy nil)
     )
-  (when skroad--links-propose-create
+  (when skroad--tracked-propose-create
     (message (format "proposed create: %s"
-                     skroad--links-propose-create))
-    (setq-local skroad--links-propose-create nil)
+                     skroad--tracked-propose-create))
+    (setq-local skroad--tracked-propose-create nil)
     )
 
   ;; Update the current link overlay and toggle the cursor when required:
