@@ -393,6 +393,16 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  )
 
 (skroad--define-text-type
+ skroad-www-link
+ :doc "WWW link."
+ :display t
+ :buttonized t
+ :payload-regex "\\(\\(?:ftp://\\|http\\(?:s?://\\)\\|magnet:\\)[^\n\t\s]+\\)"
+ :face 'link
+ :keymap skroad--link-keymap ;; TODO: change this
+ )
+
+(skroad--define-text-type
  skroad-node-title
  :doc "Node title."
  :track t
