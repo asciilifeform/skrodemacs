@@ -129,11 +129,11 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
    
    (when buttonized
      (define-button-type type-name
-         'face face
-         'keymap keymap
-         'help-echo help-echo
-         'mouse-face mouse-face
-         :supertype supertype))
+       'face face
+       'keymap keymap
+       'help-echo help-echo
+       'mouse-face mouse-face
+       :supertype supertype))
 
    (when display
      (skroad--text-type-set-prop
@@ -274,16 +274,16 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :mouse-face 'highlight
  :parent-keymap skroad--mode-keymap
  :keys '(((kbd "SPC") #'skroad--link-insert-space)
-        ([remap self-insert-command] 'ignore)
-        ((kbd "<deletechar>") (skroad--make-link-region-cmd delete-region))
-        ((kbd "<backspace>") (skroad--make-link-region-cmd delete-region))
-        ([mouse-1] 'ignore)
-        ([mouse-2] 'ignore)
-        ([mouse-3] 'ignore)
-        ((kbd "RET") 'ignore)
-        ([remap kill-region] (skroad--make-link-region-cmd kill-region))
-        ([remap kill-ring-save] (skroad--make-link-region-cmd kill-ring-save))
-        )
+         ([remap self-insert-command] 'ignore)
+         ((kbd "<deletechar>") (skroad--make-link-region-cmd delete-region))
+         ((kbd "<backspace>") (skroad--make-link-region-cmd delete-region))
+         ([mouse-1] 'ignore)
+         ([mouse-2] 'ignore)
+         ([mouse-3] 'ignore)
+         ((kbd "RET") 'ignore)
+         ([remap kill-region] (skroad--make-link-region-cmd kill-region))
+         ([remap kill-ring-save] (skroad--make-link-region-cmd kill-ring-save))
+         )
  )
 
 (defun skroad--link-to-plain-text ()
