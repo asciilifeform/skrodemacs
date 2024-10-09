@@ -102,7 +102,7 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
      (progn
        ,@body)))
 
-(defmacro skroad--define-text-type (type-name &rest args)
+(defun skroad--define-text-type (type-name &rest args)
   "Define a text type for use in skroad."
   (setq skroad--text-type-table
         (plist-put skroad--text-type-table type-name args))
@@ -116,83 +116,73 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
                :start-delim :payload-regex :end-delim
                )
    
-   `(progn
-      ,(when (and keys (not (plist-get args :keymap)))
-         (let ((inherit-keymap
-                (or keymap (eval parent-keymap))))
-           (setq keymap (make-sparse-keymap))
-           (when inherit-keymap
-             (set-keymap-parent keymap inherit-keymap))
-           (dolist (k keys)
-             (eval `(define-key keymap ,@k))))
-         (skroad--text-type-set-prop type-name :keymap keymap)
-         t)
-      
-      ,(when buttonized
-         `(define-button-type ',type-name
-            'face ,face
-            ,@(when keymap
-                `('keymap ',keymap))
-            ,@(when help-echo
-                `('help-echo ',help-echo))
-            ,@(when mouse-face
-                `('mouse-face ',mouse-face))
-            ,@(when supertype
-                `(:supertype ',supertype))
-            ))
+   (when (and keys (not (plist-get args :keymap)))
+     (let ((inherit-keymap
+            (or keymap parent-keymap)))
+       (setq keymap (make-sparse-keymap))
+       (when inherit-keymap
+         (set-keymap-parent keymap inherit-keymap))
+       (dolist (k keys)
+         (eval `(define-key keymap ,@k))
+         ))
+     (skroad--text-type-set-prop type-name :keymap keymap))
+   
+   (when buttonized
+     (define-button-type type-name
+         'face face
+         'keymap keymap
+         'help-echo help-echo
+         'mouse-face mouse-face
+         :supertype supertype))
 
-      ,(when display
-         (skroad--text-type-set-prop
-          type-name :make-regex
-          `(lambda (&optional payload)
-             (concat ,(regexp-quote (or start-delim ""))
-                     (or payload ,payload-regex)
-                     ,(regexp-quote (or end-delim "")))))
+   (when display
+     (skroad--text-type-set-prop
+      type-name :make-regex
+      `(lambda (&optional payload)
+         (concat ,(regexp-quote (or start-delim ""))
+                 (or payload ,payload-regex)
+                 ,(regexp-quote (or end-delim "")))))
 
-         (skroad--text-type-set-prop
-          type-name :find-next
-          `(lambda (end &optional payload)
-             ,(when (not title)
-                `(when (eq (line-beginning-position) (point-min))
-                   (goto-char (line-beginning-position 2))))
-             (and
-              ,(if title
-                   `(eq (line-beginning-position) (point-min))
-                 t)
-              (re-search-forward
-               (funcall
-                (skroad--text-type-get-prop ',type-name :make-regex)
-                payload)
-               ,(if title
-                    `(max end (line-beginning-position 2))
-                  `(if (< (point) end)
-                       end
-                     (skroad--get-end-of-line (point)))
-                  )
-               t))
-             ))
-         
-         (skroad--text-type-set-prop
-          type-name :font-lock-rule
-          `((lambda (limit)
-              (when (funcall
-                     (skroad--text-type-get-prop ',type-name :find-next)
-                     limit)
-                (with-silent-modifications
-                  ,(if buttonized
-                       `(make-text-button
-                         (match-beginning 0) (match-end 0)
-                         :type ',type-name
-                         'button-data (match-string-no-properties 1)
-                         'button (gensym))
-                     `(put-text-property
-                       (match-beginning 0) (match-end 0)
-                       'font-lock-face ,face)))))
-            (0 'nil 'append))
-          )
-         t
-         )
-      )))
+     (skroad--text-type-set-prop
+      type-name :find-next
+      `(lambda (end &optional payload)
+         ,(when (not title)
+            `(when (eq (line-beginning-position) (point-min))
+               (goto-char (line-beginning-position 2))))
+         (and
+          ,(if title
+               `(eq (line-beginning-position) (point-min))
+             t)
+          (re-search-forward
+           (funcall
+            (skroad--text-type-get-prop ',type-name :make-regex)
+            payload)
+           ,(if title
+                `(max end (line-beginning-position 2))
+              `(if (< (point) end)
+                   end
+                 (skroad--get-end-of-line (point)))
+              )
+           t))))
+
+     (skroad--text-type-set-prop
+      type-name :font-lock-rule
+      `((lambda (limit)
+          (when (funcall
+                 (skroad--text-type-get-prop ',type-name :find-next)
+                 limit)
+            (with-silent-modifications
+              ,(if buttonized
+                   `(make-text-button
+                     (match-beginning 0) (match-end 0)
+                     :type ',type-name
+                     'button-data (match-string-no-properties 1)
+                     'button (gensym))
+                 `(put-text-property
+                   (match-beginning 0) (match-end 0)
+                   'font-lock-face ',face)))))
+        (0 'nil 'append))
+      ))))
 
 (defun skroad--text-type-generate (type-name payload)
   "Generate text of given TYPE-NAME with given PAYLOAD."
@@ -277,13 +267,13 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
     (insert " ")))
 
 (skroad--define-text-type
- skroad-button
+ 'skroad-button
  :doc "Fundamental type for all skroad buttonized links."
  :buttonized t
  :face 'link
- :mouse-face highlight
+ :mouse-face 'highlight
  :parent-keymap skroad--mode-keymap
- :keys (((kbd "SPC") #'skroad--link-insert-space)
+ :keys '(((kbd "SPC") #'skroad--link-insert-space)
         ([remap self-insert-command] 'ignore)
         ((kbd "<deletechar>") (skroad--make-link-region-cmd delete-region))
         ((kbd "<backspace>") (skroad--make-link-region-cmd delete-region))
@@ -315,11 +305,11 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
     (skroad--link-at position)))
 
 (skroad--define-text-type
- skroad-node-link
+ 'skroad-node-link
  :doc "Fundamental type for skroad node links (live or dead)."
- :supertype skroad-button
- :help-echo skroad--link-mouseover
- :keys (((kbd "t") #'skroad--link-to-plain-text))
+ :supertype 'skroad-button
+ :help-echo 'skroad--link-mouseover
+ :keys '(((kbd "t") #'skroad--link-to-plain-text))
  :payload-regex "\s*\\([^][\n\t\s]+[^][\n\t]*?\\)\s*"
  )
 
@@ -337,15 +327,15 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
    (message (format "Live link pushed: '%s'" link))))
 
 (skroad--define-text-type
- skroad-live
+ 'skroad-live
  :doc "Live link to a skroad node."
- :supertype skroad-node-link
+ :supertype 'skroad-node-link
  :display t
  :track t
  :start-delim "[[" :end-delim "]]"
- :keys (((kbd "RET") #'skroad--go-to-live-link)
-        ([mouse-1] #'skroad--go-to-live-link)
-        ((kbd "l") #'skroad--live-link-to-dead))
+ :keys '(((kbd "RET") #'skroad--go-to-live-link)
+         ([mouse-1] #'skroad--go-to-live-link)
+         ((kbd "l") #'skroad--live-link-to-dead))
  )
 
 (defun skroad--dead-link-to-live ()
@@ -356,14 +346,14 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
     'skroad-dead link 'skroad-live link)))
 
 (skroad--define-text-type
- skroad-dead
+ 'skroad-dead
  :doc "Dead link to a skroad node."
- :supertype skroad-node-link
+ :supertype 'skroad-node-link
  :display t
  :track t
  :start-delim "[-[" :end-delim "]-]"
  :face '(:inherit link :foreground "red")
- :keys (((kbd "l") #'skroad--dead-link-to-live))
+ :keys '(((kbd "l") #'skroad--dead-link-to-live))
  )
 
 (defun skroad--go-to-url ()
@@ -382,20 +372,20 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
      (insert " "))))
 
 (skroad--define-text-type
- skroad-url-link
+ 'skroad-url-link
  :doc "URL."
- :supertype skroad-button
+ :supertype 'skroad-button
  :display t
  :help-echo "External link."
  :payload-regex
  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\t\s]+\\)"
- :keys (((kbd "t") #'skroad--comment-url)
-        ((kbd "RET") #'skroad--go-to-url)
-        ([mouse-1] #'skroad--go-to-url))
+ :keys '(((kbd "t") #'skroad--comment-url)
+         ((kbd "RET") #'skroad--go-to-url)
+         ([mouse-1] #'skroad--go-to-url))
  )
 
 (skroad--define-text-type
- skroad-node-title
+ 'skroad-node-title
  :doc "Node title."
  :track t
  :display t
@@ -407,7 +397,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  )
 
 (skroad--define-text-type
- skroad-italic
+ 'skroad-italic
  :doc "Italicized text."
  :display t
  :face '(:slant italic)
@@ -416,7 +406,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  )
 
 (skroad--define-text-type
- skroad-bold
+ 'skroad-bold
  :doc "Bold text."
  :display t
  :face '(:weight bold)
@@ -425,7 +415,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  )
 
 (skroad--define-text-type
- skroad-heading
+ 'skroad-heading
  :doc "Heading text."
  :display t
  :face '(:weight bold :height 1.2 :inverse-video t)
