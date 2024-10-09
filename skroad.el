@@ -374,12 +374,14 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   (skroad--with-link-at-point
    (browse-url link)))
 
-;;TODO
 (defun skroad--comment-url ()
-  "Transform the URL at point to a commented form."
+  "Debuttonize the URL at point by inserting a space after the prefix."
   (interactive)
   (skroad--with-link-at-point
-   (browse-url link)))
+   (save-mark-and-excursion
+     (goto-char (button-start (point)))
+     (search-forward "//" (button-end (point)))
+     (insert " "))))
 
 (skroad--define-text-type
  skroad-url-link
