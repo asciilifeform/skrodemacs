@@ -297,7 +297,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  )
 
 (defun skroad--link-to-plain-text ()
-  "Transform the link under the point to plain text."
+  "Debuttonize the link under the point to plain text by removing delimiters."
   (interactive)
   (let* ((p (point))
          (start (button-start p))
@@ -308,6 +308,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
       (delete-region start end)
       (insert text))))
 
+;; TODO: preview linked node
 (defun skroad--link-mouseover (window buf position)
   "User is mousing over a link in WINDOW, BUF, at POSITION."
   (with-current-buffer buf
