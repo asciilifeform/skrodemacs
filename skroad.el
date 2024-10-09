@@ -230,15 +230,6 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   (and (> pos (point-min))
        (skroad--link-at (1- pos))))
 
-(defun skroad--follow-link (data)
-  "User clicked, or pressed ENTER on, a link."
-  (message (format "Link '%s' pushed!" (string-trim data))))
-
-(defun skroad--help-echo (window buf position)
-  "User is mousing over a link in WINDOW, BUF, at POSITION."
-  (with-current-buffer buf
-    (skroad--link-at position)))
-
 (defun skroad--backspace ()
   "If prev point contains a link, delete the link. Otherwise backspace."
   (interactive)
@@ -284,6 +275,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :doc "Fundamental type for all skroad buttonized links."
  :buttonized t
  :face 'link
+ :mouse-face highlight
  :parent-keymap skroad--mode-keymap
  :keys (((kbd "SPC") #'skroad--link-insert-space)
         ([remap self-insert-command] 'ignore)
@@ -310,12 +302,16 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
       (delete-region start end)
       (insert text))))
 
+(defun skroad--link-mouseover (window buf position)
+  "User is mousing over a link in WINDOW, BUF, at POSITION."
+  (with-current-buffer buf
+    (skroad--link-at position)))
+
 (skroad--define-text-type
  skroad-node-link
  :doc "Fundamental type for skroad node links (live or dead)."
  :supertype skroad-button
- :help-echo skroad--help-echo
- :mouse-face highlight
+ :help-echo skroad--link-mouseover
  :keys (((kbd "t") #'skroad--link-to-plain-text))
  :payload-regex "\s*\\([^][\n\t\s]+[^][\n\t]*?\\)\s*"
  )
@@ -388,6 +384,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :doc "URL."
  :supertype skroad-button
  :display t
+ :help-echo "External link."
  :payload-regex
  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\t\s]+\\)"
  :keys (((kbd "t") #'skroad--comment-url)
