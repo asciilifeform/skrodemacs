@@ -102,18 +102,6 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
      (progn
        ,@body)))
 
-;; (defun skroad--text-type-keymap (type-name)
-;;   (skroad--with-text-type-props
-;;    type-name
-;;    (:keys :supertype)
-;;    `(let ((map (make-sparse-keymap)))
-;;       ;; ,(when parent-keymap
-;;       ;;    `(set-keymap-parent map ,parent-keymap)
-;;       ;;    )
-;;       ,@(mapcar #'(lambda (p) `(define-key map ,@p)) keys)
-;;       map)
-;;    ))
-
 (defmacro skroad--define-text-type (type-name &rest args)
   "Define a text type for use in skroad."
   (setq skroad--text-type-table
@@ -122,17 +110,29 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
   (skroad--with-text-type-props
    type-name
    (:supertype :face :buttonized :title
-               :keymap :help-echo :mouse-face
-               :keys :display
+               :keymap :parent-keymap :keys
+               :help-echo :mouse-face
+               :display
                :start-delim :payload-regex :end-delim
                )
    
    `(progn
+      ,(when (and keys (not (plist-get args :keymap)))
+         (let ((inherit-keymap
+                (or keymap (eval parent-keymap))))
+           (setq keymap (make-sparse-keymap))
+           (when inherit-keymap
+             (set-keymap-parent keymap inherit-keymap))
+           (dolist (k keys)
+             (eval `(define-key keymap ,@k))))
+         (skroad--text-type-set-prop type-name :keymap keymap)
+         t)
+      
       ,(when buttonized
          `(define-button-type ',type-name
             'face ,face
             ,@(when keymap
-                `('keymap ,keymap))
+                `('keymap ',keymap))
             ,@(when help-echo
                 `('help-echo ',help-echo))
             ,@(when mouse-face
@@ -219,27 +219,6 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
       (replace-match
        (skroad--text-type-generate type-name-new payload-new)))))
 
-
-;; (macroexpand
-;;  '
-;;  (let (
-;;        (parent-keymap nil)
-;;        ;(parent-keymap skroad--link-keymap)
-;;        (keys '(((kbd "l") #'skroad--live-link-to-dead)
-;;                ((kbd "k") #'skroad--dead-link-to-live)
-;;                )))
-;;    `(let ((map (make-sparse-keymap)))
-;;       ,(when parent-keymap
-;;          `(set-keymap-parent map ,parent-keymap)
-;;          )
-;;       ,@(mapcar #'(lambda (p) `(define-key map ,@p)) keys)
-;;       map)
-;;    )
-;;    ;; keys
-;;    )
-
-;; (skroad--text-type-get-prop 'skroad-live :find-next)
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--link-at (pos)
@@ -260,21 +239,6 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   (with-current-buffer buf
     (skroad--link-at position)))
 
-(defmacro skroad--make-link-region-cmd (command)
-  "Wrap COMMAND to use region if one exists, or use link at point as region."
-  `#'(lambda ()
-       (interactive)
-       (apply #',command
-              (if (use-region-p)
-                  (list (region-beginning) (region-end))
-                (list (button-start (point))
-                      (button-end (point)))))))
-
-(defmacro skroad--remap-cmd-link-region (map command)
-  "Remap COMMAND in keymap MAP using `skroad--make-link-region-cmd'."
-  `(define-key ,map [remap ,command]
-               (skroad--make-link-region-cmd ,command)))
-
 (defun skroad--backspace ()
   "If prev point contains a link, delete the link. Otherwise backspace."
   (interactive)
@@ -286,12 +250,53 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
           (t
            (delete-char -1)))))
 
+(defmacro skroad--make-link-region-cmd (command)
+  "Wrap COMMAND to use region if one exists, or use link at point as region."
+  `#'(lambda ()
+       (interactive)
+       (apply #',command
+              (if (use-region-p)
+                  (list (region-beginning) (region-end))
+                (list (button-start (point))
+                      (button-end (point)))))))
+
+(defvar skroad--mode-keymap
+  (let ((map (make-sparse-keymap)))
+    (define-key map [remap delete-backward-char] #'skroad--backspace)
+    map)
+  "Keymap for skroad mode.")
+
+;;; Text Types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defconst skroad--text-properties
+  '(button category face font-lock-face button-data)
+  "Properties added by font-lock that must be removed when unfontifying.")
+
 (defun skroad--link-insert-space ()
   "Insert a space immediately behind the link under the point."
   (interactive)
   (save-mark-and-excursion
     (goto-char (button-start (point)))
     (insert " ")))
+
+(skroad--define-text-type
+ skroad-button
+ :doc "Fundamental type for all skroad buttonized links."
+ :buttonized t
+ :face 'link
+ :parent-keymap skroad--mode-keymap
+ :keys (((kbd "SPC") #'skroad--link-insert-space)
+        ([remap self-insert-command] 'ignore)
+        ((kbd "<deletechar>") (skroad--make-link-region-cmd delete-region))
+        ((kbd "<backspace>") (skroad--make-link-region-cmd delete-region))
+        ([mouse-1] 'ignore)
+        ([mouse-2] 'ignore)
+        ([mouse-3] 'ignore)
+        ((kbd "RET") 'ignore)
+        ([remap kill-region] (skroad--make-link-region-cmd kill-region))
+        ([remap kill-ring-save] (skroad--make-link-region-cmd kill-ring-save))
+        )
+ )
 
 (defun skroad--link-to-plain-text ()
   "Transform the link under the point to plain text."
@@ -305,102 +310,87 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
       (delete-region start end)
       (insert text))))
 
-(defun skroad--dead-link-to-live ()
-  "Transform all dead links with payload LINK to live links."
-  (interactive)
-  (let ((link (skroad--link-at (point))))
-    (when link
-      (skroad--text-type-replace-all
-       'skroad-dead link 'skroad-live link))))
+(skroad--define-text-type
+ skroad-node-link
+ :doc "Fundamental type for skroad node links (live or dead)."
+ :supertype skroad-button
+ :help-echo skroad--help-echo
+ :mouse-face highlight
+ :keys (((kbd "t") #'skroad--link-to-plain-text))
+ :payload-regex "\s*\\([^][\n\t\s]+[^][\n\t]*?\\)\s*"
+ )
+
+(defmacro skroad--with-link-at-point (&rest body)
+  `(let ((link (skroad--link-at (point))))
+     (when link
+       ,@body)))
 
 (defun skroad--live-link-to-dead ()
   "Transform all live links with payload LINK to dead links."
   (interactive)
-  (let ((link (skroad--link-at (point))))
-    (when link
-      (skroad--text-type-replace-all
-       'skroad-live link 'skroad-dead link))))
+  (skroad--with-link-at-point
+   (skroad--text-type-replace-all
+    'skroad-live link 'skroad-dead link)))
 
-(defvar skroad--mode-keymap
-  (let ((map (make-sparse-keymap)))
-    (define-key map [remap delete-backward-char] #'skroad--backspace)
-    map)
-  "Keymap for skroad mode.")
-
-(defvar skroad--link-keymap
-  (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map skroad--mode-keymap)
-    (define-key map (kbd "SPC") #'skroad--link-insert-space)
-    (define-key map [remap self-insert-command] 'ignore)
-    (define-key map (kbd "<deletechar>")
-                (skroad--make-link-region-cmd delete-region))
-    (define-key map (kbd "<backspace>")
-                (skroad--make-link-region-cmd delete-region))
-    (define-key map [mouse-1] 'ignore)
-    (define-key map [mouse-2] 'ignore)
-    (define-key map [mouse-3] 'ignore)
-    (define-key map (kbd "RET") 'ignore)
-    (define-key map (kbd "t") #'skroad--link-to-plain-text)
-    (skroad--remap-cmd-link-region map kill-region)
-    (skroad--remap-cmd-link-region map kill-ring-save)
-    map)
-  "Keymap automatically activated when the point is above any link.")
-
-;;; Text Types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defconst skroad--text-properties
-  '(button category face font-lock-face button-data)
-  "Properties added by font-lock that must be removed when unfontifying.")
-
-(skroad--define-text-type
- skroad-link
- :doc "Fundamental type for skroad links."
- :buttonized t
- :track nil
- :display nil
- :face 'link
- :help-echo skroad--help-echo
- :mouse-face highlight
- :keymap skroad--link-keymap
- :payload-regex "\s*\\([^][\n\t\s]+[^][\n\t]*?\\)\s*"
- )
+(defun skroad--go-to-live-link ()
+  "Navigate to the live skroad link at point."
+  (interactive)
+  (skroad--with-link-at-point
+   (message (format "Live link pushed: '%s'" link))))
 
 (skroad--define-text-type
  skroad-live
- :doc "Live skroad link."
- :supertype skroad-link
+ :doc "Live link to a skroad node."
+ :supertype skroad-node-link
  :display t
  :track t
  :start-delim "[[" :end-delim "]]"
- :keymap (let ((map (make-sparse-keymap)))
-           (set-keymap-parent map skroad--link-keymap)
-           (define-key map (kbd "l") #'skroad--live-link-to-dead)
-           map)
+ :keys (((kbd "RET") #'skroad--go-to-live-link)
+        ([mouse-1] #'skroad--go-to-live-link)
+        ((kbd "l") #'skroad--live-link-to-dead))
  )
+
+(defun skroad--dead-link-to-live ()
+  "Transform all dead links with payload LINK to live links."
+  (interactive)
+  (skroad--with-link-at-point
+   (skroad--text-type-replace-all
+    'skroad-dead link 'skroad-live link)))
 
 (skroad--define-text-type
  skroad-dead
- :doc "Dead skroad link."
- :supertype skroad-link
+ :doc "Dead link to a skroad node."
+ :supertype skroad-node-link
  :display t
  :track t
  :start-delim "[-[" :end-delim "]-]"
  :face '(:inherit link :foreground "red")
- :keymap (let ((map (make-sparse-keymap)))
-           (set-keymap-parent map skroad--link-keymap)
-           (define-key map (kbd "l") #'skroad--dead-link-to-live)
-           map)
+ :keys (((kbd "l") #'skroad--dead-link-to-live))
  )
+
+(defun skroad--go-to-url ()
+  "Navigate to the URL at point."
+  (interactive)
+  (skroad--with-link-at-point
+   (browse-url link)))
+
+;;TODO
+(defun skroad--comment-url ()
+  "Transform the URL at point to a commented form."
+  (interactive)
+  (skroad--with-link-at-point
+   (browse-url link)))
 
 (skroad--define-text-type
  skroad-url-link
  :doc "URL."
+ :supertype skroad-button
  :display t
- :buttonized t
  :payload-regex
  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\t\s]+\\)"
- :face 'link
- :keymap skroad--link-keymap ;; TODO: change this
+ :keys (((kbd "t") #'skroad--comment-url)
+        ((kbd "RET") #'skroad--go-to-url)
+        ([mouse-1] #'skroad--go-to-url))
  )
 
 (skroad--define-text-type
@@ -437,7 +427,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  skroad-heading
  :doc "Heading text."
  :display t
- :face '(:weight bold :height 1.2)
+ :face '(:weight bold :height 1.2 :inverse-video t)
  :start-delim "" :end-delim "\n"
  :payload-regex "^##\\([^\n\\#]+\\)"
  )
