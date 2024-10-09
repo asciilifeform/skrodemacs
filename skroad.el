@@ -230,6 +230,12 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   (and (> pos (point-min))
        (skroad--link-at (1- pos))))
 
+(defmacro skroad--with-link-at-point (&rest body)
+  "Evaluate BODY with link bound to the link under the point."
+  `(let ((link (skroad--link-at (point))))
+     (when link
+       ,@body)))
+
 (defun skroad--backspace ()
   "If prev point contains a link, delete the link. Otherwise backspace."
   (interactive)
@@ -315,11 +321,6 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :keys (((kbd "t") #'skroad--link-to-plain-text))
  :payload-regex "\s*\\([^][\n\t\s]+[^][\n\t]*?\\)\s*"
  )
-
-(defmacro skroad--with-link-at-point (&rest body)
-  `(let ((link (skroad--link-at (point))))
-     (when link
-       ,@body)))
 
 (defun skroad--live-link-to-dead ()
   "Transform all live links with payload LINK to dead links."
