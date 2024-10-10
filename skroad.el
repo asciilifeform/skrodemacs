@@ -112,7 +112,7 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
    (:supertype :face :buttonized :title
                :keymap :parent-keymap :keys
                :help-echo :mouse-face
-               :display
+               :displayed
                :start-delim :payload-regex :end-delim
                )
    
@@ -135,7 +135,7 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
        'mouse-face mouse-face
        :supertype supertype))
 
-   (when display
+   (when displayed
      (skroad--text-type-set-prop
       type-name :make-regex
       `(lambda (&optional payload)
@@ -330,7 +330,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  'skroad-live
  :doc "Live link to a skroad node."
  :supertype 'skroad-node-link
- :display t
+ :displayed t
  :track t
  :start-delim "[[" :end-delim "]]"
  :keys '(((kbd "RET") #'skroad--go-to-live-link)
@@ -349,7 +349,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  'skroad-dead
  :doc "Dead link to a skroad node."
  :supertype 'skroad-node-link
- :display t
+ :displayed t
  :track t
  :start-delim "[-[" :end-delim "]-]"
  :face '(:inherit link :foreground "red")
@@ -375,7 +375,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  'skroad-url-link
  :doc "URL."
  :supertype 'skroad-button
- :display t
+ :displayed t
  :help-echo "External link."
  :payload-regex
  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\t\s]+\\)"
@@ -388,7 +388,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  'skroad-node-title
  :doc "Node title."
  :track t
- :display t
+ :displayed t
  :title t
  :face '(:weight bold :foreground "purple"
                  :height 1.5 :inverse-video t :extend t)
@@ -399,7 +399,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-italic
  :doc "Italicized text."
- :display t
+ :displayed t
  :face '(:slant italic)
  :start-delim "__" :end-delim "__"
  :payload-regex "\\([^\\_]+\\)"
@@ -408,7 +408,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-bold
  :doc "Bold text."
- :display t
+ :displayed t
  :face '(:weight bold)
  :start-delim "**" :end-delim "**"
  :payload-regex "\\([^\\*]+\\)"
@@ -417,7 +417,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-heading
  :doc "Heading text."
- :display t
+ :displayed t
  :face '(:weight bold :height 1.2 :inverse-video t)
  :start-delim "" :end-delim "\n"
  :payload-regex "^##\\([^\n\\#]+\\)"
