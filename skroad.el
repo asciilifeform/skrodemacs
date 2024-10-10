@@ -6,7 +6,7 @@
 
 (defun skroad--delete-once-helper (elt seq)
   "Return (V . SEQprime) where SEQprime is SEQ after destructively removing
-at most one instance of ELT. If something was removed, V is T, nil otherwise."
+at most one instance of ELT. If something was removed, V is T, otherwise nil."
   (if (equal elt (car seq))
       (cons t (cdr seq))
     (let ((l seq))
@@ -194,6 +194,7 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
       text-type ,properties
       ,@body)))
 
+;; TODO: return t if any replacements happened
 (defun skroad--text-type-replace-all
     (type-name-old payload-old type-name-new payload-new)
   "Replace all text of TYPE-NAME-OLD having PAYLOAD-OLD with
