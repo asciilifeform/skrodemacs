@@ -52,6 +52,10 @@ If something was removed, returns T, otherwise nil."
     (goto-char pos)
     (line-end-position)))
 
+(defun skroad--pos-in-title-p (pos)
+  "Determine whether POS resides in the title area (first line of buffer.)"
+  (<= pos (skroad--get-end-of-line (point-min))))
+
 (defmacro skroad--with-whole-lines (start end &rest body)
   "Get expanded region defined by START and END that spans whole lines."
   `(let ((start-expanded (skroad--get-start-of-line ,start))
@@ -509,6 +513,10 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   "Return t if a region selection is active (even if length 0); otherwise nil."
   (or (use-region-p) skroad--alt-mark))
 
+;; TODO: If mark is set and region is active:
+;;       a) ... mark is inside the title: point may not leave the title.
+;;       b) ... mark is outside the title: point may not enter the title.
+
 (defun skroad--update-current-link ()
   "Update the current link overlay, because the point,
 the text under the point, or both, may have changed."
@@ -526,6 +534,18 @@ the text under the point, or both, may have changed."
              ;; Go to end of link.
              (goto-char (button-end p))))))
 
+  ;; If a region is active, point may not cross title boundary:
+  (let* ((p (point))
+         (was-in-title (skroad--pos-in-title-p skroad--prev-point))
+         (now-in-title (skroad--pos-in-title-p p)))
+    (when (and (skroad--region-selection-active-p)
+               (not (eq was-in-title now-in-title)))
+      (if was-in-title
+          (goto-char skroad--prev-point)
+        (progn
+          (goto-char (point-min))
+          (goto-char (line-beginning-position 2))))))
+  
   ;; Point may have moved. Enable current link overlay iff on top of a link:
   (let ((p (point)))
     (if (and (skroad--link-at p)
