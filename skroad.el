@@ -513,10 +513,6 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   "Return t if a region selection is active (even if length 0); otherwise nil."
   (or (use-region-p) skroad--alt-mark))
 
-;; TODO: If mark is set and region is active:
-;;       a) ... mark is inside the title: point may not leave the title.
-;;       b) ... mark is outside the title: point may not enter the title.
-
 (defun skroad--update-current-link ()
   "Update the current link overlay, because the point,
 the text under the point, or both, may have changed."
