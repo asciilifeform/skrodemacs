@@ -52,10 +52,6 @@ If something was removed, returns T, otherwise nil."
     (goto-char pos)
     (line-end-position)))
 
-(defun skroad--pos-in-title-p (pos)
-  "Determine whether POS resides in the title area (first line of buffer.)"
-  (<= pos (skroad--get-end-of-line (point-min))))
-
 (defmacro skroad--with-whole-lines (start end &rest body)
   "Get expanded region defined by START and END that spans whole lines."
   `(let ((start-expanded (skroad--get-start-of-line ,start))
@@ -185,9 +181,10 @@ as (foo (skroad--text-type-get-prop TYPE-NAME :foo)) etc., and evaluate BODY."
                      :type ',type-name
                      'button-data (match-string-no-properties 1)
                      'button (gensym))
-                 `(put-text-property
+                 `(set-text-properties
                    (match-beginning 0) (match-end 0)
-                   'font-lock-face ',face))
+                   '(font-lock-face ,face :type ,type-name)
+                   ))
               t)))
         (0 'nil 'append))))))
 
@@ -222,6 +219,11 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 (defun skroad--link-at-prev (pos)
   "Determine whether there is a link at the position prior to POS."
   (and (> pos (point-min)) (skroad--link-at (1- pos))))
+
+(defun skroad--pos-of-type-p (pos text-type)
+  "Determine whether POS is on text of the given TEXT-TYPE."
+  (or (eq (get-text-property pos :type) text-type)
+      (eq (get-text-property pos 'category) text-type)))
 
 (defmacro skroad--with-link-at-point (&rest body)
   "Evaluate BODY with link bound to the link under the point."
@@ -388,6 +390,10 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :start-delim "" :end-delim "\n"
  :payload-regex "\\([^\n]+\\)")
 
+;; (defun skroad--pos-in-title-p (pos)
+;;   "Determine whether POS resides in the title area."
+;;   (eq (get-text-property pos :type) 'skroad-node-title))
+
 (skroad--define-text-type
  'skroad-italic
  :doc "Italicized text."
@@ -532,8 +538,10 @@ the text under the point, or both, may have changed."
 
   ;; If a region is active, point may not cross title boundary:
   (let* ((p (point))
-         (was-in-title (skroad--pos-in-title-p skroad--prev-point))
-         (now-in-title (skroad--pos-in-title-p p)))
+         (was-in-title (skroad--pos-of-type-p
+                        skroad--prev-point 'skroad-node-title))
+         (now-in-title (skroad--pos-of-type-p
+                        p 'skroad-node-title)))
     (when (and (skroad--region-selection-active-p)
                (not (eq was-in-title now-in-title)))
       (if was-in-title
