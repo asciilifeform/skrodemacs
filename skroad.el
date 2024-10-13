@@ -282,19 +282,37 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
     "<remap> <delete-backward-char>" #'skroad--backspace)
   "Keymap for skroad mode.")
 
-;; (define-keymap
-;;   "<remap> <delete-backward-char>" #'skroad--backspace
-;;   "Q" #'ignore)
-
 ;;; Text Types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; (defconst skroad--text-properties
-;;   '(button category face font-lock-face button-data)
-;;   "Properties added by font-lock that must be removed when unfontifying.")
 
 (defconst skroad--text-properties
   '(category face font-lock-face id data)
   "Properties added by font-lock that must be removed when unfontifying.")
+
+;; Text types are defined in order of ascending (lowest -- first) priority:
+
+(skroad--define-text-type
+ 'skroad-italic
+ :doc "Italicized text."
+ :displayed t
+ :face '(:slant italic)
+ :start-delim "__" :end-delim "__"
+ :payload-regex "\\([^_]+\\)")
+
+(skroad--define-text-type
+ 'skroad-bold
+ :doc "Bold text."
+ :displayed t
+ :face '(:weight bold)
+ :start-delim "**" :end-delim "**"
+ :payload-regex "\\([^*]+\\)")
+
+(skroad--define-text-type
+ 'skroad-heading
+ :doc "Heading text."
+ :displayed t
+ :face '(:weight bold :height 1.2 :inverse-video t)
+ :start-delim "" :end-delim "\n"
+ :payload-regex "^##\\([^#\n]+\\)")
 
 (defun skroad--link-insert-space ()
   "Insert a space immediately behind the link under the point."
@@ -428,30 +446,6 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
                  :height 1.5 :inverse-video t :extend t)
  :start-delim "" :end-delim "\n"
  :payload-regex "\\([^\n]+\\)")
-
-(skroad--define-text-type
- 'skroad-italic
- :doc "Italicized text."
- :displayed t
- :face '(:slant italic)
- :start-delim "__" :end-delim "__"
- :payload-regex "\\([^_]+\\)")
-
-(skroad--define-text-type
- 'skroad-bold
- :doc "Bold text."
- :displayed t
- :face '(:weight bold)
- :start-delim "**" :end-delim "**"
- :payload-regex "\\([^*]+\\)")
-
-(skroad--define-text-type
- 'skroad-heading
- :doc "Heading text."
- :displayed t
- :face '(:weight bold :height 1.2 :inverse-video t)
- :start-delim "" :end-delim "\n"
- :payload-regex "^##\\([^#\n]+\\)")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -681,6 +675,7 @@ the text under the point, or both, may have changed."
                              (font-lock-ensure
                               start-expanded end-expanded))
                             ))))
+  ;; TODO: not button ^ ??
 
   ;; Buffer-local hooks:
   (add-hook 'before-change-functions 'skroad--before-change-function nil t)
