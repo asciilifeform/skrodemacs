@@ -288,7 +288,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   '(category face font-lock-face id data)
   "Properties added by font-lock that must be removed when unfontifying.")
 
-;; Text types are defined in order of ascending (lowest -- first) priority:
+;; Displayed types must be in order of ascending (lowest -- first) priority:
 
 (skroad--define-text-type
  'skroad-italic
