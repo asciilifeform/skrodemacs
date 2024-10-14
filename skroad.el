@@ -345,6 +345,24 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
     (goto-char (skroad--tt-start (point)))
     (insert " ")))
 
+(defun skroad--do-link-action (pos)
+  "Perform the action attribute of the link at POS, if one was defined."
+  (let* ((type (get-text-property pos 'category))
+         (data (get-text-property pos 'data))
+         (action (get type 'action)))
+    (when action
+      (funcall action data))))
+
+(defun skroad--cmd-left-click-link (click)
+  "Perform the action attribute of the link that got the CLICK."
+  (interactive "e")
+  (skroad--do-link-action (posn-point (event-start click))))
+
+(defun skroad--cmd-enter-link ()
+  "Perform the action attribute of the link at point."
+  (interactive)
+  (skroad--do-link-action (point)))
+
 (skroad--define-text-type
  'skroad-button
  :doc "Fundamental type from which all skroad links are derived."
@@ -356,10 +374,16 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
            "<remap> <self-insert-command>" #'ignore
            "<deletechar>" (skroad--make-link-region-cmd delete-region)
            "<backspace>" (skroad--make-link-region-cmd delete-region)
-           "<mouse-1>" #'ignore
+           "<drag-mouse-1>" #'ignore
+           "<drag-mouse-2>" #'ignore
+           "<drag-mouse-3>" #'ignore
+           "<down-mouse-1>" #'ignore
+           "<down-mouse-2>" #'ignore
+           "<down-mouse-3>" #'ignore
+           "<mouse-1>" #'skroad--cmd-left-click-link
            "<mouse-2>" #'ignore
            "<mouse-3>" #'ignore
-           "RET" #'ignore
+           "RET" #'skroad--cmd-enter-link
            "<remap> <kill-region>" (skroad--make-link-region-cmd kill-region)
            "<remap> <kill-ring-save>" (skroad--make-link-region-cmd kill-ring-save)
            ))
@@ -397,11 +421,8 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   (skroad--with-link-at-point
    (skroad--text-type-replace-all 'skroad-live link 'skroad-dead link)))
 
-(defun skroad--go-to-live-link ()
-  "Navigate to the live skroad link at point."
-  (interactive)
-  (skroad--with-link-at-point
-   (message (format "Live link pushed: '%s'" link))))
+(defun skroad--test-link-action (data)
+  (message (format "Live link pushed: '%s'" data)))
 
 (skroad--define-text-type
  'skroad-live
@@ -410,9 +431,8 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :displayed t
  :indexed t
  :start-delim "[[" :end-delim "]]"
+ :action #'skroad--test-link-action
  :keymap (define-keymap
-           "RET" #'skroad--go-to-live-link
-           "<mouse-1>" #'skroad--go-to-live-link
            "l" #'skroad--live-link-to-dead))
 
 (defun skroad--dead-link-to-live ()
@@ -432,12 +452,6 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :keymap (define-keymap
            "l" #'skroad--dead-link-to-live))
 
-(defun skroad--go-to-url ()
-  "Navigate to the URL at point."
-  (interactive)
-  (skroad--with-link-at-point
-   (browse-url link)))
-
 (defun skroad--comment-url ()
   "Debuttonize the URL at point by inserting a space after the prefix."
   (interactive)
@@ -455,10 +469,10 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :help-echo "External link."
  :payload-regex
  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\t\s]+\\)"
+ :action #'browse-url
  :keymap (define-keymap
            "t" #'skroad--comment-url
-           "RET" #'skroad--go-to-url
-           "<mouse-1>" #'skroad--go-to-url))
+           ))
 
 (skroad--define-text-type
  'skroad-node-title
