@@ -294,8 +294,8 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
           ((skroad--link-at-prev p) (delete-region (skroad--tt-start (1- p)) p))
           (t (delete-char -1)))))
 
-(defun skroad--link-skip-to (direction &optional pos)
-  "Skip to the next or previous (DIRECTION) link from POS (or point.)"
+(defun skroad--link-skip (direction &optional pos)
+  "Find the next/previous (DIRECTION) link from POS (or point), nil if none."
   (save-mark-and-excursion
     (when pos
       (goto-char pos))
@@ -312,16 +312,16 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   "Jump to the next link following point; cycle to first after the last."
   (interactive)
   (goto-char
-   (or (skroad--link-skip-to :forward)
-       (skroad--link-skip-to :forward (point-min))
+   (or (skroad--link-skip :forward)
+       (skroad--link-skip :forward (point-min))
        (point))))
 
 (defun skroad--cmd-jump-to-prev-link ()
   "Jump to the previous link preceding point; cycle to last after the first."
   (interactive)
   (goto-char
-   (or (skroad--link-skip-to :backward)
-       (skroad--link-skip-to :backward (point-max))
+   (or (skroad--link-skip :backward)
+       (skroad--link-skip :backward (point-max))
        (point))))
 
 (defvar skroad--mode-keymap
