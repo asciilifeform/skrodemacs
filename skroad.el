@@ -98,6 +98,21 @@ If something was removed, returns T, otherwise nil."
                        (apply orig-fun args))
                    (apply orig-fun args)))))
 
+(defun skroad--find-different-text-property (prop direction &optional pos)
+  "Find the next/previous (DIRECTION) position where PROP is not nil and
+differs from its value at POS (or point, if POS not given); nil if not found."
+  (save-mark-and-excursion
+    (when pos
+      (goto-char pos))
+    (let ((r (funcall
+              (cond ((eq direction :forward) #'text-property-search-forward)
+                    ((eq direction :backward) #'text-property-search-backward)
+                    (t (error "Invalid direction: %s !" direction)))
+              prop (get-text-property (point) prop)
+              #'(lambda (oldval newval)
+                  (and newval (not (eq oldval newval)))))))
+      (if r (prop-match-beginning r)))))
+
 (defun skroad--point-in-title-p ()
   "Returns t if point is in the first line of the buffer, otherwise nil."
   (eq (line-beginning-position) (point-min)))
@@ -294,35 +309,20 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
           ((skroad--link-at-prev p) (delete-region (skroad--tt-start (1- p)) p))
           (t (delete-char -1)))))
 
-(defun skroad--prop-skip (prop direction &optional pos)
-  "Find the next/previous (DIRECTION) position where PROP is not nil and
-differs from value at POS (or point, if POS not given); nil if not found."
-  (save-mark-and-excursion
-    (when pos
-      (goto-char pos))
-    (let ((r (funcall
-              (cond ((eq direction :forward) #'text-property-search-forward)
-                    ((eq direction :backward) #'text-property-search-backward)
-                    (t (error "Invalid direction: %s !" direction)))
-              prop (get-text-property (point) prop)
-              #'(lambda (oldval newval)
-                  (and newval (not (eq oldval newval)))))))
-      (if r (prop-match-beginning r)))))
-
 (defun skroad--cmd-jump-to-next-link ()
   "Jump to the next link following point; cycle to first after the last."
   (interactive)
   (goto-char
-   (or (skroad--prop-skip 'data :forward)
-       (skroad--prop-skip 'data :forward (point-min))
+   (or (skroad--find-different-text-property 'data :forward)
+       (skroad--find-different-text-property 'data :forward (point-min))
        (point))))
 
 (defun skroad--cmd-jump-to-prev-link ()
   "Jump to the previous link preceding point; cycle to last after the first."
   (interactive)
   (goto-char
-   (or (skroad--prop-skip 'data :backward)
-       (skroad--prop-skip 'data :backward (point-max))
+   (or (skroad--find-different-text-property 'data :backward)
+       (skroad--find-different-text-property 'data :backward (point-max))
        (point))))
 
 (defvar skroad--mode-keymap
