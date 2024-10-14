@@ -356,7 +356,9 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 (defun skroad--cmd-left-click-link (click)
   "Perform the action attribute of the link that got the CLICK."
   (interactive "e")
-  (skroad--do-link-action (posn-point (event-start click))))
+  (let ((estart (event-start click)))
+    (select-window (posn-window estart))
+    (skroad--do-link-action (posn-point estart))))
 
 (defun skroad--cmd-enter-link ()
   "Perform the action attribute of the link at point."
@@ -377,10 +379,10 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
            "<drag-mouse-1>" #'ignore
            "<drag-mouse-2>" #'ignore
            "<drag-mouse-3>" #'ignore
-           "<down-mouse-1>" #'ignore
+           "<down-mouse-1>" #'skroad--cmd-left-click-link
            "<down-mouse-2>" #'ignore
            "<down-mouse-3>" #'ignore
-           "<mouse-1>" #'skroad--cmd-left-click-link
+           "<mouse-1>" #'ignore
            "<mouse-2>" #'ignore
            "<mouse-3>" #'ignore
            "RET" #'skroad--cmd-enter-link
