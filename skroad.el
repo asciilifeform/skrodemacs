@@ -303,7 +303,7 @@ differs from value at POS (or point, if POS not given); nil if not found."
     (let ((r (funcall
               (cond ((eq direction :forward) #'text-property-search-forward)
                     ((eq direction :backward) #'text-property-search-backward)
-                    (t (error "Invalid direction!")))
+                    (t (error "Invalid direction: %s !" direction)))
               prop (get-text-property (point) prop)
               #'(lambda (oldval newval)
                   (and newval (not (eq oldval newval)))))))
