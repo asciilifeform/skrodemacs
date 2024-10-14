@@ -102,6 +102,12 @@ If something was removed, returns T, otherwise nil."
   "Returns t if point is in the first line of the buffer, otherwise nil."
   (eq (line-beginning-position) (point-min)))
 
+(defun skroad--pos-in-title-p (pos)
+  "Returns t if POS is in the first line of the buffer, otherwise nil."
+  (save-mark-and-excursion
+    (goto-char pos)
+    (skroad--point-in-title-p)))
+
 (defun skroad--find-next-nontitle (regex limit)
   "Find next REGEX, up to LIMIT, but only outside of the title line."
   (when (skroad--point-in-title-p)
@@ -260,9 +266,9 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   (or (next-single-property-change pos 'id)
       (point-max)))
 
-(defun skroad--pos-of-type-p (pos text-type)
-  "Determine whether POS is on text of the given TEXT-TYPE."
-  (eq (get-text-property pos 'category) text-type))
+;; (defun skroad--pos-of-type-p (pos text-type)
+;;   "Determine whether POS is on text of the given TEXT-TYPE."
+;;   (eq (get-text-property pos 'category) text-type))
 
 (defmacro skroad--with-link-at-point (&rest body)
   "Evaluate BODY with link bound to the link under the point."
@@ -280,7 +286,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
                 (list (skroad--tt-start (point))
                       (skroad--tt-end (point)))))))
 
-(defun skroad--backspace ()
+(defun skroad--cmd-backspace ()
   "If prev point contains a link, delete the link. Otherwise backspace."
   (interactive)
   (let ((p (point)))
@@ -288,9 +294,41 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
           ((skroad--link-at-prev p) (delete-region (skroad--tt-start (1- p)) p))
           (t (delete-char -1)))))
 
+(defun skroad--link-skip-to (direction &optional pos)
+  "Skip to the next or previous (DIRECTION) link from POS (or point.)"
+  (save-mark-and-excursion
+    (when pos
+      (goto-char pos))
+    (let ((r (funcall
+              (cond ((eq direction :forward) #'text-property-search-forward)
+                    ((eq direction :backward) #'text-property-search-backward)
+                    (t (error "Invalid direction!")))
+              'data (skroad--link-at (point))
+              #'(lambda (oldval newval)
+                  (and newval (not (eq oldval newval)))))))
+      (if r (prop-match-beginning r)))))
+
+(defun skroad--cmd-jump-to-next-link ()
+  "Jump to the next link following point; cycle to first after the last."
+  (interactive)
+  (goto-char
+   (or (skroad--link-skip-to :forward)
+       (skroad--link-skip-to :forward (point-min))
+       (point))))
+
+(defun skroad--cmd-jump-to-prev-link ()
+  "Jump to the previous link preceding point; cycle to last after the first."
+  (interactive)
+  (goto-char
+   (or (skroad--link-skip-to :backward)
+       (skroad--link-skip-to :backward (point-max))
+       (point))))
+
 (defvar skroad--mode-keymap
   (define-keymap
-    "<remap> <delete-backward-char>" #'skroad--backspace)
+    "<remap> <delete-backward-char>" #'skroad--cmd-backspace
+    "<tab>" #'skroad--cmd-jump-to-next-link
+    "C-<tab>" #'skroad--cmd-jump-to-prev-link)
   "Keymap for skroad mode.")
 
 ;;; Text Types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -528,6 +566,12 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   (skroad--adjust-mark-if-present)
   )
 
+;; (defadvice skroad--post-command-hook (around intercept activate)
+;;   (condition-case err
+;;       ad-do-it
+;;     ;; Let the debugger run
+;;     ((debug error) (signal (car err) (cdr err)))))
+
 (defvar-local skroad--current-link-overlay nil
   "Overlay active when a link is under the point.")
 
@@ -580,11 +624,8 @@ the text under the point, or both, may have changed."
              (goto-char (skroad--tt-end p))))))
 
   ;; If a region is active, point may not cross title boundary:
-  (let* ((p (point))
-         (was-in-title (skroad--pos-of-type-p
-                        skroad--prev-point 'skroad-node-title))
-         (now-in-title (skroad--pos-of-type-p
-                        p 'skroad-node-title)))
+  (let* ((was-in-title (skroad--pos-in-title-p skroad--prev-point))
+         (now-in-title (skroad--point-in-title-p)))
     (when (and (skroad--region-selection-active-p)
                (not (eq was-in-title now-in-title)))
       (if was-in-title
@@ -663,7 +704,6 @@ the text under the point, or both, may have changed."
 
 (defun skroad--open-node ()
   "Open a skroad node."
-  ;; (button-mode)
   (skroad--font-lock-turn-on)
   (font-lock-ensure)
   )
