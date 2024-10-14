@@ -198,12 +198,12 @@ If something was removed, returns T, otherwise nil."
                                 'id (gensym)
                                 'face face
                                 'data (match-string-no-properties 1)))))
-                       (t
-                        (lambda (start end)
-                          (set-text-properties
-                           start end
-                           (list 'category name
-                                 'face face))))))
+                      (t
+                       (lambda (start end)
+                         (set-text-properties
+                          start end
+                          (list 'category name
+                                'face face))))))
                (font-lock-matcher
                 (lambda (limit)
                   (when (funcall find-next limit)
@@ -430,7 +430,12 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :face '(:weight bold :foreground "purple"
                  :height 1.5 :inverse-video t :extend t)
  :start-delim "" :end-delim "\n"
- :payload-regex "\\([^\n]+\\)")
+ :payload-regex "\\([^\n]+\\)"
+ :keymap (define-keymap
+           "RET" #'ignore
+           "<mouse-1>" #'ignore
+           "<mouse-2>" #'ignore
+           "<mouse-3>" #'ignore))
 
 (skroad--define-text-type
  'skroad-italic
@@ -683,9 +688,9 @@ the text under the point, or both, may have changed."
                             (remove-list-of-text-properties
                              start end skroad--text-properties)
                             (skroad--with-whole-lines
-                             start end
-                             (font-lock-ensure
-                              start-expanded end-expanded))
+                              start end
+                              (font-lock-ensure
+                               start-expanded end-expanded))
                             ))))
   ;; TODO: not button ^ ??
 
