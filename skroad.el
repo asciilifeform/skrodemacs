@@ -164,7 +164,8 @@ If something was removed, returns T, otherwise nil."
     ;; Generate certain properties for displayed and indexed types:
     (when (get name 'displayed)
       (skroad--with-sym-props name
-        (start-delim payload-regex end-delim title link indexed)
+        (start-delim payload-regex end-delim
+                     title indexed decorative face link)
         (unless payload-regex
           (error "A displayed text type must define payload-regex!"))
         (let* ((make-text
@@ -185,21 +186,31 @@ If something was removed, returns T, otherwise nil."
                 (lambda (limit &optional payload)
                   (let ((regex (funcall make-regex payload)))
                     (funcall finder regex limit))))
+               (font-lock-colorizer
+                (cond (decorative
+                       (lambda (start end)
+                         (add-face-text-property start end face t)))
+                      (link
+                       (lambda (start end)
+                         (set-text-properties
+                          start end
+                          (list 'category name
+                                'id (gensym)
+                                'face face
+                                'data (match-string-no-properties 1)))))
+                       (t
+                        (lambda (start end)
+                          (set-text-properties
+                           start end
+                           (list 'category name
+                                 'face face))))))
                (font-lock-matcher
                 (lambda (limit)
                   (when (funcall find-next limit)
-                    (let ((all-types-props
-                           (list 'category name
-                                 'id (gensym)))
-                          (additional-props
-                           (if link
-                               (list
-                                'data (match-string-no-properties 1)))))
-                      (with-silent-modifications
-                        (add-text-properties
-                         (match-beginning 0) (match-end 0)
-                         (append all-types-props additional-props))
-                        t)))))
+                    (with-silent-modifications
+                      (funcall font-lock-colorizer
+                               (match-beginning 0) (match-end 0))
+                      t))))
                (font-lock-rule
                 (list font-lock-matcher '(0 nil append))))
           
@@ -285,34 +296,8 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 ;;; Text Types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defconst skroad--text-properties
-  '(category face font-lock-face id data)
+  '(category face id data)
   "Properties added by font-lock that must be removed when unfontifying.")
-
-;; Displayed types must be in order of ascending (lowest -- first) priority:
-
-(skroad--define-text-type
- 'skroad-italic
- :doc "Italicized text."
- :displayed t
- :face '(:slant italic)
- :start-delim "__" :end-delim "__"
- :payload-regex "\\([^_]+\\)")
-
-(skroad--define-text-type
- 'skroad-bold
- :doc "Bold text."
- :displayed t
- :face '(:weight bold)
- :start-delim "**" :end-delim "**"
- :payload-regex "\\([^*]+\\)")
-
-(skroad--define-text-type
- 'skroad-heading
- :doc "Heading text."
- :displayed t
- :face '(:weight bold :height 1.2 :inverse-video t)
- :start-delim "" :end-delim "\n"
- :payload-regex "^##\\([^#\n]+\\)")
 
 (defun skroad--link-insert-space ()
   "Insert a space immediately behind the link under the point."
@@ -446,6 +431,33 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
                  :height 1.5 :inverse-video t :extend t)
  :start-delim "" :end-delim "\n"
  :payload-regex "\\([^\n]+\\)")
+
+(skroad--define-text-type
+ 'skroad-italic
+ :doc "Italicized text."
+ :decorative t
+ :displayed t
+ :face 'italic
+ :start-delim "__" :end-delim "__"
+ :payload-regex "\\([^_]+\\)")
+
+(skroad--define-text-type
+ 'skroad-bold
+ :doc "Bold text."
+ :decorative t
+ :displayed t
+ :face 'bold
+ :start-delim "**" :end-delim "**"
+ :payload-regex "\\([^*]+\\)")
+
+(skroad--define-text-type
+ 'skroad-heading
+ :doc "Heading text."
+ :decorative t
+ :displayed t
+ :face '(:weight bold :height 1.2 :inverse-video t)
+ :start-delim "" :end-delim "\n"
+ :payload-regex "^##\\([^#\n]+\\)")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
