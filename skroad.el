@@ -366,7 +366,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   (skroad--do-link-action (point)))
 
 (skroad--define-text-type
- 'skroad-button
+ 'skroad-link
  :doc "Fundamental type from which all skroad links are derived."
  :link t
  :face 'link
@@ -411,7 +411,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-node-link
  :doc "Fundamental type for skroad node links (live or dead)."
- :supertype 'skroad-button
+ :supertype 'skroad-link
  :help-echo 'skroad--link-mouseover
  :payload-regex "\s*\\([^][\n\t\s]+[^][\n\t]*?\\)\s*"
  :keymap (define-keymap
@@ -466,7 +466,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-url-link
  :doc "URL."
- :supertype 'skroad-button
+ :supertype 'skroad-link
  :displayed t
  :help-echo "External link."
  :payload-regex
@@ -487,10 +487,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :start-delim "" :end-delim "\n"
  :payload-regex "\\([^\n]+\\)"
  :keymap (define-keymap
-           "RET" #'ignore
-           "<mouse-1>" #'ignore
-           "<mouse-2>" #'ignore
-           "<mouse-3>" #'ignore))
+           "RET" #'ignore))
 
 (skroad--define-text-type
  'skroad-italic
