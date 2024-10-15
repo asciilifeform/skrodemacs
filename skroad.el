@@ -77,6 +77,15 @@ differs from its value at POS (or point, if POS not given); nil if not found."
                   (and newval (not (eq oldval newval)))))))
       (if r (prop-match-beginning r)))))
 
+(defun skroad--call-text-type-action-if-defined
+    (type-name action-name &rest args)
+  "If ACTION-NAME is not nil, and TYPE-NAME has a defined action of that name,
+call the action with ARGS."
+  (when action-name
+    (let ((action (get type-name action-name)))
+      (when action
+        (apply action args)))))
+
 (defun skroad--point-in-title-p ()
   "Returns t if point is in the first line of the buffer, otherwise nil."
   (eq (line-beginning-position) (point-min)))
@@ -122,7 +131,6 @@ differs from its value at POS (or point, if POS not given); nil if not found."
 
 (defvar skroad--displayed-text-types nil "Text types for use with font-lock.")
 (defvar skroad--indexed-text-types nil "Text types that are indexed.")
-(defvar-local skroad--node-indices nil "Text indices for the current node.")
 
 (defun skroad--define-text-type (name &rest properties)
   (let ((super (or (plist-get properties 'supertype)
@@ -312,11 +320,10 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 
 (defun skroad--do-link-action (pos)
   "Perform the action attribute of the link at POS, if one was defined."
-  (let* ((type (get-text-property pos 'category))
-         (data (get-text-property pos 'data))
-         (action (get type 'action)))
-    (when action
-      (funcall action data))))
+  (skroad--call-text-type-action-if-defined
+    (get-text-property pos 'category)
+    'link-action
+    (get-text-property pos 'data)))
 
 (defun skroad--cmd-left-click-link (click)
   "Perform the action attribute of the link that got the CLICK."
@@ -412,7 +419,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :create-action #'skroad--link-create
  :destroy-action #'skroad--link-destroy
  :start-delim "[[" :end-delim "]]"
- :action #'skroad--browse-skroad-link
+ :link-action #'skroad--browse-skroad-link
  :keymap (define-keymap
            "l" #'skroad--live-link-to-dead))
 
@@ -453,7 +460,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :help-echo "External link."
  :payload-regex
  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\t\s]+\\)"
- :action #'browse-url
+ :link-action #'browse-url
  :keymap (define-keymap
            "t" #'skroad--comment-url))
 
@@ -499,7 +506,10 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defvar-local skroad--node-indices nil "Text indices for the current node.")
+
 (defmacro skroad--with-indices-table (type-name &rest body)
+  "Eval BODY with indices table bound to `table`; ensure TYPE-NAME is in it."
   (declare (indent defun))
   `(let ((table (plist-get skroad--node-indices ,type-name)))
      (unless table
@@ -519,28 +529,31 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   t)
 
 (defun skroad--index-finalize (&optional init-scan)
+  "Finalize all entries in indices table, and run all defined type actions.
+If `init-scan` is t, run `init-action` rather than `create-action` for
+newly-created entries. `destroy-action` will run for every destroyed entry,
+unless that entry was newly-created but not yet finalized."
   (dolist (type-name skroad--indexed-text-types)
     (skroad--with-indices-table type-name
       (maphash
        #'(lambda (payload entry)
-           (let ((count (car entry))
-                 (new (cdr entry)))
-             (cond ((zerop count)
-                    (remhash payload table)
-                    (when (not new)
-                      (let ((action (get type-name 'destroy-action)))
-                        (when action
-                          (funcall action type-name payload)))))
-                   (new
-                    (puthash payload (cons count nil) table)
-                    (let ((action
-                           (get type-name
-                                (if init-scan 'init-action 'create-action))))
-                      (when action
-                        (funcall action type-name payload))))
-                   (t
-                    (puthash payload (cons count nil) table))
-                   )))
+           (let* ((count (car entry))
+                  (new (cdr entry))
+                  (zeroed (zerop count))
+                  (action-name
+                   (cond ((and new zeroed) nil) ;; ephemeral turd - do nothing
+                         (new (if init-scan ;; newly-introduced entity
+                                  'init-action
+                                'create-action))
+                         (zeroed 'destroy-action) ;; destroyed last copy
+                         (t nil)))) ;; neither destroyed nor created
+             ;; Fire this type's action if appropriate:
+             (skroad--call-text-type-action-if-defined
+               type-name action-name type-name payload)
+             ;; If zeroed out, remove from table; otherwise update:
+             (if zeroed
+                 (remhash payload table)
+               (puthash payload (cons count nil) table))))
        table)
       t)))
 
@@ -554,29 +567,23 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
          type (match-string-no-properties 1) direction)))))
 
 (defun skroad--init-node-index-table ()
+  "Create the buffer-local indices and populate them from current buffer."
   (dolist (type-name skroad--indexed-text-types)
     (setq skroad--node-indices
           (plist-put skroad--node-indices type-name
                      (make-hash-table :test 'equal))))
-  ;; Perform initial index scan:
-  (message "Scan")
   (skroad--index-scan-region (point-min) (point-max) #'1+)
-  (skroad--index-finalize t)
-  (message (format "Init table: %s" skroad--node-indices)))
+  (skroad--index-finalize t))
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in a skroad buffer in region START...END."
-  (message (format "Before table: %s" skroad--node-indices))
   (skroad--with-whole-lines start end
-    (skroad--index-scan-region start-expanded end-expanded #'1-))
-  )
+    (skroad--index-scan-region start-expanded end-expanded #'1-)))
 
 (defun skroad--after-change-function (start end length)
   "Triggers following a change in a skroad buffer in region START...END."
   (skroad--with-whole-lines start end
-    (skroad--index-scan-region start-expanded end-expanded #'1+))
-  (message (format "After table: %s" skroad--node-indices))
-  )
+    (skroad--index-scan-region start-expanded end-expanded #'1+)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
