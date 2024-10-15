@@ -398,7 +398,6 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 (defun skroad--browse-skroad-link (data)
   (message (format "Live link pushed: '%s'" data)))
 
-
 (defun skroad--link-init (type-name payload)
   (message (format "Link init: type=%s payload='%s'" type-name payload)))
 
@@ -407,7 +406,6 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 
 (defun skroad--link-destroy (type-name payload)
   (message (format "Link destroy: type=%s payload='%s'" type-name payload)))
-
 
 (skroad--define-text-type
  'skroad-live
@@ -464,12 +462,24 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :keymap (define-keymap
            "t" #'skroad--comment-url))
 
+(defun skroad--title-init (type-name payload)
+  (message (format "Title init: type=%s payload='%s'" type-name payload)))
+
+(defun skroad--title-create (type-name payload)
+  (message (format "Title create: type=%s payload='%s'" type-name payload)))
+
+(defun skroad--title-destroy (type-name payload)
+  (message (format "Title destroy: type=%s payload='%s'" type-name payload)))
+
 (skroad--define-text-type
  'skroad-node-title
  :doc "Node title."
- :indexed t
- :displayed t
  :title t
+ :displayed t
+ :indexed t
+ :init-action #'skroad--title-init
+ :create-action #'skroad--title-create
+ :destroy-action #'skroad--title-destroy
  :face '(:weight bold :foreground "purple"
                  :height 1.5 :inverse-video t :extend t)
  :start-delim "" :end-delim "\n"
