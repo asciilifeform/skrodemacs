@@ -509,7 +509,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 (defvar-local skroad--node-indices nil "Text indices for the current node.")
 
 (defmacro skroad--with-indices-table (type-name &rest body)
-  "Eval BODY with indices table bound to `table`; ensure TYPE-NAME is in it."
+  "Eval BODY with indices of TYPE-NAME, which must exist, bound to `table`."
   (declare (indent defun))
   `(let ((table (plist-get skroad--node-indices ,type-name)))
      (unless table
