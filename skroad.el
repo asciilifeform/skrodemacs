@@ -526,12 +526,12 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
        (error "Type: %s is not indexed!" ,type-name))
      ,@body))
 
-(defun skroad--index-update (type-name payload direction)
-  "Update the index table of TYPE-NAME with PAYLOAD in given DIRECTION."
+(defun skroad--index-update (type-name payload op)
+  "Update the index table of TYPE-NAME with PAYLOAD using given OP."
   (skroad--with-indices-table type-name
     (let* ((entry (gethash payload table))
            (notfound (null entry))
-           (count (funcall direction (if notfound 0 (car entry))))
+           (count (funcall op (if notfound 0 (car entry))))
            (new (or notfound (cdr entry))))
       (when (< count 0)
         (error "Tried to decrement count of unknown entry %s" payload))
@@ -558,7 +558,7 @@ unless that entry was newly-created but not yet finalized."
                          (t nil)))) ;; neither destroyed nor created
              ;; Fire this type's action if necessary and one is defined:
              (skroad--call-text-type-action-if-defined
-               type-name action-name type-name payload)
+              type-name action-name type-name payload)
              ;; If zeroed out, remove from table; otherwise update:
              (if zeroed
                  (remhash payload table)
@@ -566,14 +566,14 @@ unless that entry was newly-created but not yet finalized."
        table)
       t)))
 
-(defun skroad--index-scan-region (start end direction)
-  "Update indices of all indexed entities found in region START..END."
+(defun skroad--index-scan-region (start end op)
+  "Run OP on indices of all indexed entities found in region START..END."
   (dolist (type skroad--indexed-text-types)
     (save-mark-and-excursion
       (goto-char start)
       (while (funcall (get type :find-next) end)
         (skroad--index-update
-         type (match-string-no-properties 1) direction)))))
+         type (match-string-no-properties 1) op)))))
 
 (defun skroad--init-node-index-table ()
   "Create the buffer-local indices and populate them from current buffer."
