@@ -547,7 +547,7 @@ unless that entry was newly-created but not yet finalized."
                                 'create-action))
                          (zeroed 'destroy-action) ;; destroyed last copy
                          (t nil)))) ;; neither destroyed nor created
-             ;; Fire this type's action if appropriate:
+             ;; Fire this type's action if necessary and one is defined:
              (skroad--call-text-type-action-if-defined
                type-name action-name type-name payload)
              ;; If zeroed out, remove from table; otherwise update:
