@@ -34,42 +34,6 @@ as (foo (get NAME foo)) etc., and evaluate BODY."
      (progn
        ,@body)))
 
-(defun skroad--delete-once-helper (elt seq)
-  "Return (V . SEQprime) where SEQprime is SEQ after destructively removing
-at most one instance of ELT. If something was removed, V is T, otherwise nil."
-  (if (equal elt (car seq))
-      (cons t (cdr seq))
-    (let ((l seq))
-      (while (and (cdr seq)
-                  (not (equal elt (cadr seq))))
-        (setq seq (cdr seq)))
-      (cond ((cdr seq)
-             (setcdr seq (cddr seq))
-             (cons t l))
-            (t (cons nil l))))))
-
-(defmacro skroad--delete-once (elt seq)
-  "Destructively remove at most one instance of ELT from SEQ.
-If something was removed, returns T, otherwise nil."
-  (let ((tempvar (gensym)))
-    `(let ((,tempvar (skroad--delete-once-helper ,elt ,seq)))
-       (setq ,seq (cdr ,tempvar))
-       (car ,tempvar))))
-
-;; TODO: comb over seq1 properly with setcdr rather than using delete-once
-;; TODO: maybe use hash tables and other speedups here
-(defmacro skroad--delete-intersection (seq1 seq2)
-  "Destructively remove all elements common to SEQ1 and SEQ2 from both."
-  (let ((l (gensym))
-        (current (gensym)))
-    `(progn
-       (setq ,l (copy-list ,seq1))
-       (while (and ,l ,seq2)
-         (setq ,current (car ,l))
-         (when (skroad--delete-once ,current ,seq2)
-           (skroad--delete-once ,current ,seq1))
-         (setq ,l (cdr ,l))))))
-
 (defun skroad--get-start-of-line (pos)
   "Get the position of the start of the line on which POS resides."
   (save-mark-and-excursion
@@ -158,6 +122,7 @@ differs from its value at POS (or point, if POS not given); nil if not found."
 
 (defvar skroad--displayed-text-types nil "Text types for use with font-lock.")
 (defvar skroad--indexed-text-types nil "Text types that are indexed.")
+(defvar-local skroad--node-indices nil "Text indices for the current node.")
 
 (defun skroad--define-text-type (name &rest properties)
   (let ((super (or (plist-get properties 'supertype)
@@ -391,7 +356,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
            ))
 
 (defun skroad--link-to-plain-text ()
-  "Debuttonize the link under the point to plain text by removing delimiters."
+  "Delinkify the link under the point to plain text by removing delimiters."
   (interactive)
   (let* ((p (point))
          (start (skroad--tt-start p))
@@ -423,8 +388,19 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   (skroad--with-link-at-point
    (skroad--text-type-replace-all 'skroad-live link 'skroad-dead link)))
 
-(defun skroad--test-link-action (data)
+(defun skroad--browse-skroad-link (data)
   (message (format "Live link pushed: '%s'" data)))
+
+
+(defun skroad--link-init (type-name payload)
+  (message (format "Link init: type=%s payload='%s'" type-name payload)))
+
+(defun skroad--link-create (type-name payload)
+  (message (format "Link create: type=%s payload='%s'" type-name payload)))
+
+(defun skroad--link-destroy (type-name payload)
+  (message (format "Link destroy: type=%s payload='%s'" type-name payload)))
+
 
 (skroad--define-text-type
  'skroad-live
@@ -432,8 +408,11 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :supertype 'skroad-node-link
  :displayed t
  :indexed t
+ :init-action #'skroad--link-init
+ :create-action #'skroad--link-create
+ :destroy-action #'skroad--link-destroy
  :start-delim "[[" :end-delim "]]"
- :action #'skroad--test-link-action
+ :action #'skroad--browse-skroad-link
  :keymap (define-keymap
            "l" #'skroad--live-link-to-dead))
 
@@ -449,6 +428,9 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :supertype 'skroad-node-link
  :displayed t
  :indexed t
+ :init-action #'skroad--link-init
+ :create-action #'skroad--link-create
+ :destroy-action #'skroad--link-destroy
  :start-delim "[-[" :end-delim "]-]"
  :face '(:inherit link :foreground "red")
  :keymap (define-keymap
@@ -473,8 +455,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\t\s]+\\)"
  :action #'browse-url
  :keymap (define-keymap
-           "t" #'skroad--comment-url
-           ))
+           "t" #'skroad--comment-url))
 
 (skroad--define-text-type
  'skroad-node-title
@@ -518,52 +499,86 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--get-tracked-in-region (start end)
-  "Find all tracked text type instances in region START...END."
-  (let ((tracked nil))
-    (skroad--with-whole-lines start end
-      (dolist (type skroad--indexed-text-types)
-        (save-mark-and-excursion
-          (goto-char start-expanded)
-          (while (funcall (get type :find-next) end-expanded)
-            (push (cons type (match-string-no-properties 1))
-                  tracked)))))
-    tracked
-    ))
+(defmacro skroad--with-indices-table (type-name &rest body)
+  (declare (indent defun))
+  `(let ((table (plist-get skroad--node-indices ,type-name)))
+     (unless table
+       (error "Type: %s is not indexed!" ,type-name))
+     ,@body))
 
-(defvar-local skroad--tracked-propose-create nil
-  "Tracked items (may be dupes) introduced to the buffer by a command.")
+(defun skroad--index-update (type-name payload direction)
+  "Update the index table of TYPE-NAME with PAYLOAD in given DIRECTION."
+  (skroad--with-indices-table type-name
+    (let* ((entry (gethash payload table))
+           (notfound (null entry))
+           (count (funcall direction (if notfound 0 (car entry))))
+           (new (or notfound (cdr entry))))
+      (when (< count 0)
+        (error "Tried to decrement count of unknown entry %s" payload))
+      (puthash payload (cons count new) table)))
+  t)
 
-(defvar-local skroad--tracked-propose-destroy nil
-  "Tracked items removed from the buffer by a command; dupes may remain.")
+(defun skroad--index-finalize (&optional init-scan)
+  (dolist (type-name skroad--indexed-text-types)
+    (skroad--with-indices-table type-name
+      (maphash
+       #'(lambda (payload entry)
+           (let ((count (car entry))
+                 (new (cdr entry)))
+             (cond ((zerop count)
+                    (remhash payload table)
+                    (when (not new)
+                      (let ((action (get type-name 'destroy-action)))
+                        (when action
+                          (funcall action type-name payload)))))
+                   (new
+                    (puthash payload (cons count nil) table)
+                    (let ((action
+                           (get type-name
+                                (if init-scan 'init-action 'create-action))))
+                      (when action
+                        (funcall action type-name payload))))
+                   (t
+                    (puthash payload (cons count nil) table))
+                   )))
+       table)
+      t)))
+
+(defun skroad--index-scan-region (start end direction)
+  "Update indices of all indexed entities found in region START..END."
+  (dolist (type skroad--indexed-text-types)
+    (save-mark-and-excursion
+      (goto-char start)
+      (while (funcall (get type :find-next) end)
+        (skroad--index-update
+         type (match-string-no-properties 1) direction)))))
+
+(defun skroad--init-node-index-table ()
+  (dolist (type-name skroad--indexed-text-types)
+    (setq skroad--node-indices
+          (plist-put skroad--node-indices type-name
+                     (make-hash-table :test 'equal))))
+  ;; Perform initial index scan:
+  (message "Scan")
+  (skroad--index-scan-region (point-min) (point-max) #'1+)
+  (skroad--index-finalize t)
+  (message (format "Init table: %s" skroad--node-indices)))
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in a skroad buffer in region START...END."
-  (let ((tracked (skroad--get-tracked-in-region start end)))
-    (skroad--delete-intersection skroad--tracked-propose-create tracked)
-    (setq-local skroad--tracked-propose-destroy
-                (nconc skroad--tracked-propose-destroy tracked))))
+  (message (format "Before table: %s" skroad--node-indices))
+  (skroad--with-whole-lines start end
+    (skroad--index-scan-region start-expanded end-expanded #'1-))
+  )
 
 (defun skroad--after-change-function (start end length)
   "Triggers following a change in a skroad buffer in region START...END."
-  (let ((tracked (skroad--get-tracked-in-region start end)))
-    (skroad--delete-intersection skroad--tracked-propose-destroy tracked)
-    (setq-local skroad--tracked-propose-create
-                (nconc skroad--tracked-propose-create tracked))))
-
-(defun skroad--sync-proposed-tracked-changes ()
-  "Process proposed create/destroy of tracked text type items."
-  (when skroad--tracked-propose-destroy
-    (message (format "proposed destroy: %s"
-                     skroad--tracked-propose-destroy))
-    (setq-local skroad--tracked-propose-destroy nil)
-    )
-  (when skroad--tracked-propose-create
-    (message (format "proposed create: %s"
-                     skroad--tracked-propose-create))
-    (setq-local skroad--tracked-propose-create nil)
-    )
+  (skroad--with-whole-lines start end
+    (skroad--index-scan-region start-expanded end-expanded #'1+))
+  (message (format "After table: %s" skroad--node-indices))
   )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar-local skroad--prev-point (point-min)
   "Point prior to the current command.")
@@ -575,16 +590,16 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
   (font-lock-ensure)
-  (skroad--sync-proposed-tracked-changes)
+  (skroad--index-finalize)
   (skroad--update-current-link)
   (skroad--adjust-mark-if-present)
   )
 
-;; (defadvice skroad--post-command-hook (around intercept activate)
-;;   (condition-case err
-;;       ad-do-it
-;;     ;; Let the debugger run
-;;     ((debug error) (signal (car err) (cdr err)))))
+(defadvice skroad--post-command-hook (around intercept activate)
+  (condition-case err
+      ad-do-it
+    ;; Let the debugger run
+    ((debug error) (signal (car err) (cdr err)))))
 
 (defvar-local skroad--current-link-overlay nil
   "Overlay active when a link is under the point.")
@@ -620,6 +635,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
   "Return t if a region selection is active (even if length 0); otherwise nil."
   (or (use-region-p) skroad--alt-mark))
 
+;; !!!!TODO: prev-point may be above point-max!!!
 (defun skroad--update-current-link ()
   "Update the current link overlay, because the point,
 the text under the point, or both, may have changed."
@@ -720,6 +736,7 @@ the text under the point, or both, may have changed."
   "Open a skroad node."
   (skroad--font-lock-turn-on)
   (font-lock-ensure)
+  (skroad--init-node-index-table)
   )
 
 (define-derived-mode skroad-mode text-mode "Skroad"
