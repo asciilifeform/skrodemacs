@@ -527,7 +527,7 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
      ,@body))
 
 (defun skroad--index-update (type-name payload op)
-  "Update the index table of TYPE-NAME with PAYLOAD using given OP."
+  "Update the index table of TYPE-NAME with PAYLOAD. OP is #'1- or #'1+."
   (skroad--with-indices-table type-name
     (let* ((entry (gethash payload table))
            (notfound (null entry))
@@ -567,7 +567,7 @@ unless that entry was newly-created but not yet finalized."
       t)))
 
 (defun skroad--index-scan-region (start end op)
-  "Run OP on indices of all indexed entities found in region START..END."
+  "Apply OP to count of each indexed entity found in region START..END."
   (dolist (type skroad--indexed-text-types)
     (save-mark-and-excursion
       (goto-char start)
