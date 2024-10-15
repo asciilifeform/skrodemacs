@@ -551,10 +551,9 @@ unless that entry was newly-created but not yet finalized."
                   (new (cdr entry))
                   (zeroed (zerop count))
                   (action-name
-                   (cond ((and new zeroed) nil) ;; ephemeral turd - do nothing
-                         (new (if init-scan ;; newly-introduced entity
-                                  'init-action
-                                'create-action))
+                   (cond (new (cond (zeroed nil) ;; ephemeral turd
+                                    (init-scan 'init-action) ;; inited
+                                    (t 'create-action))) ;; introduced
                          (zeroed 'destroy-action) ;; destroyed last copy
                          (t nil)))) ;; neither destroyed nor created
              ;; Fire this type's action if necessary and one is defined:
