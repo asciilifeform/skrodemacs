@@ -530,9 +530,9 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 (defun skroad--index-finalize (&optional init-scan)
   "Finalize all entries in indices table, and run all defined type actions.
-If `init-scan` is t, run `init-action` rather than `create-action` for
-newly-created entries. `destroy-action` will run for every destroyed entry,
-unless that entry was newly-created but not yet finalized."
+If `INIT-SCAN` is t, run the type's `init-action` rather than `create-action`
+for newly-created entries.  The type's `destroy-action` will run for each
+destroyed entry, unless that entry was newly-created but not yet finalized."
   (dolist (text-type skroad--indexed-text-types)
     (skroad--with-indices-table text-type
       (maphash
