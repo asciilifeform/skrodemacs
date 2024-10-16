@@ -543,7 +543,7 @@ unless that entry was newly-created but not yet finalized."
                    (cond (new (cond (gone nil) ;; ephemeral turd, do nothing
                                     (init-scan 'init-action) ;; was loaded
                                     (t 'create-action))) ;; newly-introduced
-                         (gone 'destroy-action) ;; last copy was destroyed
+                         (gone 'destroy-action) ;; was finalized, and now gone
                          (t nil)))) ;; only # of dupes changed, or nothing
              ;; Fire this type's action if necessary and one is defined:
              (skroad--call-text-type-action-if-defined
