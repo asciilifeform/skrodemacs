@@ -528,18 +528,6 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
        (error "Type: %s is not indexed!" ,type-name))
      ,@body))
 
-(defun skroad--index-update (type-name payload op)
-  "Update the index table of TYPE-NAME with PAYLOAD. OP is #'1- or #'1+."
-  (skroad--with-indices-table type-name
-    (let* ((entry (gethash payload table))
-           (notfound (null entry))
-           (count (funcall op (if notfound 0 (car entry))))
-           (new (or notfound (cdr entry))))
-      (when (< count 0)
-        (error "Tried to decrement count of unknown entry %s" payload))
-      (puthash payload (cons count new) table)))
-  t)
-
 (defun skroad--index-finalize (&optional init-scan)
   "Finalize all entries in indices table, and run all defined type actions.
 If `init-scan` is t, run `init-action` rather than `create-action` for
@@ -570,12 +558,19 @@ unless that entry was newly-created but not yet finalized."
 
 (defun skroad--index-scan-region (start end op)
   "Apply OP to count of each indexed entity found in region START..END."
-  (dolist (type skroad--indexed-text-types)
+  (dolist (type-name skroad--indexed-text-types)
     (save-mark-and-excursion
       (goto-char start)
-      (while (funcall (get type :find-next) end)
-        (skroad--index-update
-         type (match-string-no-properties 1) op)))))
+      (while (funcall (get type-name :find-next) end)
+        (skroad--with-indices-table type-name
+          (let* ((payload (match-string-no-properties 1))
+                 (entry (gethash payload table))
+                 (notfound (null entry))
+                 (count (funcall op (if notfound 0 (car entry))))
+                 (new (or notfound (cdr entry))))
+            (when (< count 0)
+              (error "Tried to decrement count of unknown entry %s" payload))
+            (puthash payload (cons count new) table)))))))
 
 (defun skroad--init-node-index-table ()
   "Create the buffer-local indices and populate them from current buffer."
