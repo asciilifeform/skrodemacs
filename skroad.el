@@ -561,12 +561,12 @@ destroyed entry, unless that entry was newly-created but not yet finalized."
       (error "OP must be :add, :populate, or :remove !"))
     (when (eq op :populate)
       (unless (null skroad--node-indices)
-        (error ":populate requested, but indices already exist!"))
-      (dolist (text-type skroad--indexed-text-types) ;; Create the indices
+        (error ":populate requested, but indices already exist!")))
+    (dolist (text-type skroad--indexed-text-types)
+      (when (eq op :populate) ;; when populating, create the index tables:
         (setq skroad--node-indices
               (plist-put skroad--node-indices text-type
-                         (make-hash-table :test 'equal)))))
-    (dolist (text-type skroad--indexed-text-types)
+                         (make-hash-table :test 'equal))))
       (save-mark-and-excursion
         (goto-char start)
         (while (funcall (get text-type :find-next) end)
