@@ -579,8 +579,8 @@ destroyed entry, unless that entry was newly-created but not yet finalized."
     (setq skroad--node-indices
           (plist-put skroad--node-indices text-type
                      (make-hash-table :test 'equal))))
-  (skroad--index-scan-region (point-min) (point-max) 1)
-  (skroad--index-finalize t))
+  (skroad--index-scan-region (point-min) (point-max) 1) ;; populate indices
+  (skroad--index-finalize t)) ;; dispatch `init-action` for each entry found
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in a skroad buffer in region START...END."
