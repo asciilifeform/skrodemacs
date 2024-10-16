@@ -561,7 +561,7 @@ found in region START..END. If :populate, finalizer is invoked immediately."
          (populate (eq op :populate)))
     (when (null delta)
       (error "OP must be :remove, :add, or :populate !"))
-    (when populate
+    (when populate ;; scan of a freshly-loaded buffer: indices must be nil
       (unless (null skroad--node-indices)
         (error ":populate requested, but indices already exist!")))
     (dolist (text-type skroad--indexed-text-types)
