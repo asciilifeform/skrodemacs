@@ -549,10 +549,8 @@ unless that entry was newly-created but not yet finalized."
              ;; Fire this type's action if necessary and one is defined:
              (skroad--call-text-type-action-if-defined
               text-type action text-type payload)
-             ;; If zeroed out, remove this entry from table:
-             (if zeroed
-                 (remhash payload table)
-               (setcdr entry nil)))) ;; otherwise, simply mark it finalized
+             (cond (zeroed (remhash payload table)) ;; remove if zeroed out
+                   (new (setcdr entry nil))))) ;; else, mark it finalized
        table)
       t)))
 
