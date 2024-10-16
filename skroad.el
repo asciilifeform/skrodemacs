@@ -562,15 +562,15 @@ unless that entry was newly-created but not yet finalized."
       (while (funcall (get text-type :find-next) end)
         (skroad--with-indices-table text-type
           (let* ((payload (match-string-no-properties 1))
-                 (entry (gethash payload table))
-                 (introduced (null entry))
-                 (count (+ delta (if introduced 0 (car entry))))
-                 (new (or introduced (cdr entry))))
+                 (entry (gethash payload table)) ;; current entry, if exists
+                 (introduced (null entry)) ;; t if was not already in table
+                 (count (+ delta (if introduced 0 (car entry)))) ;; inc/dec
+                 (new (or (cdr entry) introduced))) ;; if was new, stays new
             (when (< count 0)
               (error "Tried to decrement count of unknown entry %s" payload))
-            (cond (introduced
+            (cond (introduced ;; was not already in table, must add it:
                    (puthash payload (cons count new) table))
-                  (t (setcar entry count)
+                  (t (setcar entry count) ;; was in table, update count and new
                      (setcdr entry new)))))))))
 
 (defun skroad--init-node-index-table ()
