@@ -545,12 +545,12 @@ destroyed entry, unless that entry was newly-created but not yet finalized."
                                     (t 'create-action))) ;; newly-introduced
                          (gone 'destroy-action) ;; was finalized, and now gone
                          (t nil)))) ;; only # of dupes changed, or nothing
+             (cond (gone (remhash payload table)) ;; remove if none left
+                   (new (setcdr entry nil))) ;; else, mark it finalized
              ;; Fire this type's action if necessary and one is defined:
              (skroad--call-text-type-action-if-defined
               text-type
-              action text-type payload)
-             (cond (gone (remhash payload table)) ;; remove if none left
-                   (new (setcdr entry nil))))) ;; else, mark it finalized
+              action text-type payload)))
        table)
       t)))
 
