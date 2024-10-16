@@ -559,6 +559,13 @@ destroyed entry, unless that entry was newly-created but not yet finalized."
   (let ((delta (cadr (assoc op '((:add 1) (:populate 1) (:remove -1))))))
     (when (null delta)
       (error "OP must be :add, :populate, or :remove !"))
+    (when (eq op :populate)
+      (unless (null skroad--node-indices)
+        (error ":populate requested, but indices already exist!"))
+      (dolist (text-type skroad--indexed-text-types) ;; Create the indices
+        (setq skroad--node-indices
+              (plist-put skroad--node-indices text-type
+                         (make-hash-table :test 'equal)))))
     (dolist (text-type skroad--indexed-text-types)
       (save-mark-and-excursion
         (goto-char start)
@@ -580,10 +587,6 @@ destroyed entry, unless that entry was newly-created but not yet finalized."
 
 (defun skroad--init-node-index-table ()
   "Create the buffer-local indices and populate them from current buffer."
-  (dolist (text-type skroad--indexed-text-types)
-    (setq skroad--node-indices
-          (plist-put skroad--node-indices text-type
-                     (make-hash-table :test 'equal))))
   (skroad--index-scan-region (point-min) (point-max) :populate))
 
 (defun skroad--before-change-function (start end)
