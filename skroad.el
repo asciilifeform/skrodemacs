@@ -78,11 +78,11 @@ differs from its value at POS (or point, if POS not given); nil if not found."
       (if r (prop-match-beginning r)))))
 
 (defun skroad--call-text-type-action-if-defined
-    (type-name action-name &rest args)
-  "If ACTION-NAME is not nil, and TYPE-NAME has a defined action of that name,
+    (text-type action-name &rest args)
+  "If ACTION-NAME is not nil, and TEXT-TYPE has a defined action of that name,
 call the action with ARGS."
   (when action-name
-    (let ((action (get type-name action-name)))
+    (let ((action (get text-type action-name)))
       (when action
         (apply action args)))))
 
@@ -221,17 +221,17 @@ call the action with ARGS."
 
 ;; TODO: return t if any replacements happened
 (defun skroad--text-type-replace-all
-    (type-name-old payload-old type-name-new payload-new)
-  "Replace all text of TYPE-NAME-OLD having PAYLOAD-OLD with
-instances of TYPE-NAME-NEW having PAYLOAD-NEW."
+    (text-type-old payload-old text-type-new payload-new)
+  "Replace all text of TEXT-TYPE-OLD having PAYLOAD-OLD with
+instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (save-mark-and-excursion
     (goto-char (point-min))
     (while (funcall
-            (get type-name-old :find-next)
+            (get text-type-old :find-next)
             (point-max) payload-old)
       (replace-match
        (funcall
-        (get type-name-new :make-text)
+        (get text-type-new :make-text)
         payload-new)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -323,9 +323,9 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 (defun skroad--do-link-action (pos)
   "Perform the action attribute of the link at POS, if one was defined."
   (skroad--call-text-type-action-if-defined
-    (get-text-property pos 'category)
-    'link-action
-    (get-text-property pos 'data)))
+   (get-text-property pos 'category)
+   'link-action
+   (get-text-property pos 'data)))
 
 (defun skroad--cmd-left-click-link (click)
   "Perform the action attribute of the link that got the CLICK."
@@ -400,14 +400,14 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 (defun skroad--browse-skroad-link (data)
   (message (format "Live link pushed: '%s'" data)))
 
-(defun skroad--link-init (type-name payload)
-  (message (format "Link init: type=%s payload='%s'" type-name payload)))
+(defun skroad--link-init (text-type payload)
+  (message (format "Link init: type=%s payload='%s'" text-type payload)))
 
-(defun skroad--link-create (type-name payload)
-  (message (format "Link create: type=%s payload='%s'" type-name payload)))
+(defun skroad--link-create (text-type payload)
+  (message (format "Link create: type=%s payload='%s'" text-type payload)))
 
-(defun skroad--link-destroy (type-name payload)
-  (message (format "Link destroy: type=%s payload='%s'" type-name payload)))
+(defun skroad--link-destroy (text-type payload)
+  (message (format "Link destroy: type=%s payload='%s'" text-type payload)))
 
 (skroad--define-text-type
  'skroad-live
@@ -464,14 +464,14 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
  :keymap (define-keymap
            "t" #'skroad--comment-url))
 
-(defun skroad--title-init (type-name payload)
-  (message (format "Title init: type=%s payload='%s'" type-name payload)))
+(defun skroad--title-init (text-type payload)
+  (message (format "Title init: type=%s payload='%s'" text-type payload)))
 
-(defun skroad--title-create (type-name payload)
-  (message (format "Title create: type=%s payload='%s'" type-name payload)))
+(defun skroad--title-create (text-type payload)
+  (message (format "Title create: type=%s payload='%s'" text-type payload)))
 
-(defun skroad--title-destroy (type-name payload)
-  (message (format "Title destroy: type=%s payload='%s'" type-name payload)))
+(defun skroad--title-destroy (text-type payload)
+  (message (format "Title destroy: type=%s payload='%s'" text-type payload)))
 
 (skroad--define-text-type
  'skroad-node-title
@@ -520,12 +520,12 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 
 (defvar-local skroad--node-indices nil "Text indices for the current node.")
 
-(defmacro skroad--with-indices-table (type-name &rest body)
-  "Eval BODY with indices of TYPE-NAME, which must exist, bound to `table`."
+(defmacro skroad--with-indices-table (text-type &rest body)
+  "Eval BODY with indices of TEXT-TYPE, which must exist, bound to `table`."
   (declare (indent defun))
-  `(let ((table (plist-get skroad--node-indices ,type-name)))
+  `(let ((table (plist-get skroad--node-indices ,text-type)))
      (unless table
-       (error "Type: %s is not indexed!" ,type-name))
+       (error "Type: %s is not indexed!" ,text-type))
      ,@body))
 
 (defun skroad--index-finalize (&optional init-scan)
@@ -533,8 +533,8 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 If `init-scan` is t, run `init-action` rather than `create-action` for
 newly-created entries. `destroy-action` will run for every destroyed entry,
 unless that entry was newly-created but not yet finalized."
-  (dolist (type-name skroad--indexed-text-types)
-    (skroad--with-indices-table type-name
+  (dolist (text-type skroad--indexed-text-types)
+    (skroad--with-indices-table text-type
       (maphash
        #'(lambda (payload entry)
            (let* ((count (car entry)) ;; # of copies currently found in buffer
@@ -548,7 +548,7 @@ unless that entry was newly-created but not yet finalized."
                          (t nil)))) ;; only # of dupes changed, or nothing
              ;; Fire this type's action if necessary and one is defined:
              (skroad--call-text-type-action-if-defined
-              type-name action type-name payload)
+              text-type action text-type payload)
              ;; If zeroed out, remove this entry from table; otherwise update:
              (if zeroed
                  (remhash payload table)
@@ -558,11 +558,11 @@ unless that entry was newly-created but not yet finalized."
 
 (defun skroad--index-scan-region (start end op)
   "Apply OP to count of each indexed entity found in region START..END."
-  (dolist (type-name skroad--indexed-text-types)
+  (dolist (text-type skroad--indexed-text-types)
     (save-mark-and-excursion
       (goto-char start)
-      (while (funcall (get type-name :find-next) end)
-        (skroad--with-indices-table type-name
+      (while (funcall (get text-type :find-next) end)
+        (skroad--with-indices-table text-type
           (let* ((payload (match-string-no-properties 1))
                  (entry (gethash payload table))
                  (notfound (null entry))
@@ -574,9 +574,9 @@ unless that entry was newly-created but not yet finalized."
 
 (defun skroad--init-node-index-table ()
   "Create the buffer-local indices and populate them from current buffer."
-  (dolist (type-name skroad--indexed-text-types)
+  (dolist (text-type skroad--indexed-text-types)
     (setq skroad--node-indices
-          (plist-put skroad--node-indices type-name
+          (plist-put skroad--node-indices text-type
                      (make-hash-table :test 'equal))))
   (skroad--index-scan-region (point-min) (point-max) #'1+)
   (skroad--index-finalize t))
