@@ -555,7 +555,8 @@ destroyed entry, unless that entry was newly-created but not yet finalized."
       t)))
 
 (defun skroad--index-scan-region (start end op)
-  "Apply OP to count of each indexed entity found in region START..END."
+  "Apply OP (must be :add, :remove, or :populate) to each indexed entity
+found in region START..END. If :populate, finalizer is invoked immediately."
   (let* ((delta (cadr (assoc op '((:remove -1) (:add 1) (:populate 1)))))
          (populate (eq op :populate)))
     (when (null delta)
