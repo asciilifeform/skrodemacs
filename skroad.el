@@ -236,6 +236,8 @@ instances of TYPE-NAME-NEW having PAYLOAD-NEW."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: generalize atomics
+
 (defun skroad--link-at (pos)
   "Get the payload of the link found at the given POS, or nil if none."
   (get-text-property pos 'data))
@@ -547,19 +549,19 @@ unless that entry was newly-created but not yet finalized."
     (skroad--with-indices-table type-name
       (maphash
        #'(lambda (payload entry)
-           (let* ((count (car entry))
-                  (new (cdr entry))
-                  (zeroed (zerop count))
-                  (action-name
-                   (cond (new (cond (zeroed nil) ;; ephemeral turd
-                                    (init-scan 'init-action) ;; inited
-                                    (t 'create-action))) ;; introduced
-                         (zeroed 'destroy-action) ;; destroyed last copy
-                         (t nil)))) ;; neither destroyed nor created
+           (let* ((count (car entry)) ;; # of copies in currently in buffer
+                  (zeroed (zerop count)) ;; t if no copies exist in buffer
+                  (new (cdr entry)) ;; t if not yet finalized; otherwise nil
+                  (action-name ;; action, if any, to perform during finalize
+                   (cond (new (cond (zeroed nil) ;; ephemeral turd, do nothing
+                                    (init-scan 'init-action) ;; was loaded
+                                    (t 'create-action))) ;; newly-introduced
+                         (zeroed 'destroy-action) ;; last copy was destroyed
+                         (t nil)))) ;; only # of dupes changed, or nothing
              ;; Fire this type's action if necessary and one is defined:
              (skroad--call-text-type-action-if-defined
               type-name action-name type-name payload)
-             ;; If zeroed out, remove from table; otherwise update:
+             ;; If zeroed out, remove this entry from table; otherwise update:
              (if zeroed
                  (remhash payload table)
                (puthash payload (cons count nil) table))))
