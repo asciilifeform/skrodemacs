@@ -554,24 +554,29 @@ destroyed entry, unless that entry was newly-created but not yet finalized."
        table)
       t)))
 
-(defun skroad--index-scan-region (start end delta)
-  "Add DELTA to count of each indexed entity found in region START..END."
-  (dolist (text-type skroad--indexed-text-types)
-    (save-mark-and-excursion
-      (goto-char start)
-      (while (funcall (get text-type :find-next) end)
-        (skroad--with-indices-table text-type
-          (let* ((payload (match-string-no-properties 1))
-                 (entry (gethash payload table)) ;; current entry, if exists
-                 (introduced (null entry)) ;; t if was not already in table
-                 (count (+ delta (if introduced 0 (car entry)))) ;; inc/dec
-                 (new (or (cdr entry) introduced))) ;; if was new, stays new
-            (when (< count 0)
-              (error "Tried to decrement count of unknown entry %s" payload))
-            (cond (introduced ;; was not already in table, must add it:
-                   (puthash payload (cons count new) table))
-                  (t (setcar entry count) ;; was in table, update count and new
-                     (setcdr entry new)))))))))
+(defun skroad--index-scan-region (start end op)
+  "Apply OP to count of each indexed entity found in region START..END."
+  (let ((delta (cadr (assoc op '((:add 1) (:populate 1) (:remove -1))))))
+    (when (null delta)
+      (error "OP must be :add or :remove !"))
+    (dolist (text-type skroad--indexed-text-types)
+      (save-mark-and-excursion
+        (goto-char start)
+        (while (funcall (get text-type :find-next) end)
+          (skroad--with-indices-table text-type
+            (let* ((payload (match-string-no-properties 1))
+                   (entry (gethash payload table)) ;; current entry, if exists
+                   (introduced (null entry)) ;; t if was not already in table
+                   (count (+ delta (if introduced 0 (car entry)))) ;; inc/dec
+                   (new (or (cdr entry) introduced))) ;; if was new, stays new
+              (when (< count 0)
+                (error "Tried to decrement count of unknown entry %s" payload))
+              (cond (introduced ;; was not already in table, must add it:
+                     (puthash payload (cons count new) table))
+                    (t (setcar entry count) ;; was in table, update entry:
+                       (setcdr entry new))))))))
+    (when (eq op :populate) ;; If this was an initial scan upon buffer load:
+      (skroad--index-finalize t)))) ;; Finalize now, dispatching `init-action`
 
 (defun skroad--init-node-index-table ()
   "Create the buffer-local indices and populate them from current buffer."
@@ -579,18 +584,17 @@ destroyed entry, unless that entry was newly-created but not yet finalized."
     (setq skroad--node-indices
           (plist-put skroad--node-indices text-type
                      (make-hash-table :test 'equal))))
-  (skroad--index-scan-region (point-min) (point-max) 1) ;; populate indices
-  (skroad--index-finalize t)) ;; dispatch `init-action` for each entry found
+  (skroad--index-scan-region (point-min) (point-max) :populate))
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in a skroad buffer in region START...END."
   (skroad--with-whole-lines start end
-    (skroad--index-scan-region start-expanded end-expanded -1)))
+    (skroad--index-scan-region start-expanded end-expanded :remove)))
 
 (defun skroad--after-change-function (start end length)
   "Triggers following a change in a skroad buffer in region START...END."
   (skroad--with-whole-lines start end
-    (skroad--index-scan-region start-expanded end-expanded 1)))
+    (skroad--index-scan-region start-expanded end-expanded :add)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
