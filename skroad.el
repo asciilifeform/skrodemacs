@@ -556,8 +556,8 @@ unless that entry was newly-created but not yet finalized."
        table)
       t)))
 
-(defun skroad--index-scan-region (start end op)
-  "Apply OP to count of each indexed entity found in region START..END."
+(defun skroad--index-scan-region (start end delta)
+  "Add DELTA to count of each indexed entity found in region START..END."
   (dolist (text-type skroad--indexed-text-types)
     (save-mark-and-excursion
       (goto-char start)
@@ -566,7 +566,7 @@ unless that entry was newly-created but not yet finalized."
           (let* ((payload (match-string-no-properties 1))
                  (entry (gethash payload table))
                  (notfound (null entry))
-                 (count (funcall op (if notfound 0 (car entry))))
+                 (count (+ delta (if notfound 0 (car entry))))
                  (new (or notfound (cdr entry))))
             (when (< count 0)
               (error "Tried to decrement count of unknown entry %s" payload))
@@ -578,18 +578,18 @@ unless that entry was newly-created but not yet finalized."
     (setq skroad--node-indices
           (plist-put skroad--node-indices text-type
                      (make-hash-table :test 'equal))))
-  (skroad--index-scan-region (point-min) (point-max) #'1+)
+  (skroad--index-scan-region (point-min) (point-max) 1)
   (skroad--index-finalize t))
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in a skroad buffer in region START...END."
   (skroad--with-whole-lines start end
-    (skroad--index-scan-region start-expanded end-expanded #'1-)))
+    (skroad--index-scan-region start-expanded end-expanded -1)))
 
 (defun skroad--after-change-function (start end length)
   "Triggers following a change in a skroad buffer in region START...END."
   (skroad--with-whole-lines start end
-    (skroad--index-scan-region start-expanded end-expanded #'1+)))
+    (skroad--index-scan-region start-expanded end-expanded 1)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
