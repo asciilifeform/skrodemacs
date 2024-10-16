@@ -548,7 +548,8 @@ unless that entry was newly-created but not yet finalized."
                          (t nil)))) ;; only # of dupes changed, or nothing
              ;; Fire this type's action if necessary and one is defined:
              (skroad--call-text-type-action-if-defined
-              text-type action text-type payload)
+              text-type
+              action text-type payload)
              (cond (zeroed (remhash payload table)) ;; remove if zeroed out
                    (new (setcdr entry nil))))) ;; else, mark it finalized
        table)
