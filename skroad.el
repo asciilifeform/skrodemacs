@@ -552,7 +552,7 @@ unless that entry was newly-created but not yet finalized."
              ;; If zeroed out, remove this entry from table; otherwise update:
              (if zeroed
                  (remhash payload table)
-               (puthash payload (cons count nil) table))))
+               (setcdr entry nil))))
        table)
       t)))
 
@@ -570,7 +570,10 @@ unless that entry was newly-created but not yet finalized."
                  (new (or notfound (cdr entry))))
             (when (< count 0)
               (error "Tried to decrement count of unknown entry %s" payload))
-            (puthash payload (cons count new) table)))))))
+            (cond (notfound
+                   (puthash payload (cons count new) table))
+                  (t (setcar entry count)
+                     (setcdr entry new)))))))))
 
 (defun skroad--init-node-index-table ()
   "Create the buffer-local indices and populate them from current buffer."
