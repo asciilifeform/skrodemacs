@@ -538,19 +538,19 @@ unless that entry was newly-created but not yet finalized."
       (maphash
        #'(lambda (payload entry)
            (let* ((count (car entry)) ;; # of copies currently found in buffer
-                  (zeroed (zerop count)) ;; t if no copies exist in buffer
+                  (gone (zerop count)) ;; t if no copies remain in buffer
                   (new (cdr entry)) ;; t if not yet finalized; otherwise nil
                   (action ;; action, if any, to perform during finalize
-                   (cond (new (cond (zeroed nil) ;; ephemeral turd, do nothing
+                   (cond (new (cond (gone nil) ;; ephemeral turd, do nothing
                                     (init-scan 'init-action) ;; was loaded
                                     (t 'create-action))) ;; newly-introduced
-                         (zeroed 'destroy-action) ;; last copy was destroyed
+                         (gone 'destroy-action) ;; last copy was destroyed
                          (t nil)))) ;; only # of dupes changed, or nothing
              ;; Fire this type's action if necessary and one is defined:
              (skroad--call-text-type-action-if-defined
               text-type
               action text-type payload)
-             (cond (zeroed (remhash payload table)) ;; remove if zeroed out
+             (cond (gone (remhash payload table)) ;; remove if none left
                    (new (setcdr entry nil))))) ;; else, mark it finalized
        table)
       t)))
@@ -564,12 +564,12 @@ unless that entry was newly-created but not yet finalized."
         (skroad--with-indices-table text-type
           (let* ((payload (match-string-no-properties 1))
                  (entry (gethash payload table))
-                 (notfound (null entry))
-                 (count (+ delta (if notfound 0 (car entry))))
-                 (new (or notfound (cdr entry))))
+                 (introduced (null entry))
+                 (count (+ delta (if introduced 0 (car entry))))
+                 (new (or introduced (cdr entry))))
             (when (< count 0)
               (error "Tried to decrement count of unknown entry %s" payload))
-            (cond (notfound
+            (cond (introduced
                    (puthash payload (cons count new) table))
                   (t (setcar entry count)
                      (setcdr entry new)))))))))
