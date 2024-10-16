@@ -558,7 +558,7 @@ destroyed entry, unless that entry was newly-created but not yet finalized."
   "Apply OP to count of each indexed entity found in region START..END."
   (let ((delta (cadr (assoc op '((:add 1) (:populate 1) (:remove -1))))))
     (when (null delta)
-      (error "OP must be :add or :remove !"))
+      (error "OP must be :add, :populate, or :remove !"))
     (dolist (text-type skroad--indexed-text-types)
       (save-mark-and-excursion
         (goto-char start)
