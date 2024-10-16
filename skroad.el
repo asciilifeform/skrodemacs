@@ -556,14 +556,15 @@ destroyed entry, unless that entry was newly-created but not yet finalized."
 
 (defun skroad--index-scan-region (start end op)
   "Apply OP to count of each indexed entity found in region START..END."
-  (let ((delta (cadr (assoc op '((:add 1) (:populate 1) (:remove -1))))))
+  (let* ((delta (cadr (assoc op '((:add 1) (:populate 1) (:remove -1)))))
+         (populate (eq op :populate)))
     (when (null delta)
       (error "OP must be :add, :populate, or :remove !"))
-    (when (eq op :populate)
+    (when populate
       (unless (null skroad--node-indices)
         (error ":populate requested, but indices already exist!")))
     (dolist (text-type skroad--indexed-text-types)
-      (when (eq op :populate) ;; when populating, create the index tables:
+      (when populate ;; when populating, create the index tables:
         (setq skroad--node-indices
               (plist-put skroad--node-indices text-type
                          (make-hash-table :test 'equal))))
@@ -582,7 +583,7 @@ destroyed entry, unless that entry was newly-created but not yet finalized."
                      (puthash payload (cons count new) table))
                     (t (setcar entry count) ;; was in table, update entry:
                        (setcdr entry new))))))))
-    (when (eq op :populate) ;; If this was an initial scan upon buffer load:
+    (when populate ;; If this was an initial scan upon buffer load:
       (skroad--index-finalize t)))) ;; Finalize now, dispatching `init-action`
 
 (defun skroad--init-node-index-table ()
