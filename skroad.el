@@ -556,10 +556,10 @@ destroyed entry, unless that entry was newly-created but not yet finalized."
 
 (defun skroad--index-scan-region (start end op)
   "Apply OP to count of each indexed entity found in region START..END."
-  (let* ((delta (cadr (assoc op '((:add 1) (:populate 1) (:remove -1)))))
+  (let* ((delta (cadr (assoc op '((:remove -1) (:add 1) (:populate 1)))))
          (populate (eq op :populate)))
     (when (null delta)
-      (error "OP must be :add, :populate, or :remove !"))
+      (error "OP must be :remove, :add, or :populate !"))
     (when populate
       (unless (null skroad--node-indices)
         (error ":populate requested, but indices already exist!")))
