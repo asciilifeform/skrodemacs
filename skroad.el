@@ -537,8 +537,7 @@ unless that entry was newly-created but not yet finalized."
     (skroad--with-indices-table text-type
       (maphash
        #'(lambda (payload entry)
-           (let* ((count (car entry)) ;; # of copies currently found in buffer
-                  (gone (zerop count)) ;; t if no copies remain in buffer
+           (let* ((gone (zerop (car entry))) ;; t if no copies remain in buffer
                   (new (cdr entry)) ;; t if not yet finalized; otherwise nil
                   (action ;; action, if any, to perform during finalize
                    (cond (new (cond (gone nil) ;; ephemeral turd, do nothing
