@@ -540,7 +540,7 @@ unless that entry was newly-created but not yet finalized."
            (let* ((count (car entry)) ;; # of copies currently found in buffer
                   (zeroed (zerop count)) ;; t if no copies exist in buffer
                   (new (cdr entry)) ;; t if not yet finalized; otherwise nil
-                  (action-name ;; action, if any, to perform during finalize
+                  (action ;; action, if any, to perform during finalize
                    (cond (new (cond (zeroed nil) ;; ephemeral turd, do nothing
                                     (init-scan 'init-action) ;; was loaded
                                     (t 'create-action))) ;; newly-introduced
@@ -548,7 +548,7 @@ unless that entry was newly-created but not yet finalized."
                          (t nil)))) ;; only # of dupes changed, or nothing
              ;; Fire this type's action if necessary and one is defined:
              (skroad--call-text-type-action-if-defined
-              type-name action-name type-name payload)
+              type-name action type-name payload)
              ;; If zeroed out, remove this entry from table; otherwise update:
              (if zeroed
                  (remhash payload table)
