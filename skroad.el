@@ -547,17 +547,17 @@ updating the hash table CHANGES, and `skroad--index-update` must be called on
 it to finalize all pending changes when no further ones are expected."
   (let ((delta (cond ((eq op :remove) -1) ((eq op :add) 1)
                      (t (error "OP must be :remove or :add !")))))
-    (dolist (text-type skroad--indexed-text-types)
+    (dolist (text-type skroad--indexed-text-types) ;; do for each indexed type
       (save-mark-and-excursion
         (goto-char start)
-        (while (funcall (get text-type :find-next) end)
-          (let* ((payload (match-string-no-properties 1)) ;; matched payload
-                 (key (cons text-type payload)) ;; key to store in table
-                 (entry (gethash key changes)) ;; current value
+        (while (funcall (get text-type :find-next) end) ;; find every match
+          (let* ((payload (match-string-no-properties 1)) ;; item payload
+                 (key (cons text-type payload)) ;; key to store in changes
+                 (entry (gethash key changes)) ;; current value, if one exists
                  (total (+ delta (if (null entry) 0 entry)))) ;; updated value
-            (if (zerop total) ;; if ephemeral turd, zap it from changes table;
-                (remhash key changes) ;; otherwise update table.
-              (puthash key total changes))))))))
+            (if (zerop total) ;; if ephemeral turd, i.e. was added and removed,
+                (remhash key changes) ;; ... discard it from changes table.
+              (puthash key total changes)))))))) ;; otherwise update the total.
 
 (defvar-local skroad--index nil "Text type index for current buffer.")
 (defvar-local skroad--changes nil "Pending changes for current buffer.")
@@ -573,7 +573,7 @@ it to finalize all pending changes when no further ones are expected."
     (skroad--index-update skroad--index init-populate t)))
 
 (defun skroad--update-local-index ()
-  "Apply any pending changes queued for the buffer-local text type index."
+  "Apply all pending changes queued for the buffer-local text type index."
   (when skroad--changes
     (skroad--index-update skroad--index skroad--changes)
     (setq skroad--changes nil)))
