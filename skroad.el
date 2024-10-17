@@ -527,7 +527,7 @@ appropriate. If `INIT-SCAN` is t, run the type's `init-action` rather than
    #'(lambda (pending-item delta) ;; pending-item and change delta in pending
        (let* ((entry (gethash pending-item index)) ;; copies index had
               (create (null entry)) ;; t if index had no copies
-              (total (+ (if create 0 entry) delta)) ;; old + delta
+              (total (+ (if create 0 entry) delta)) ;; copies + change delta
               (destroy (zerop total)) ;; t if change destroyed last copy
               (action
                (cond (create (if init-scan 'init-action 'create-action))
