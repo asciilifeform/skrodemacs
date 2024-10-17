@@ -529,9 +529,9 @@ appropriate. If `INIT-SCAN` is t, run a text type's `init-action` rather than
               (create (null entry)) ;; t if index had no copies
               (total (+ (if create 0 entry) delta)) ;; copies + change delta
               (destroy (zerop total)) ;; t if change destroyed last copy
-              (action
+              (action ;; text type action to invoke, if any. nil if none.
                (cond (create (if init-scan 'init-action 'create-action))
-                     (destroy 'destroy-action)))) ;; if neither, action nil
+                     (destroy 'destroy-action))))
          (if destroy (remhash pending-item index) ;; remove if destroyed
            (puthash pending-item total index)) ;; ... else update total.
          (let ((text-type (car pending-item)) (payload (cdr pending-item)))
