@@ -577,11 +577,11 @@ found in region START..END. If :populate, finalizer is invoked immediately."
         (goto-char start)
         (while (funcall (get text-type :find-next) end)
           (skroad--with-indices-table skroad--pending-indices text-type
-            (let* ((payload (match-string-no-properties 1))
-                   (entry (gethash payload table))
-                   (total (+ delta (if (null entry) 0 entry))))
-              (cond ((zerop total) (remhash payload table))
-                    (t (puthash payload total table))))))))
+            (let* ((payload (match-string-no-properties 1)) ;; matched payload
+                   (entry (gethash payload table)) ;; currently pending delta
+                   (total (+ delta (if (null entry) 0 entry)))) ;; updated one
+              (cond ((zerop total) (remhash payload table)) ;; zap if ephemeral
+                    (t (puthash payload total table)))))))) ;; ... or update #
     (when populate ;; If this was an initial scan upon buffer load:
       (skroad--index-finalize t)))) ;; Finalize now, dispatching `init-action`
 
