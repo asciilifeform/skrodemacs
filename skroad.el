@@ -519,61 +519,58 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar-local skroad--buf-index nil "Text type index for current buffer.")
-(defvar-local skroad--buf-changes nil "Pending changes for current buffer.")
+(defvar-local skroad--index nil "Text type index for current buffer.")
+(defvar-local skroad--changes nil "Pending changes for current buffer.")
 
 (defun skroad--index-update (&optional init-scan)
   "Apply all pending changes to index table, and run all defined type actions.
 If `INIT-SCAN` is t, run the type's `init-action` rather than `create-action`
 for newly-created entries."
   (maphash
-   #'(lambda (item delta) ;; item and change delta in skroad--buf-changes
-       (let* ((entry (gethash item skroad--buf-index)) ;; copies index had
+   #'(lambda (item delta) ;; item and change delta in skroad--changes
+       (let* ((entry (gethash item skroad--index)) ;; copies index had
               (create (null entry)) ;; t if index had no copies
               (total (+ (if create 0 entry) delta)) ;; old + delta
               (destroy (zerop total)) ;; t if change destroyed last copy
               (action
                (cond (create (if init-scan 'init-action 'create-action))
                      (destroy 'destroy-action)))) ;; if neither, action nil
-         (if destroy (remhash item skroad--buf-index) ;; remove if destroyed
-           (puthash item total skroad--buf-index)) ;; ... else update total.
+         (if destroy (remhash item skroad--index) ;; remove if destroyed
+           (puthash item total skroad--index)) ;; ... else update total.
          (let ((text-type (car item)) (payload (cdr item)))
            (skroad--call-text-type-action-if-defined ;; invoke action, if any
             text-type
             action text-type payload))))
-   skroad--buf-changes)
-  (clrhash skroad--buf-changes) ;; we finalized everything, so flush it.
+   skroad--changes)
+  (clrhash skroad--changes) ;; we finalized everything, so flush it.
   t)
 
 (defun skroad--index-scan-region (start end op)
-  "Apply OP (must be :add, :remove, or :populate) to each indexed entity
-found in region START..END. If :populate, finalizer is invoked immediately."
-  (let* ((delta (cadr (assoc op '((:remove -1) (:add 1) (:populate 1)))))
-         (populate (eq op :populate)))
-    (when (null delta)
-      (error "OP must be :remove, :add, or :populate !"))
-    (when populate
-      (unless (and (null skroad--buf-index) (null skroad--buf-changes))
-        (error ":populate requested, but indices already exist for buffer!"))
-      (setq skroad--buf-index (make-hash-table :test 'equal))
-      (setq skroad--buf-changes (make-hash-table :test 'equal)))
+  "Apply OP (must be :add or :remove) to each indexed item found in START..END.
+This updates `skroad--changes`, and `skroad--index-update` must be called
+to finalize all pending changes when no further ones are immediately expected."
+  (let ((delta (cond ((eq op :remove) -1) ((eq op :add) 1)
+                     (t (error "OP must be :remove or :add !")))))
     (dolist (text-type skroad--indexed-text-types)
       (save-mark-and-excursion
         (goto-char start)
         (while (funcall (get text-type :find-next) end)
           (let* ((payload (match-string-no-properties 1)) ;; matched payload
                  (key (cons text-type payload)) ;; key to store in table
-                 (entry (gethash key skroad--buf-changes)) ;; current value
+                 (entry (gethash key skroad--changes)) ;; current value
                  (total (+ delta (if (null entry) 0 entry)))) ;; updated value
             (if (zerop total) ;; if ephemeral turd, zap it from changes table;
-                (remhash key skroad--buf-changes) ;; otherwise update table.
-              (puthash key total skroad--buf-changes))))))
-    (when populate ;; If this was an initial scan upon buffer load:
-      (skroad--index-update t)))) ;; Finalize now, dispatching `init-action`
+                (remhash key skroad--changes) ;; otherwise update table.
+              (puthash key total skroad--changes))))))))
 
-(defun skroad--init-buf-index-table ()
+(defun skroad--init-local-index ()
   "Create the buffer-local indices and populate them from current buffer."
-  (skroad--index-scan-region (point-min) (point-max) :populate))
+  (unless (and (null skroad--index) (null skroad--changes))
+    (error "Text type indices already exist for this buffer!"))
+  (setq skroad--index (make-hash-table :test 'equal))
+  (setq skroad--changes (make-hash-table :test 'equal))
+  (skroad--index-scan-region (point-min) (point-max) :add)
+  (skroad--index-update t)) ;; Populate while dispatching `init-action`s
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in a skroad buffer in region START...END."
@@ -741,7 +738,7 @@ the text under the point, or both, may have changed."
   "Open a skroad node."
   (skroad--font-lock-turn-on)
   (font-lock-ensure)
-  (skroad--init-buf-index-table)
+  (skroad--init-local-index)
   )
 
 (define-derived-mode skroad-mode text-mode "Skroad"
