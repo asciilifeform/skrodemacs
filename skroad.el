@@ -525,15 +525,16 @@ appropriate. If `INIT-SCAN` is t, run a text type's `init-action` rather than
 `create-action` for newly-created entries."
   (maphash
    #'(lambda (pending-item delta) ;; pending-item and change delta in pending
-       (let* ((count (or (gethash pending-item index) 0)) ;; copies index had
+       (let* ((count (or (gethash pending-item index) 0)) ;; copies in index
               (create (zerop count)) ;; t if index did not contain this item
               (total (+ count delta)) ;; copies of item in index + delta
               (destroy (zerop total)) ;; t if change will destroy all copies
               (action ;; text type action to invoke, if any. nil if none.
-               (cond (create (if init-scan 'init-action 'create-action))
-                     (destroy 'destroy-action))))
-         (if destroy (remhash pending-item index) ;; remove if destroyed
-           (puthash pending-item total index)) ;; ... else update total.
+               (cond (create (puthash pending-item total index) ;; update total
+                             (if init-scan 'init-action 'create-action))
+                     (destroy ;; remove from index if last copy was destroyed
+                      (remhash pending-item index) 'destroy-action)
+                     (t (error "Why are we here?")))))
          (let ((text-type (car pending-item)) (payload (cdr pending-item)))
            (skroad--call-text-type-action-if-defined ;; invoke action, if any
             text-type
