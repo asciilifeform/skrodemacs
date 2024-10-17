@@ -462,7 +462,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\t\s]+\\)"
  :link-action #'browse-url
  :keymap (define-keymap
-           "t" #'skroad--comment-url))
+           "t" #'skroad--comment-url
+           "l" #'skroad--comment-url))
 
 (defun skroad--title-init (text-type payload)
   (message (format "Title init: type=%s payload='%s'" text-type payload)))
@@ -518,7 +519,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar-local skroad--node-indices nil "Text indices for the current node.")
+(defvar-local skroad--node-indices nil "Indices for the current node.")
+(defvar-local skroad--indices-modified nil "Indices pending finalization.")
 
 (defmacro skroad--with-indices-table (text-type &rest body)
   "Eval BODY with indices of TEXT-TYPE, which must exist, bound to `table`."
@@ -533,8 +535,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 If `INIT-SCAN` is t, run the type's `init-action` rather than `create-action`
 for newly-created entries.  The type's `destroy-action` will run for each
 destroyed entry, unless that entry was newly-created but not yet finalized."
-  (dolist (text-type skroad--indexed-text-types)
-    (skroad--with-indices-table text-type
+  (dolist (text-type skroad--indices-modified) ;; only indices modified...
+    (skroad--with-indices-table text-type ;; ...since last finalization.
       (maphash
        #'(lambda (payload entry)
            (let* ((gone (zerop (car entry))) ;; t if no copies remain in buffer
@@ -552,7 +554,8 @@ destroyed entry, unless that entry was newly-created but not yet finalized."
               text-type
               action text-type payload)))
        table)
-      t)))
+      t))
+  (setq skroad--indices-modified nil)) ;; finalized all of them, so zap it
 
 (defun skroad--index-scan-region (start end op)
   "Apply OP (must be :add, :remove, or :populate) to each indexed entity
@@ -569,21 +572,25 @@ found in region START..END. If :populate, finalizer is invoked immediately."
         (setq skroad--node-indices
               (plist-put skroad--node-indices text-type
                          (make-hash-table :test 'equal))))
-      (save-mark-and-excursion
-        (goto-char start)
-        (while (funcall (get text-type :find-next) end)
-          (skroad--with-indices-table text-type
-            (let* ((payload (match-string-no-properties 1))
-                   (entry (gethash payload table)) ;; current entry, if exists
-                   (introduced (null entry)) ;; t if was not already in table
-                   (count (+ delta (if introduced 0 (car entry)))) ;; inc/dec
-                   (new (or (cdr entry) introduced))) ;; if was new, stays new
-              (when (< count 0)
-                (error "Tried to decrement count of unknown entry %s" payload))
-              (cond (introduced ;; was not already in table, must add it:
-                     (puthash payload (cons count new) table))
-                    (t (setcar entry count) ;; was in table, update entry:
-                       (setcdr entry new))))))))
+      (let ((type-index-modified nil)) ;; becomes t if we actually do anything
+        (save-mark-and-excursion
+          (goto-char start)
+          (while (funcall (get text-type :find-next) end)
+            (setq type-index-modified t) ;; this index will need finalization
+            (skroad--with-indices-table text-type
+              (let* ((payload (match-string-no-properties 1))
+                     (entry (gethash payload table)) ;; entry, if exists
+                     (introduced (null entry)) ;; t if was not already in table
+                     (count (+ delta (if introduced 0 (car entry)))) ;; inc/dec
+                     (new (or (cdr entry) introduced))) ;; was new, stays new
+                (when (< count 0)
+                  (error "Tried to decrement count of unknown entry %s" payload))
+                (cond (introduced ;; was not already in table, must add it:
+                       (puthash payload (cons count new) table))
+                      (t (setcar entry count) ;; was in table, update entry:
+                         (setcdr entry new)))))))
+        (when type-index-modified ;; add type to list of modified indices
+          (add-to-list 'skroad--indices-modified text-type))))
     (when populate ;; If this was an initial scan upon buffer load:
       (skroad--index-finalize t)))) ;; Finalize now, dispatching `init-action`
 
@@ -614,7 +621,7 @@ found in region START..END. If :populate, finalizer is invoked immediately."
   "Triggers following every user-interactive command."
   (font-lock-ensure)
   (skroad--index-finalize)
-  (skroad--update-current-link)
+  (skroad--update-selector)
   (skroad--adjust-mark-if-present)
   )
 
@@ -624,32 +631,31 @@ found in region START..END. If :populate, finalizer is invoked immediately."
     ;; Let the debugger run
     ((debug error) (signal (car err) (cdr err)))))
 
-(defvar-local skroad--current-link-overlay nil
+(defvar-local skroad--selector nil
   "Overlay active when a link is under the point.")
 
-(defconst skroad--current-link-overlay-properties
+(defconst skroad--selector-properties
   `((face highlight)
     (evaporate t))
-  "Text properties of the current link overlay.")
+  "Text properties of the selector.")
 
-(defun skroad--current-link-overlay-activate (start end)
-  "Activate (if inactive) or move the current link overlay from START...END."
-  (move-overlay skroad--current-link-overlay start end (current-buffer))
+(defun skroad--selector-activate (start end)
+  "Activate (if inactive) or move the selector from START...END."
+  (move-overlay skroad--selector start end (current-buffer))
   ;; (setq-local cursor-type nil)
   )
 
-(defun skroad--current-link-overlay-deactivate ()
-  "Deactivate the current link overlay; it can be reactivated again."
-  (when (skroad--current-link-overlay-active-p)
-    (delete-overlay skroad--current-link-overlay))
+(defun skroad--selector-deactivate ()
+  "Deactivate the selector; it can be reactivated again."
+  (when (skroad--selector-active-p)
+    (delete-overlay skroad--selector))
   ;; (setq-local cursor-type t)
   )
 
-(defun skroad--current-link-overlay-active-p ()
-  "Return t if the current link overlay is active; otherwise nil."
-  (and (overlayp skroad--current-link-overlay)
-       (eq (current-buffer)
-           (overlay-buffer skroad--current-link-overlay))))
+(defun skroad--selector-active-p ()
+  "Return t if the selector is active; otherwise nil."
+  (and (overlayp skroad--selector)
+       (eq (current-buffer) (overlay-buffer skroad--selector))))
 
 (defvar-local skroad--alt-mark nil
   "Opposite end of a link in which the mark had been set.")
@@ -659,8 +665,8 @@ found in region START..END. If :populate, finalizer is invoked immediately."
   (or (use-region-p) skroad--alt-mark))
 
 ;; !!!!TODO: prev-point may be above point-max!!!
-(defun skroad--update-current-link ()
-  "Update the current link overlay, because the point,
+(defun skroad--update-selector ()
+  "Update the selector, because the point,
 the text under the point, or both, may have changed."
   (let* ((p (point)))
     ;; If there is a link under the point, we may have to bounce the point:
@@ -687,13 +693,13 @@ the text under the point, or both, may have changed."
           (goto-char (point-min))
           (goto-char (line-beginning-position 2))))))
   
-  ;; Point may have moved. Enable current link overlay iff on top of a link:
+  ;; Point may have moved. Enable selector iff on top of a link:
   (let ((p (point)))
     (if (and (skroad--link-at p)
              (not (skroad--region-selection-active-p)))
-        (skroad--current-link-overlay-activate
+        (skroad--selector-activate
          (skroad--tt-start p) (skroad--tt-end p))
-      (skroad--current-link-overlay-deactivate))))
+      (skroad--selector-deactivate))))
 
 (defun skroad--adjust-mark-if-present ()
   "Mark and alt-mark may swap places so that link remains in the region."
@@ -712,9 +718,9 @@ the text under the point, or both, may have changed."
 
 (defun skroad--activate-mark-hook ()
   "Triggers when the mark is activated or reactivated."
-  ;; Turn off mouse highlights and current link overlay:
+  ;; Turn off mouse highlights and selector:
   (setq-local mouse-highlight nil)
-  (skroad--current-link-overlay-deactivate)
+  (skroad--selector-deactivate)
   (let ((m (mark)))
     ;; When mark is set in a link, set mark to link end and alt-mark to start:
     (when (skroad--link-at m)
@@ -726,8 +732,7 @@ the text under the point, or both, may have changed."
 (defun skroad--deactivate-mark-hook ()
   "Triggers when the mark becomes inactive."
   (setq-local skroad--alt-mark nil)
-  (skroad--update-current-link)
-  ;; Turn on mouse highlight
+  (skroad--update-selector)
   (setq-local mouse-highlight t)
   )
 
@@ -797,13 +802,12 @@ the text under the point, or both, may have changed."
   (add-hook 'deactivate-mark-hook 'skroad--deactivate-mark-hook nil t)
 
   ;; Overlay for when a link is under the point. Initially inactive:
-  (setq-local skroad--current-link-overlay
-              (make-overlay (point-min) (point-min)))
-  (skroad--current-link-overlay-deactivate)
+  (setq-local skroad--selector (make-overlay (point-min) (point-min)))
+  (skroad--selector-deactivate)
 
-  ;; Properties for selected link overlay
-  (dolist (p skroad--current-link-overlay-properties)
-    (overlay-put skroad--current-link-overlay (car p) (cadr p)))
+  ;; Properties for selector overlay
+  (dolist (p skroad--selector-properties)
+    (overlay-put skroad--selector (car p) (cadr p)))
 
   ;; Keymap:
   (use-local-map skroad--mode-keymap)
