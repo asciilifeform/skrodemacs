@@ -604,7 +604,7 @@ it to finalize all pending changes when no further ones are expected."
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
   (font-lock-ensure)
-  (skroad--update-local-index)
+  (skroad--update-local-index) ;; TODO: do it in save hook?
   (skroad--update-selector)
   (skroad--adjust-mark-if-present)
   )
