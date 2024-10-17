@@ -530,11 +530,11 @@ appropriate. If `INIT-SCAN` is t, run a text type's `init-action` rather than
               (total (+ count delta)) ;; copies of item in index + delta
               (destroy (zerop total)) ;; t if change will destroy all copies
               (action ;; text type action to invoke, if any. nil if none.
-               (cond (create (puthash pending-item total index) ;; update total
-                             (if init-scan 'init-action 'create-action))
+               (cond (create (if init-scan 'init-action 'create-action))
                      (destroy ;; remove from index if last copy was destroyed
-                      (remhash pending-item index) 'destroy-action)
-                     (t (error "Why are we here?")))))
+                      (remhash pending-item index) 'destroy-action))))
+         (unless destroy
+           (puthash pending-item total index)) ;; update total in index
          (let ((text-type (car pending-item)) (payload (cdr pending-item)))
            (skroad--call-text-type-action-if-defined ;; invoke action, if any
             text-type
