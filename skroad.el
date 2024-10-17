@@ -525,9 +525,9 @@ appropriate. If `INIT-SCAN` is t, run a text type's `init-action` rather than
 `create-action` for newly-created entries."
   (maphash
    #'(lambda (pending-item delta) ;; pending-item and change delta in pending
-       (let* ((count (gethash pending-item index)) ;; copies index had
-              (create (null count)) ;; t if index had no copies
-              (total (+ (if create 0 count) delta)) ;; copies + change delta
+       (let* ((count (or (gethash pending-item index) 0)) ;; copies index had
+              (create (zerop count)) ;; t if index had no copies
+              (total (+ count delta)) ;; copies + change delta
               (destroy (zerop total)) ;; t if change destroyed last copy
               (action ;; text type action to invoke, if any. nil if none.
                (cond (create (if init-scan 'init-action 'create-action))
@@ -553,8 +553,8 @@ it to finalize all pending changes when no further ones are expected."
         (while (funcall (get text-type :find-next) end) ;; find every match
           (let* ((payload (match-string-no-properties 1)) ;; item payload
                  (key (cons text-type payload)) ;; key for changes table
-                 (count (gethash key changes)) ;; current count, if one exists
-                 (total (+ delta (if (null count) 0 count)))) ;; updated count
+                 (count (or (gethash key changes) 0)) ;; current count
+                 (total (+ count delta))) ;; updated count
             (if (zerop total) ;; if both added and removed after last update...
                 (remhash key changes) ;; ...discard it from changes table.
               (puthash key total changes)))))))) ;; otherwise update the total.
