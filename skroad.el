@@ -545,7 +545,7 @@ destroyed entry, unless that entry was newly-created but not yet finalized."
                   (destroy (zerop total)) ;; t if destroyed last copy in buf
                   (action
                    (cond (create (if init-scan 'init-action 'create-action))
-                         (destroy 'destroy-action))))
+                         (destroy 'destroy-action)))) ;; if neither, action nil
              (if destroy (remhash pending-payload table) ;; remove if destroyed
                (puthash pending-payload total table)) ;; ... else update total.
              (skroad--call-text-type-action-if-defined ;; invoke action if any
