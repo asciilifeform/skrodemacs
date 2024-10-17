@@ -552,7 +552,7 @@ it to finalize all pending changes when no further ones are expected."
         (goto-char start)
         (while (funcall (get text-type :find-next) end) ;; find every match
           (let* ((payload (match-string-no-properties 1)) ;; item payload
-                 (key (cons text-type payload)) ;; key to store in changes
+                 (key (cons text-type payload)) ;; key for changes table
                  (entry (gethash key changes)) ;; current value, if one exists
                  (total (+ delta (if (null entry) 0 entry)))) ;; updated value
             (if (zerop total) ;; if both added and removed after last update...
