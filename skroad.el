@@ -519,36 +519,32 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar-local skroad--index nil "Text type index for current buffer.")
-(defvar-local skroad--changes nil "Pending changes for current buffer.")
-
-(defun skroad--index-update (&optional init-scan)
-  "Apply all pending changes to index table, and run all defined type actions.
-If `INIT-SCAN` is t, run the type's `init-action` rather than `create-action`
-for newly-created entries."
+(defun skroad--index-update (index pending &optional init-scan)
+  "Update INDEX by applying all PENDING changes, and run type actions when
+appropriate. If `INIT-SCAN` is t, run the type's `init-action` rather than
+`create-action` for newly-created entries."
   (maphash
-   #'(lambda (item delta) ;; item and change delta in skroad--changes
-       (let* ((entry (gethash item skroad--index)) ;; copies index had
+   #'(lambda (pending-item delta) ;; pending-item and change delta in pending
+       (let* ((entry (gethash pending-item index)) ;; copies index had
               (create (null entry)) ;; t if index had no copies
               (total (+ (if create 0 entry) delta)) ;; old + delta
               (destroy (zerop total)) ;; t if change destroyed last copy
               (action
                (cond (create (if init-scan 'init-action 'create-action))
                      (destroy 'destroy-action)))) ;; if neither, action nil
-         (if destroy (remhash item skroad--index) ;; remove if destroyed
-           (puthash item total skroad--index)) ;; ... else update total.
-         (let ((text-type (car item)) (payload (cdr item)))
+         (if destroy (remhash pending-item index) ;; remove if destroyed
+           (puthash pending-item total index)) ;; ... else update total.
+         (let ((text-type (car pending-item)) (payload (cdr pending-item)))
            (skroad--call-text-type-action-if-defined ;; invoke action, if any
             text-type
             action text-type payload))))
-   skroad--changes)
-  (clrhash skroad--changes) ;; we finalized everything, so flush it.
+   pending)
   t)
 
-(defun skroad--index-scan-region (start end op)
-  "Apply OP (must be :add or :remove) to each indexed item found in START..END.
-This updates `skroad--changes`, and `skroad--index-update` must be called
-to finalize all pending changes when no further ones are immediately expected."
+(defun skroad--index-scan-region (changes start end op)
+  "Apply OP (must be :add or :remove) to each indexed item found in START..END,
+updating the hash table CHANGES, and `skroad--index-update` must be called on
+it to finalize all pending changes when no further ones are expected."
   (let ((delta (cond ((eq op :remove) -1) ((eq op :add) 1)
                      (t (error "OP must be :remove or :add !")))))
     (dolist (text-type skroad--indexed-text-types)
@@ -557,30 +553,44 @@ to finalize all pending changes when no further ones are immediately expected."
         (while (funcall (get text-type :find-next) end)
           (let* ((payload (match-string-no-properties 1)) ;; matched payload
                  (key (cons text-type payload)) ;; key to store in table
-                 (entry (gethash key skroad--changes)) ;; current value
+                 (entry (gethash key changes)) ;; current value
                  (total (+ delta (if (null entry) 0 entry)))) ;; updated value
             (if (zerop total) ;; if ephemeral turd, zap it from changes table;
-                (remhash key skroad--changes) ;; otherwise update table.
-              (puthash key total skroad--changes))))))))
+                (remhash key changes) ;; otherwise update table.
+              (puthash key total changes))))))))
+
+(defvar-local skroad--index nil "Text type index for current buffer.")
+(defvar-local skroad--changes nil "Pending changes for current buffer.")
 
 (defun skroad--init-local-index ()
   "Create the buffer-local indices and populate them from current buffer."
-  (unless (and (null skroad--index) (null skroad--changes))
-    (error "Text type indices already exist for this buffer!"))
+  (unless (null skroad--index)
+    (error "Text type index already exists for this buffer!"))
   (setq skroad--index (make-hash-table :test 'equal))
-  (setq skroad--changes (make-hash-table :test 'equal))
-  (skroad--index-scan-region (point-min) (point-max) :add)
-  (skroad--index-update t)) ;; Populate while dispatching `init-action`s
+  ;; Populate while dispatching `init-action`s
+  (let ((init-populate (make-hash-table :test 'equal)))
+    (skroad--index-scan-region init-populate (point-min) (point-max) :add)
+    (skroad--index-update skroad--index init-populate t)))
+
+(defun skroad--update-local-index ()
+  "Apply any pending changes queued for the buffer-local text type index."
+  (when skroad--changes
+    (skroad--index-update skroad--index skroad--changes)
+    (setq skroad--changes nil)))
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in a skroad buffer in region START...END."
+  (when (null skroad--changes)
+    (setq skroad--changes (make-hash-table :test 'equal)))
   (skroad--with-whole-lines start end
-    (skroad--index-scan-region start-expanded end-expanded :remove)))
+    (skroad--index-scan-region
+     skroad--changes start-expanded end-expanded :remove)))
 
 (defun skroad--after-change-function (start end length)
   "Triggers following a change in a skroad buffer in region START...END."
   (skroad--with-whole-lines start end
-    (skroad--index-scan-region start-expanded end-expanded :add)))
+    (skroad--index-scan-region
+     skroad--changes start-expanded end-expanded :add)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -594,7 +604,7 @@ to finalize all pending changes when no further ones are immediately expected."
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
   (font-lock-ensure)
-  (skroad--index-update)
+  (skroad--update-local-index)
   (skroad--update-selector)
   (skroad--adjust-mark-if-present)
   )
