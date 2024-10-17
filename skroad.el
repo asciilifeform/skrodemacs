@@ -553,11 +553,11 @@ it to finalize all pending changes when no further ones are expected."
         (while (funcall (get text-type :find-next) end) ;; find every match
           (let* ((payload (match-string-no-properties 1)) ;; item payload
                  (key (cons text-type payload)) ;; key for changes table
-                 (count (or (gethash key changes) 0)) ;; current count
-                 (total (+ count delta))) ;; updated count
+                 (count (or (gethash key changes) 0)) ;; current count of item
+                 (total (+ count delta))) ;; updated count of this item
             (if (zerop total) ;; if both added and removed after last update...
-                (remhash key changes) ;; ...discard it from changes table.
-              (puthash key total changes)))))))) ;; otherwise update the total.
+                (remhash key changes) ;; ...discard item from changes table.
+              (puthash key total changes)))))))) ;; otherwise update the count.
 
 (defvar-local skroad--index nil "Text type index for current buffer.")
 (defvar-local skroad--changes nil "Pending changes for current buffer.")
