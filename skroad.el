@@ -526,9 +526,9 @@ appropriate. If `INIT-SCAN` is t, run a text type's `init-action` rather than
   (maphash
    #'(lambda (pending-item delta) ;; pending-item and change delta in pending
        (let* ((count (or (gethash pending-item index) 0)) ;; copies index had
-              (create (zerop count)) ;; t if index had no copies
-              (total (+ count delta)) ;; copies + change delta
-              (destroy (zerop total)) ;; t if change destroyed last copy
+              (create (zerop count)) ;; t if index did not contain this item
+              (total (+ count delta)) ;; copies of item in index + delta
+              (destroy (zerop total)) ;; t if change will destroy all copies
               (action ;; text type action to invoke, if any. nil if none.
                (cond (create (if init-scan 'init-action 'create-action))
                      (destroy 'destroy-action))))
