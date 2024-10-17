@@ -520,12 +520,12 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar-local skroad--node-indices nil "Indices for the current node.")
-(defvar-local skroad--index-entries-pending nil "Entries not yet finalized.")
+(defvar-local skroad--pending-indices nil "Pending indices for the current node.")
 
-(defmacro skroad--with-indices-table (text-type &rest body)
+(defmacro skroad--with-indices-table (var text-type &rest body)
   "Eval BODY with indices of TEXT-TYPE, which must exist, bound to `table`."
   (declare (indent defun))
-  `(let ((table (plist-get skroad--node-indices ,text-type)))
+  `(let ((table (plist-get ,var ,text-type)))
      (unless table
        (error "Type: %s is not indexed!" ,text-type))
      ,@body))
@@ -535,25 +535,24 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 If `INIT-SCAN` is t, run the type's `init-action` rather than `create-action`
 for newly-created entries.  The type's `destroy-action` will run for each
 destroyed entry, unless that entry was newly-created but not yet finalized."
-  (dolist (pending-item skroad--index-entries-pending)
-    (seq-let (text-type table payload) pending-item
-      (message (format "finalizing item: %s %s" text-type payload))
-      (let* ((entry (gethash payload table))
-             (gone (zerop (car entry))) ;; t if no copies remain in buffer
-             (new (cdr entry)) ;; t if not yet finalized; otherwise nil
-             (action ;; action, if any, to perform during finalize
-              (cond (new (cond (gone nil) ;; ephemeral turd, do nothing
-                               (init-scan 'init-action) ;; was loaded
-                               (t 'create-action))) ;; newly-introduced
-                    (gone 'destroy-action) ;; was finalized, and now gone
-                    (t nil)))) ;; only dupe count changed, if anything
-        (cond (gone (remhash payload table)) ;; remove if none left
-              (new (setcdr entry nil))) ;; mark finalized
-        ;; Fire this type's action if necessary and one is defined:
-        (skroad--call-text-type-action-if-defined
-         text-type
-         action text-type payload))))
-  (setq skroad--index-entries-pending nil) ;; finalized them all, so flush
+  (skroad--do-plist text-type pending-table skroad--pending-indices
+    (maphash
+     #'(lambda (pending-payload pending-delta)
+         (skroad--with-indices-table skroad--node-indices text-type
+           (let* ((entry (gethash pending-payload table)) ;; copies buf had
+                  (create (null entry)) ;; t if buf had no copies
+                  (total (+ (if create 0 entry) pending-delta)) ;; old + delta
+                  (destroy (zerop total)) ;; t if destroyed last copy in buf
+                  (action
+                   (cond (create (if init-scan 'init-action 'create-action))
+                         (destroy 'destroy-action))))
+             (if destroy (remhash pending-payload table) ;; remove if destroyed
+               (puthash pending-payload total table)) ;; ... else update total.
+             (skroad--call-text-type-action-if-defined ;; invoke action if any
+              text-type
+              action text-type pending-payload))))
+     pending-table)
+    (clrhash pending-table)) ;; we finalized everything, so nothing pends.
   t)
 
 (defun skroad--index-scan-region (start end op)
@@ -570,26 +569,19 @@ found in region START..END. If :populate, finalizer is invoked immediately."
       (when populate ;; when populating, create the index tables:
         (setq skroad--node-indices
               (plist-put skroad--node-indices text-type
+                         (make-hash-table :test 'equal)))
+        (setq skroad--pending-indices
+              (plist-put skroad--pending-indices text-type
                          (make-hash-table :test 'equal))))
       (save-mark-and-excursion
         (goto-char start)
         (while (funcall (get text-type :find-next) end)
-          (skroad--with-indices-table text-type
+          (skroad--with-indices-table skroad--pending-indices text-type
             (let* ((payload (match-string-no-properties 1))
-                   (entry (gethash payload table)) ;; entry, if exists
-                   (introduced (null entry)) ;; t if was not already in table
-                   (count (+ delta (if introduced 0 (car entry)))) ;; inc/dec
-                   (new (or (cdr entry) introduced))) ;; was new, stays new
-              (when (< count 0)
-                (error "Tried to decrement count of unknown entry %s" payload))
-              (cond (introduced ;; was not already in table, must add it:
-                     (puthash payload (cons count new) table))
-                    (t (setcar entry count) ;; was in table, update entry:
-                       (setcdr entry new)))
-              ;; Add to list of pending entries for finalization:
-              (when (or introduced (zerop count))
-                (add-to-list 'skroad--index-entries-pending
-                             (list text-type table payload))))))))
+                   (entry (gethash payload table))
+                   (total (+ delta (if (null entry) 0 entry))))
+              (cond ((zerop total) (remhash payload table))
+                    (t (puthash payload total table))))))))
     (when populate ;; If this was an initial scan upon buffer load:
       (skroad--index-finalize t)))) ;; Finalize now, dispatching `init-action`
 
