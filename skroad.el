@@ -520,8 +520,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--index-update (index pending &optional init-scan)
-  "Update INDEX by applying all PENDING changes, and run type actions when
-appropriate. If `INIT-SCAN` is t, run the type's `init-action` rather than
+  "Update INDEX by applying all PENDING changes, and run text type actions when
+appropriate. If `INIT-SCAN` is t, run a text type's `init-action` rather than
 `create-action` for newly-created entries."
   (maphash
    #'(lambda (pending-item delta) ;; pending-item and change delta in pending
