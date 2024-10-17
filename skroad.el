@@ -555,8 +555,8 @@ it to finalize all pending changes when no further ones are expected."
                  (key (cons text-type payload)) ;; key to store in changes
                  (entry (gethash key changes)) ;; current value, if one exists
                  (total (+ delta (if (null entry) 0 entry)))) ;; updated value
-            (if (zerop total) ;; if ephemeral turd, i.e. was added and removed,
-                (remhash key changes) ;; ... discard it from changes table.
+            (if (zerop total) ;; if both added and removed after last update...
+                (remhash key changes) ;; ...discard it from changes table.
               (puthash key total changes)))))))) ;; otherwise update the total.
 
 (defvar-local skroad--index nil "Text type index for current buffer.")
