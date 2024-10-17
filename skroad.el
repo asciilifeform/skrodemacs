@@ -546,7 +546,7 @@ destroyed entry, unless that entry was newly-created but not yet finalized."
                                (init-scan 'init-action) ;; was loaded
                                (t 'create-action))) ;; newly-introduced
                     (gone 'destroy-action) ;; was finalized, and now gone
-                    (t nil)))) ;; only dupe count changed
+                    (t nil)))) ;; only dupe count changed, if anything
         (cond (gone (remhash payload table)) ;; remove if none left
               (new (setcdr entry nil))) ;; mark finalized
         ;; Fire this type's action if necessary and one is defined:
