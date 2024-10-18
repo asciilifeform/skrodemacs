@@ -266,16 +266,6 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
      (when link
        ,@body)))
 
-(defmacro skroad--make-link-region-cmd (command)
-  "Wrap COMMAND to use region if one exists, or use link at point as region."
-  `#'(lambda ()
-       (interactive)
-       (apply #',command
-              (if (use-region-p)
-                  (list (region-beginning) (region-end))
-                (list (skroad--tt-start (point))
-                      (skroad--tt-end (point)))))))
-
 (defun skroad--cmd-backspace ()
   "If prev point contains a link, delete the link. Otherwise backspace."
   (interactive)
@@ -313,12 +303,27 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   '(category face id data)
   "Properties added by font-lock that must be removed when unfontifying.")
 
-(defun skroad--link-insert-space ()
-  "Insert a space immediately behind the link under the point."
+(defun skroad--cmd-atomics-prepend-space ()
+  "Insert a space immediately behind the atomic currently under the point."
   (interactive)
   (save-mark-and-excursion
     (goto-char (skroad--tt-start (point)))
     (insert " ")))
+
+(defmacro skroad--define-atomics-region-cmd (wrap-command)
+  "Wrap COMMAND to use region if exists, or use the atomic at point as region."
+  `(defun ,(read (concat "skroad--cmd-atomics-"
+                         (symbol-name wrap-command))) ()
+     (interactive)
+     (apply #',wrap-command
+            (if (use-region-p)
+                (list (region-beginning) (region-end))
+              (list (skroad--tt-start (point))
+                    (skroad--tt-end (point)))))))
+
+(skroad--define-atomics-region-cmd delete-region)
+(skroad--define-atomics-region-cmd kill-region)
+(skroad--define-atomics-region-cmd kill-ring-save)
 
 (skroad--define-text-type
  'skroad-atomic
@@ -326,15 +331,15 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :atomic t
  :keymap
  (define-keymap
-   "SPC" #'skroad--link-insert-space
+   "SPC" #'skroad--cmd-atomics-prepend-space
    "<remap> <self-insert-command>" #'ignore
-   "<deletechar>" (skroad--make-link-region-cmd delete-region)
-   "<backspace>" (skroad--make-link-region-cmd delete-region)
+   "<deletechar>" #'skroad--cmd-atomics-delete-region
+   "<backspace>" #'skroad--cmd-atomics-delete-region
    "<drag-mouse-1>" #'ignore "<drag-mouse-2>" #'ignore "<drag-mouse-3>" #'ignore
    "<down-mouse-1>" #'ignore "<down-mouse-2>" #'ignore "<down-mouse-3>" #'ignore
    "<mouse-1>" #'ignore "<mouse-2>" #'ignore "<mouse-3>" #'ignore
-   "<remap> <kill-region>" (skroad--make-link-region-cmd kill-region)
-   "<remap> <kill-ring-save>" (skroad--make-link-region-cmd kill-ring-save)
+   "<remap> <kill-region>" #'skroad--cmd-atomics-kill-region
+   "<remap> <kill-ring-save>" #'skroad--cmd-atomics-kill-ring-save
    ))
 
 (defun skroad--do-link-action (pos)
