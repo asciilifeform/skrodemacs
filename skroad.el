@@ -531,9 +531,8 @@ appropriate. If `INIT-SCAN` is t, run a text type's `init-action` rather than
               (destroy (zerop count)) ;; t if change will destroy all copies
               (action ;; text type action to invoke, if any. nil if none.
                (cond (create (if init-scan 'init-action 'create-action))
-                     (destroy ;; remove from index if last copy was destroyed
-                      (remhash key index) 'destroy-action))))
-         (unless destroy (puthash key count index)) ;; update count
+                     (destroy (remhash key index) 'destroy-action))))
+         (unless destroy (puthash key count index)) ;; update count if alive
          (let ((text-type (car key)) (payload (cdr key)))
            (skroad--call-text-type-action-if-defined ;; invoke action, if any
             text-type
