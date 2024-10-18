@@ -522,7 +522,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--index-update (index pending &optional init-scan)
   "Update INDEX by applying all PENDING changes, and run text type actions when
 appropriate. If `INIT-SCAN` is t, run a text type's `init-action` rather than
-`create-action` for newly-created entries."
+`create-action` for created entries; `destroy-action` runs for destroyed ones."
   (maphash
    #'(lambda (key delta) ;; key and count delta in pending changes table
        (let* ((prior (or (gethash key index) 0)) ;; copies in index prior
