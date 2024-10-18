@@ -549,7 +549,7 @@ it to finalize all pending changes when no further ones are expected."
     (dolist (text-type skroad--indexed-text-types) ;; try all indexed types
       (save-mark-and-excursion
         (goto-char start)
-        (while (funcall (get text-type :find-next) end) ;; find every match
+        (while (funcall (get text-type :find-next) end) ;; got match in region
           (let* ((payload (match-string-no-properties 1)) ;; item payload
                  (key (cons text-type payload)) ;; key for changes table
                  (count (+ delta (or (gethash key changes) 0)))) ;; old + delta
