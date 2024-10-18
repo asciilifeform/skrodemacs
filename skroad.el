@@ -226,33 +226,28 @@ call the action with ARGS."
 instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (save-mark-and-excursion
     (goto-char (point-min))
-    (while (funcall
-            (get text-type-old :find-next)
-            (point-max) payload-old)
-      (replace-match
-       (funcall
-        (get text-type-new :make-text)
-        payload-new)))))
+    (while (funcall (get text-type-old :find-next) (point-max) payload-old)
+      (replace-match (funcall (get text-type-new :make-text) payload-new)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; TODO: generalize atomics
 
-(defun skroad--link-at (pos)
-  "Get the payload of the link found at the given POS, or nil if none."
+(defun skroad--atomic-at (pos)
+  "Get the payload of the atomic found at the given POS, or nil if none."
   (get-text-property pos 'data))
 
-(defun skroad--link-at-prev (pos)
-  "Determine whether there is a link at the position prior to POS."
-  (and (> pos (point-min)) (skroad--link-at (1- pos))))
+(defun skroad--atomic-at-prev (pos)
+  "Determine whether there is an atomic at the position prior to POS."
+  (and (> pos (point-min)) (skroad--atomic-at (1- pos))))
 
 (defun skroad--atomic-start (pos)
-  "Return the position at which the text type segment at POS starts."
+  "Return the position at which the atomic segment at POS starts."
   (or (previous-single-property-change (1+ pos) 'id)
       (point-min)))
 
 (defun skroad--atomic-end (pos)
-  "Return the position at which the text type segment at POS ends."
+  "Return the position at which the atomic segment at POS ends."
   (or (next-single-property-change pos 'id)
       (point-max)))
 
@@ -260,9 +255,9 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 ;;   "Determine whether POS is on text of the given TEXT-TYPE."
 ;;   (eq (get-text-property pos 'category) text-type))
 
-(defmacro skroad--with-link-at-point (&rest body)
+(defmacro skroad--with-atomic-at-point (&rest body)
   "Evaluate BODY with link bound to the link under the point."
-  `(let ((link (skroad--link-at (point))))
+  `(let ((link (skroad--atomic-at (point))))
      (when link
        ,@body)))
 
@@ -271,7 +266,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (interactive)
   (let ((p (point)))
     (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
-          ((skroad--link-at-prev p) (delete-region (skroad--atomic-start (1- p)) p))
+          ((skroad--atomic-at-prev p) (delete-region (skroad--atomic-start (1- p)) p))
           (t (delete-char -1)))))
 
 (defun skroad--cmd-jump-to-next-link ()
@@ -381,7 +376,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (let* ((p (point))
          (start (skroad--atomic-start p))
          (end (skroad--atomic-end p))
-         (text (skroad--link-at p)))
+         (text (skroad--atomic-at p)))
     (save-mark-and-excursion
       (goto-char start)
       (delete-region start end)
@@ -391,7 +386,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--link-mouseover (window buf position)
   "User is mousing over a link in WINDOW, BUF, at POSITION."
   (with-current-buffer buf
-    (skroad--link-at position)))
+    (skroad--atomic-at position)))
 
 (skroad--define-text-type
  'skroad-node-link
@@ -405,7 +400,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--live-link-to-dead ()
   "Transform all live links with payload LINK to dead links."
   (interactive)
-  (skroad--with-link-at-point
+  (skroad--with-atomic-at-point
    (skroad--text-type-replace-all 'skroad-live link 'skroad-dead link)))
 
 (defun skroad--browse-skroad-link (data)
@@ -437,7 +432,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--dead-link-to-live ()
   "Transform all dead links with payload LINK to live links."
   (interactive)
-  (skroad--with-link-at-point
+  (skroad--with-atomic-at-point
    (skroad--text-type-replace-all 'skroad-dead link 'skroad-live link)))
 
 (skroad--define-text-type
@@ -459,7 +454,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--comment-url ()
   "Debuttonize the URL at point by inserting a space after the prefix."
   (interactive)
-  (skroad--with-link-at-point
+  (skroad--with-atomic-at-point
    (save-mark-and-excursion
      (goto-char (skroad--atomic-start (point)))
      (search-forward "//" (skroad--atomic-end (point)))
@@ -669,10 +664,10 @@ it to finalize all pending changes when no further ones are expected."
 the text under the point, or both, may have changed."
   (let* ((p (point)))
     ;; If there is a link under the point, we may have to bounce the point:
-    (when (skroad--link-at p)
+    (when (skroad--atomic-at p)
       ;; Moved into link from outside of it, or tried to move left inside it:
-      (cond ((or (not (eq (skroad--link-at p)
-                          (skroad--link-at skroad--prev-point)))
+      (cond ((or (not (eq (skroad--atomic-at p)
+                          (skroad--atomic-at skroad--prev-point)))
                  (< p skroad--prev-point))
              ;; Go to start of link.
              (goto-char (skroad--atomic-start p)))
@@ -694,7 +689,7 @@ the text under the point, or both, may have changed."
   
   ;; Point may have moved. Enable selector iff on top of a link:
   (let ((p (point)))
-    (if (and (skroad--link-at p)
+    (if (and (skroad--atomic-at p)
              (not (skroad--region-selection-active-p)))
         (skroad--selector-activate
          (skroad--atomic-start p) (skroad--atomic-end p))
@@ -722,7 +717,7 @@ the text under the point, or both, may have changed."
   (skroad--selector-deactivate)
   (let ((m (mark)))
     ;; When mark is set in a link, set mark to link end and alt-mark to start:
-    (when (skroad--link-at m)
+    (when (skroad--atomic-at m)
       (set-mark (skroad--atomic-end m))
       (setq-local skroad--alt-mark (skroad--atomic-start m))
       (message "mark adjusted")
@@ -738,7 +733,7 @@ the text under the point, or both, may have changed."
 (defun skroad--find-word-boundary (pos limit)
   "Function for use in `find-word-boundary-function-table'."
   (save-mark-and-excursion
-    (let ((link (skroad--link-at pos))
+    (let ((link (skroad--atomic-at pos))
           (fwd (<= pos limit)))
       (cond ((and link fwd) (goto-char (skroad--atomic-end pos)))
             (link (goto-char (skroad--atomic-start pos)))
