@@ -165,8 +165,8 @@ call the action with ARGS."
         (let* ((make-text
                 (lambda (payload)
                   (concat start-delim payload end-delim)))
-               (start-regex (regexp-quote start-delim))
-               (end-regex (regexp-quote end-delim))
+               (start-regex (concat (regexp-quote start-delim) "\s*"))
+               (end-regex (concat "\s*" (regexp-quote end-delim)))
                (make-regex
                 (lambda (&optional payload)
                   (concat start-regex
@@ -389,7 +389,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :doc "Fundamental type for skroad node links (live or dead)."
  :supertype 'skroad-link
  :help-echo 'skroad--link-mouseover
- :payload-regex "\s*\\([^][\n\t\s]+[^][\n\t]*?\\)\s*"
+ :payload-regex "\\([^][\n\t\s]+[^][\n\t]*?\\)"
  :keymap (define-keymap
            "t" #'skroad--link-to-plain-text))
 
