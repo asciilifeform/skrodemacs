@@ -525,15 +525,15 @@ appropriate. If `INIT-SCAN` is t, run a text type's `init-action` rather than
 `create-action` for newly-created entries."
   (maphash
    #'(lambda (pending-item delta) ;; pending-item and change delta in pending
-       (let* ((count (or (gethash pending-item index) 0)) ;; copies in index
-              (create (zerop count)) ;; t if index did not contain this item
-              (total (+ count delta)) ;; copies of item in index + delta
-              (destroy (zerop total)) ;; t if change will destroy all copies
+       (let* ((prior (or (gethash pending-item index) 0)) ;; copies in index
+              (create (zerop prior)) ;; t if index did not contain this item
+              (count (+ prior delta)) ;; copies of item in index + delta
+              (destroy (zerop count)) ;; t if change will destroy all copies
               (action ;; text type action to invoke, if any. nil if none.
                (cond (create (if init-scan 'init-action 'create-action))
                      (destroy ;; remove from index if last copy was destroyed
                       (remhash pending-item index) 'destroy-action))))
-         (unless destroy (puthash pending-item total index)) ;; update total
+         (unless destroy (puthash pending-item count index)) ;; update count
          (let ((text-type (car pending-item)) (payload (cdr pending-item)))
            (skroad--call-text-type-action-if-defined ;; invoke action, if any
             text-type
@@ -553,11 +553,10 @@ it to finalize all pending changes when no further ones are expected."
         (while (funcall (get text-type :find-next) end) ;; find every match
           (let* ((payload (match-string-no-properties 1)) ;; item payload
                  (key (cons text-type payload)) ;; key for changes table
-                 (count (or (gethash key changes) 0)) ;; current count of item
-                 (total (+ count delta))) ;; updated count of this item
-            (if (zerop total) ;; if both added and removed after last update...
+                 (count (+ delta (or (gethash key changes) 0)))) ;; old + delta
+            (if (zerop count) ;; if both added and removed after last update...
                 (remhash key changes) ;; ...discard item from changes table.
-              (puthash key total changes)))))))) ;; otherwise update the count.
+              (puthash key count changes)))))))) ;; otherwise update the count.
 
 (defvar-local skroad--index nil "Text type index for current buffer.")
 (defvar-local skroad--changes nil "Pending changes for current buffer.")
