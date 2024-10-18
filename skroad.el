@@ -159,7 +159,7 @@ call the action with ARGS."
     (when (get name 'displayed)
       (skroad--with-sym-props name
         (start-delim payload-regex end-delim
-                     title indexed decorative face link)
+                     title indexed decorative face atomic)
         (unless payload-regex
           (error "A displayed text type must define payload-regex!"))
         (let* ((make-text
@@ -184,7 +184,7 @@ call the action with ARGS."
                 (cond (decorative
                        (lambda (start end)
                          (add-face-text-property start end face t)))
-                      (link
+                      (atomic
                        (lambda (start end)
                          (set-text-properties
                           start end
@@ -320,6 +320,23 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
     (goto-char (skroad--tt-start (point)))
     (insert " ")))
 
+(skroad--define-text-type
+ 'skroad-atomic
+ :doc "Selected, clicked, killed, etc. as units. Point enters only first pos."
+ :atomic t
+ :keymap
+ (define-keymap
+   "SPC" #'skroad--link-insert-space
+   "<remap> <self-insert-command>" #'ignore
+   "<deletechar>" (skroad--make-link-region-cmd delete-region)
+   "<backspace>" (skroad--make-link-region-cmd delete-region)
+   "<drag-mouse-1>" #'ignore "<drag-mouse-2>" #'ignore "<drag-mouse-3>" #'ignore
+   "<down-mouse-1>" #'ignore "<down-mouse-2>" #'ignore "<down-mouse-3>" #'ignore
+   "<mouse-1>" #'ignore "<mouse-2>" #'ignore "<mouse-3>" #'ignore
+   "<remap> <kill-region>" (skroad--make-link-region-cmd kill-region)
+   "<remap> <kill-ring-save>" (skroad--make-link-region-cmd kill-ring-save)
+   ))
+
 (defun skroad--do-link-action (pos)
   "Perform the action attribute of the link at POS, if one was defined."
   (skroad--call-text-type-action-if-defined
@@ -342,27 +359,12 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-link
  :doc "Fundamental type from which all skroad links are derived."
- :link t
+ :supertype 'skroad-atomic
  :face 'link
  :mouse-face 'highlight
  :keymap (define-keymap
-           "SPC" #'skroad--link-insert-space
-           "<remap> <self-insert-command>" #'ignore
-           "<deletechar>" (skroad--make-link-region-cmd delete-region)
-           "<backspace>" (skroad--make-link-region-cmd delete-region)
-           "<drag-mouse-1>" #'ignore
-           "<drag-mouse-2>" #'ignore
-           "<drag-mouse-3>" #'ignore
            "<down-mouse-1>" #'skroad--cmd-left-click-link
-           "<down-mouse-2>" #'ignore
-           "<down-mouse-3>" #'ignore
-           "<mouse-1>" #'ignore
-           "<mouse-2>" #'ignore
-           "<mouse-3>" #'ignore
-           "RET" #'skroad--cmd-enter-link
-           "<remap> <kill-region>" (skroad--make-link-region-cmd kill-region)
-           "<remap> <kill-ring-save>" (skroad--make-link-region-cmd kill-ring-save)
-           ))
+           "RET" #'skroad--cmd-enter-link))
 
 (defun skroad--link-to-plain-text ()
   "Delinkify the link under the point to plain text by removing delimiters."
@@ -735,7 +737,7 @@ the text under the point, or both, may have changed."
     tab)
   "Assigned to `find-word-boundary-function-table' in skroad mode.")
 
-(defun skroad--font-lock-turn-on ()
+(defun skroad--init-font-lock ()
   "Enable font-lock for skroad mode."
   (let ((keywords nil))
     (dolist (type skroad--displayed-text-types)
@@ -744,7 +746,7 @@ the text under the point, or both, may have changed."
 
 (defun skroad--open-node ()
   "Open a skroad node."
-  (skroad--font-lock-turn-on)
+  (skroad--init-font-lock)
   (font-lock-ensure)
   (skroad--init-local-index)
   )
