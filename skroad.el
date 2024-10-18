@@ -246,12 +246,12 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Determine whether there is a link at the position prior to POS."
   (and (> pos (point-min)) (skroad--link-at (1- pos))))
 
-(defun skroad--tt-start (pos)
+(defun skroad--atomic-start (pos)
   "Return the position at which the text type segment at POS starts."
   (or (previous-single-property-change (1+ pos) 'id)
       (point-min)))
 
-(defun skroad--tt-end (pos)
+(defun skroad--atomic-end (pos)
   "Return the position at which the text type segment at POS ends."
   (or (next-single-property-change pos 'id)
       (point-max)))
@@ -271,7 +271,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (interactive)
   (let ((p (point)))
     (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
-          ((skroad--link-at-prev p) (delete-region (skroad--tt-start (1- p)) p))
+          ((skroad--link-at-prev p) (delete-region (skroad--atomic-start (1- p)) p))
           (t (delete-char -1)))))
 
 (defun skroad--cmd-jump-to-next-link ()
@@ -303,11 +303,13 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   '(category face id data)
   "Properties added by font-lock that must be removed when unfontifying.")
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun skroad--cmd-atomics-prepend-space ()
   "Insert a space immediately behind the atomic currently under the point."
   (interactive)
   (save-mark-and-excursion
-    (goto-char (skroad--tt-start (point)))
+    (goto-char (skroad--atomic-start (point)))
     (insert " ")))
 
 (defmacro skroad--define-atomics-region-cmd (wrap-command)
@@ -318,8 +320,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
      (apply #',wrap-command
             (if (use-region-p)
                 (list (region-beginning) (region-end))
-              (list (skroad--tt-start (point))
-                    (skroad--tt-end (point)))))))
+              (list (skroad--atomic-start (point))
+                    (skroad--atomic-end (point)))))))
 
 (skroad--define-atomics-region-cmd delete-region)
 (skroad--define-atomics-region-cmd kill-region)
@@ -341,6 +343,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
    "<remap> <kill-region>" #'skroad--cmd-atomics-kill-region
    "<remap> <kill-ring-save>" #'skroad--cmd-atomics-kill-ring-save
    ))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--do-link-action (pos)
   "Perform the action attribute of the link at POS, if one was defined."
@@ -375,8 +379,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Delinkify the link under the point to plain text by removing delimiters."
   (interactive)
   (let* ((p (point))
-         (start (skroad--tt-start p))
-         (end (skroad--tt-end p))
+         (start (skroad--atomic-start p))
+         (end (skroad--atomic-end p))
          (text (skroad--link-at p)))
     (save-mark-and-excursion
       (goto-char start)
@@ -450,13 +454,15 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :keymap (define-keymap
            "l" #'skroad--dead-link-to-live))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun skroad--comment-url ()
   "Debuttonize the URL at point by inserting a space after the prefix."
   (interactive)
   (skroad--with-link-at-point
    (save-mark-and-excursion
-     (goto-char (skroad--tt-start (point)))
-     (search-forward "//" (skroad--tt-end (point)))
+     (goto-char (skroad--atomic-start (point)))
+     (search-forward "//" (skroad--atomic-end (point)))
      (insert " "))))
 
 (skroad--define-text-type
@@ -471,6 +477,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :keymap (define-keymap
            "t" #'skroad--comment-url
            "l" #'skroad--comment-url))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--title-init (text-type payload)
   (message (format "Title init: type=%s payload='%s'" text-type payload)))
@@ -496,6 +504,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :payload-regex "\\([^\n]+\\)"
  :keymap (define-keymap
            "RET" #'ignore))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (skroad--define-text-type
  'skroad-italic
@@ -665,11 +675,11 @@ the text under the point, or both, may have changed."
                           (skroad--link-at skroad--prev-point)))
                  (< p skroad--prev-point))
              ;; Go to start of link.
-             (goto-char (skroad--tt-start p)))
+             (goto-char (skroad--atomic-start p)))
             ;; If tried to move right from anywhere:
             ((> p skroad--prev-point)
              ;; Go to end of link.
-             (goto-char (skroad--tt-end p))))))
+             (goto-char (skroad--atomic-end p))))))
 
   ;; If a region is active, point may not cross title boundary:
   (let* ((was-in-title (skroad--pos-in-title-p skroad--prev-point))
@@ -687,7 +697,7 @@ the text under the point, or both, may have changed."
     (if (and (skroad--link-at p)
              (not (skroad--region-selection-active-p)))
         (skroad--selector-activate
-         (skroad--tt-start p) (skroad--tt-end p))
+         (skroad--atomic-start p) (skroad--atomic-end p))
       (skroad--selector-deactivate))))
 
 (defun skroad--adjust-mark-if-present ()
@@ -713,8 +723,8 @@ the text under the point, or both, may have changed."
   (let ((m (mark)))
     ;; When mark is set in a link, set mark to link end and alt-mark to start:
     (when (skroad--link-at m)
-      (set-mark (skroad--tt-end m))
-      (setq-local skroad--alt-mark (skroad--tt-start m))
+      (set-mark (skroad--atomic-end m))
+      (setq-local skroad--alt-mark (skroad--atomic-start m))
       (message "mark adjusted")
       )))
 
@@ -730,8 +740,8 @@ the text under the point, or both, may have changed."
   (save-mark-and-excursion
     (let ((link (skroad--link-at pos))
           (fwd (<= pos limit)))
-      (cond ((and link fwd) (goto-char (skroad--tt-end pos)))
-            (link (goto-char (skroad--tt-start pos)))
+      (cond ((and link fwd) (goto-char (skroad--atomic-end pos)))
+            (link (goto-char (skroad--atomic-start pos)))
             (fwd (forward-word-strictly))
             (t (backward-word-strictly)))
       (point))))
