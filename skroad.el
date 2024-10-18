@@ -547,7 +547,7 @@ updating the hash table CHANGES, and `skroad--index-update` must be called on
 it to finalize all pending changes when no further ones are expected."
   (let ((delta (cond ((eq op :remove) -1) ((eq op :add) 1)
                      (t (error "OP must be :remove or :add !")))))
-    (dolist (text-type skroad--indexed-text-types) ;; do for each indexed type
+    (dolist (text-type skroad--indexed-text-types) ;; try all indexed types
       (save-mark-and-excursion
         (goto-char start)
         (while (funcall (get text-type :find-next) end) ;; find every match
