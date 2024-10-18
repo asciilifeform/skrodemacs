@@ -524,17 +524,17 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 appropriate. If `INIT-SCAN` is t, run a text type's `init-action` rather than
 `create-action` for newly-created entries."
   (maphash
-   #'(lambda (pending-item delta) ;; pending-item and change delta in pending
-       (let* ((prior (or (gethash pending-item index) 0)) ;; copies in index
+   #'(lambda (key delta) ;; key and count delta in pending changes table
+       (let* ((prior (or (gethash key index) 0)) ;; copies in index prior
               (create (zerop prior)) ;; t if index did not contain this item
               (count (+ prior delta)) ;; copies of item in index + delta
               (destroy (zerop count)) ;; t if change will destroy all copies
               (action ;; text type action to invoke, if any. nil if none.
                (cond (create (if init-scan 'init-action 'create-action))
                      (destroy ;; remove from index if last copy was destroyed
-                      (remhash pending-item index) 'destroy-action))))
-         (unless destroy (puthash pending-item count index)) ;; update count
-         (let ((text-type (car pending-item)) (payload (cdr pending-item)))
+                      (remhash key index) 'destroy-action))))
+         (unless destroy (puthash key count index)) ;; update count
+         (let ((text-type (car key)) (payload (cdr key)))
            (skroad--call-text-type-action-if-defined ;; invoke action, if any
             text-type
             action text-type payload))))
