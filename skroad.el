@@ -554,7 +554,7 @@ it to finalize all pending changes when no further ones are expected."
           (let* ((payload (match-string-no-properties 1)) ;; item payload
                  (key (cons text-type payload)) ;; key for changes table
                  (count (+ delta (or (gethash key changes) 0)))) ;; old + delta
-            (if (zerop count) ;; if both added and removed after last update...
+            (if (zerop count) ;; if both added and removed since last update...
                 (remhash key changes) ;; ...discard item from changes table.
               (puthash key count changes)))))))) ;; otherwise update the count.
 
