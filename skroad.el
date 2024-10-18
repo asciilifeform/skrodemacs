@@ -558,7 +558,7 @@ it to finalize all pending changes when no further ones are expected."
               (puthash key count changes)))))))) ;; otherwise update the count.
 
 (defvar-local skroad--index nil "Text type index for current buffer.")
-(defvar-local skroad--changes nil "Pending changes for current buffer.")
+(defvar-local skroad--changes nil "Pending index changes for current buffer.")
 
 (defun skroad--init-local-index ()
   "Create the buffer-local indices and populate them from current buffer."
