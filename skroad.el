@@ -552,7 +552,7 @@ it to finalize all pending changes when no further ones are expected."
         (while (funcall (get text-type :find-next) end) ;; got match in region
           (let* ((payload (match-string-no-properties 1)) ;; item payload
                  (key (cons text-type payload)) ;; key for changes table
-                 (count (+ delta (or (gethash key changes) 0)))) ;; old + delta
+                 (count (+ delta (or (gethash key changes) 0)))) ;; inc or dec
             (if (zerop count) ;; if both added and removed since last update...
                 (remhash key changes) ;; ...discard item from changes table.
               (puthash key count changes)))))))) ;; otherwise update the count.
