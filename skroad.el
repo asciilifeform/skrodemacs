@@ -253,7 +253,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 ;;   "Determine whether POS is on text of the given TEXT-TYPE."
 ;;   (eq (get-text-property pos 'category) text-type))
 
-(defmacro skroad--with-atomic-at-point (&rest body)
+(defmacro skroad--with-link-at-point (&rest body)
   "Evaluate BODY with link bound to the link under the point."
   `(let ((link (skroad--atomic-at (point))))
      (when link
@@ -398,7 +398,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--live-link-to-dead ()
   "Transform all live links with payload LINK to dead links."
   (interactive)
-  (skroad--with-atomic-at-point
+  (skroad--with-link-at-point
    (skroad--text-type-replace-all 'skroad-live link 'skroad-dead link)))
 
 (defun skroad--browse-skroad-link (data)
@@ -430,7 +430,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--dead-link-to-live ()
   "Transform all dead links with payload LINK to live links."
   (interactive)
-  (skroad--with-atomic-at-point
+  (skroad--with-link-at-point
    (skroad--text-type-replace-all 'skroad-dead link 'skroad-live link)))
 
 (skroad--define-text-type
@@ -452,7 +452,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--comment-url ()
   "Debuttonize the URL at point by inserting a space after the prefix."
   (interactive)
-  (skroad--with-atomic-at-point
+  (skroad--with-link-at-point
    (save-mark-and-excursion
      (goto-char (skroad--id-start (point)))
      (search-forward "//" (skroad--id-end (point)))
@@ -657,8 +657,7 @@ it to finalize all pending changes when no further ones are expected."
 
 ;; !!!!TODO: prev-point may be above point-max!!!
 (defun skroad--update-selector ()
-  "Update the selector, because the point,
-the text under the point, or both, may have changed."
+  "Update selector, because point, text under it, or both, may have changed."
   (let* ((p (point)))
     ;; If there is a link under the point, we may have to bounce the point:
     (when (skroad--atomic-at p)
