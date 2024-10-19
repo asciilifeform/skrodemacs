@@ -167,7 +167,6 @@ call the action with ARGS."
                   (concat start-delim payload end-delim)))
                (start-regex (concat (regexp-quote start-delim) "\s*"))
                (end-regex (concat "\s*" (regexp-quote end-delim)))
-               
                (make-regex
                 (lambda (&optional payload)
                   (concat start-regex
@@ -240,12 +239,12 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Determine whether there is an atomic at the position prior to POS."
   (and (> pos (point-min)) (skroad--atomic-at (1- pos))))
 
-(defun skroad--atomic-start (pos)
+(defun skroad--id-start (pos)
   "Return the position at which the atomic segment at POS starts."
   (or (previous-single-property-change (1+ pos) 'id)
       (point-min)))
 
-(defun skroad--atomic-end (pos)
+(defun skroad--id-end (pos)
   "Return the position at which the atomic segment at POS ends."
   (or (next-single-property-change pos 'id)
       (point-max)))
@@ -265,7 +264,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (interactive)
   (let ((p (point)))
     (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
-          ((skroad--atomic-at-prev p) (delete-region (skroad--atomic-start (1- p)) p))
+          ((skroad--atomic-at-prev p) (delete-region (skroad--id-start (1- p)) p))
           (t (delete-char -1)))))
 
 (defun skroad--cmd-jump-to-next-link ()
@@ -303,7 +302,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Insert a space immediately behind the atomic currently under the point."
   (interactive)
   (save-mark-and-excursion
-    (goto-char (skroad--atomic-start (point)))
+    (goto-char (skroad--id-start (point)))
     (insert " ")))
 
 (defmacro skroad--define-atomics-region-cmd (wrap-command)
@@ -314,8 +313,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
      (apply #',wrap-command
             (if (use-region-p)
                 (list (region-beginning) (region-end))
-              (list (skroad--atomic-start (point))
-                    (skroad--atomic-end (point)))))))
+              (list (skroad--id-start (point))
+                    (skroad--id-end (point)))))))
 
 (skroad--define-atomics-region-cmd delete-region)
 (skroad--define-atomics-region-cmd kill-region)
@@ -373,8 +372,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Delinkify the link under the point to plain text by removing delimiters."
   (interactive)
   (let* ((p (point))
-         (start (skroad--atomic-start p))
-         (end (skroad--atomic-end p))
+         (start (skroad--id-start p))
+         (end (skroad--id-end p))
          (text (skroad--atomic-at p)))
     (save-mark-and-excursion
       (goto-char start)
@@ -455,8 +454,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (interactive)
   (skroad--with-atomic-at-point
    (save-mark-and-excursion
-     (goto-char (skroad--atomic-start (point)))
-     (search-forward "//" (skroad--atomic-end (point)))
+     (goto-char (skroad--id-start (point)))
+     (search-forward "//" (skroad--id-end (point)))
      (insert " "))))
 
 (skroad--define-text-type
@@ -668,11 +667,11 @@ the text under the point, or both, may have changed."
                           (skroad--atomic-at skroad--prev-point)))
                  (< p skroad--prev-point))
              ;; Go to start of link.
-             (goto-char (skroad--atomic-start p)))
+             (goto-char (skroad--id-start p)))
             ;; If tried to move right from anywhere:
             ((> p skroad--prev-point)
              ;; Go to end of link.
-             (goto-char (skroad--atomic-end p))))))
+             (goto-char (skroad--id-end p))))))
 
   ;; If a region is active, point may not cross title boundary:
   (let* ((was-in-title (skroad--pos-in-title-p skroad--prev-point))
@@ -690,7 +689,7 @@ the text under the point, or both, may have changed."
     (if (and (skroad--atomic-at p)
              (not (skroad--region-selection-active-p)))
         (skroad--selector-activate
-         (skroad--atomic-start p) (skroad--atomic-end p))
+         (skroad--id-start p) (skroad--id-end p))
       (skroad--selector-deactivate))))
 
 (defun skroad--adjust-mark-if-present ()
@@ -716,8 +715,8 @@ the text under the point, or both, may have changed."
   (let ((m (mark)))
     ;; When mark is set in a link, set mark to link end and alt-mark to start:
     (when (skroad--atomic-at m)
-      (set-mark (skroad--atomic-end m))
-      (setq-local skroad--alt-mark (skroad--atomic-start m))
+      (set-mark (skroad--id-end m))
+      (setq-local skroad--alt-mark (skroad--id-start m))
       (message "mark adjusted")
       )))
 
@@ -733,8 +732,8 @@ the text under the point, or both, may have changed."
   (save-mark-and-excursion
     (let ((atomic (skroad--atomic-at pos))
           (fwd (<= pos limit)))
-      (cond ((and atomic fwd) (goto-char (skroad--atomic-end pos)))
-            (atomic (goto-char (skroad--atomic-start pos)))
+      (cond ((and atomic fwd) (goto-char (skroad--id-end pos)))
+            (atomic (goto-char (skroad--id-start pos)))
             (fwd (forward-word-strictly))
             (t (backward-word-strictly)))
       (point))))
