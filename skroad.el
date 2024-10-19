@@ -167,6 +167,7 @@ call the action with ARGS."
                   (concat start-delim payload end-delim)))
                (start-regex (concat (regexp-quote start-delim) "\s*"))
                (end-regex (concat "\s*" (regexp-quote end-delim)))
+               
                (make-regex
                 (lambda (&optional payload)
                   (concat start-regex
@@ -230,8 +231,6 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
       (replace-match (funcall (get text-type-new :make-text) payload-new)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; TODO: generalize atomics
 
 (defun skroad--atomic-at (pos)
   "Get the payload of the atomic found at the given POS, or nil if none."
@@ -465,6 +464,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :doc "URL."
  :supertype 'skroad-link
  :displayed t
+ :indexed t
  :help-echo "External link."
  :payload-regex
  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\t\s]+\\)"
@@ -526,8 +526,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :decorative t
  :displayed t
  :face '(:weight bold :height 1.2 :inverse-video t)
- :start-delim "" :end-delim "\n"
- :payload-regex "^##\\([^#\n]+\\)")
+ :start-delim "##" :end-delim "##"
+ :payload-regex "\\([^#\n\t\s]+[^#\n\t]*?\\)")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -552,22 +552,20 @@ appropriate. If `INIT-SCAN` is t, run a text type's `init-action` rather than
    pending)
   t)
 
-(defun skroad--index-scan-region (changes start end op)
-  "Apply OP (must be :add or :remove) to each indexed item found in START..END,
+(defun skroad--index-scan-region (changes start end delta)
+  "Apply DELTA (must be 1 or -1) to each indexed item found in START..END,
 updating the hash table CHANGES, and `skroad--index-update` must be called on
 it to finalize all pending changes when no further ones are expected."
-  (let ((delta (cond ((eq op :remove) -1) ((eq op :add) 1)
-                     (t (error "OP must be :remove or :add !")))))
-    (dolist (text-type skroad--indexed-text-types) ;; try all indexed types
-      (save-mark-and-excursion
-        (goto-char start)
-        (while (funcall (get text-type :find-next) end) ;; got match in region
-          (let* ((payload (match-string-no-properties 1)) ;; item payload
-                 (key (cons text-type payload)) ;; key for changes table
-                 (count (+ delta (or (gethash key changes) 0)))) ;; inc or dec
-            (if (zerop count) ;; if both added and removed since last update...
-                (remhash key changes) ;; ...discard item from changes table.
-              (puthash key count changes)))))))) ;; otherwise update the count.
+  (dolist (text-type skroad--indexed-text-types) ;; try all indexed types
+    (save-mark-and-excursion
+      (goto-char start)
+      (while (funcall (get text-type :find-next) end) ;; got match in region
+        (let* ((payload (match-string-no-properties 1)) ;; item payload
+               (key (cons text-type payload)) ;; key for changes table
+               (count (+ delta (or (gethash key changes) 0)))) ;; inc or dec
+          (if (zerop count) ;; if both added and removed since last update...
+              (remhash key changes) ;; ...discard item from changes table.
+            (puthash key count changes))))))) ;; otherwise update the count.
 
 (defvar-local skroad--index nil "Text type index for current buffer.")
 (defvar-local skroad--changes nil "Pending index changes for current buffer.")
@@ -579,7 +577,7 @@ it to finalize all pending changes when no further ones are expected."
   (setq skroad--index (make-hash-table :test 'equal))
   ;; Populate while dispatching `init-action`s
   (let ((init-populate (make-hash-table :test 'equal)))
-    (skroad--index-scan-region init-populate (point-min) (point-max) :add)
+    (skroad--index-scan-region init-populate (point-min) (point-max) 1)
     (skroad--index-update skroad--index init-populate t)))
 
 (defun skroad--update-local-index ()
@@ -594,13 +592,13 @@ it to finalize all pending changes when no further ones are expected."
     (setq skroad--changes (make-hash-table :test 'equal)))
   (skroad--with-whole-lines start end
     (skroad--index-scan-region
-     skroad--changes start-expanded end-expanded :remove)))
+     skroad--changes start-expanded end-expanded -1)))
 
 (defun skroad--after-change-function (start end length)
   "Triggers following a change in a skroad buffer in region START...END."
   (skroad--with-whole-lines start end
     (skroad--index-scan-region
-     skroad--changes start-expanded end-expanded :add)))
+     skroad--changes start-expanded end-expanded 1)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -733,10 +731,10 @@ the text under the point, or both, may have changed."
 (defun skroad--find-word-boundary (pos limit)
   "Function for use in `find-word-boundary-function-table'."
   (save-mark-and-excursion
-    (let ((link (skroad--atomic-at pos))
+    (let ((atomic (skroad--atomic-at pos))
           (fwd (<= pos limit)))
-      (cond ((and link fwd) (goto-char (skroad--atomic-end pos)))
-            (link (goto-char (skroad--atomic-start pos)))
+      (cond ((and atomic fwd) (goto-char (skroad--atomic-end pos)))
+            (atomic (goto-char (skroad--atomic-start pos)))
             (fwd (forward-word-strictly))
             (t (backward-word-strictly)))
       (point))))
