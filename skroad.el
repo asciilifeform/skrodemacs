@@ -328,13 +328,13 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (skroad--define-atomics-region-cmd kill-ring-save)
 
 (defun skroad--atomic-entered (pos-from pos-to)
-  (message (format "Point entered atomic: from=%s to='%s'" pos-to pos-from)))
+  (message (format "Point entered atomic: from=%s to=%s" pos-to pos-from)))
 
 (defun skroad--atomic-left (pos-from pos-to)
-  (message (format "Point left atomic: from=%s to='%s'" pos-to pos-from)))
+  (message (format "Point left atomic: from=%s to=%s" pos-to pos-from)))
 
 (defun skroad--atomic-moved (pos-from pos-to)
-  (message (format "Point moved in atomic: from=%s to='%s'" pos-to pos-from)))
+  (message (format "Point moved in atomic: from=%s to=%s" pos-to pos-from)))
 
 (skroad--define-text-type
  'skroad-atomic
@@ -503,10 +503,10 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (message (format "Title destroy: type=%s payload='%s'" text-type payload)))
 
 (defun skroad--title-entered (pos-from pos-to)
-  (message (format "Point entered title: from=%s to='%s'" pos-to pos-from)))
+  (message (format "Point entered title: from=%s to=%s" pos-to pos-from)))
 
 (defun skroad--title-left (pos-from pos-to)
-  (message (format "Point left title: from=%s to='%s'" pos-to pos-from)))
+  (message (format "Point left title: from=%s to=%s" pos-to pos-from)))
 
 (skroad--define-text-type
  'skroad-node-title
