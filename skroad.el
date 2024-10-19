@@ -77,8 +77,7 @@ differs from its value at POS (or point, if POS not given); nil if not found."
                   (and newval (not (eq oldval newval)))))))
       (if r (prop-match-beginning r)))))
 
-(defun skroad--call-text-type-action-if-defined
-    (text-type action-name &rest args)
+(defun skroad--text-type-action (text-type action-name &rest args)
   "If ACTION-NAME is not nil, and TEXT-TYPE has a defined action of that name,
 call the action with ARGS."
   (when action-name
@@ -239,6 +238,10 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Determine whether there is an atomic at the position prior to POS."
   (and (> pos (point-min)) (skroad--atomic-at (1- pos))))
 
+(defun skroad--type-at (pos)
+  "Determine text type, if any, at position POS."
+  (get-text-property pos 'category))
+
 (defun skroad--zone-at (&optional pos)
   "Return the zone ID at POS (or point)."
   (get-text-property (or pos (point)) 'id))
@@ -324,10 +327,22 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (skroad--define-atomics-region-cmd kill-region)
 (skroad--define-atomics-region-cmd kill-ring-save)
 
+(defun skroad--atomic-entered (pos-from pos-to)
+  (message (format "Point entered atomic: from=%s to='%s'" pos-to pos-from)))
+
+(defun skroad--atomic-left (pos-from pos-to)
+  (message (format "Point left atomic: from=%s to='%s'" pos-to pos-from)))
+
+(defun skroad--atomic-moved (pos-from pos-to)
+  (message (format "Point moved in atomic: from=%s to='%s'" pos-to pos-from)))
+
 (skroad--define-text-type
  'skroad-atomic
  :doc "Selected, clicked, killed, etc. as units. Point enters only first pos."
  :atomic t
+ :point-enter #'skroad--atomic-entered
+ :point-leave #'skroad--atomic-left
+ :point-move #'skroad--atomic-moved
  :keymap
  (define-keymap
    "SPC" #'skroad--cmd-atomics-prepend-space
@@ -345,7 +360,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 (defun skroad--do-link-action (pos)
   "Perform the action attribute of the link at POS, if one was defined."
-  (skroad--call-text-type-action-if-defined
+  (skroad--text-type-action
    (get-text-property pos 'category)
    'link-action
    (get-text-property pos 'data)))
@@ -487,6 +502,12 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--title-destroy (text-type payload)
   (message (format "Title destroy: type=%s payload='%s'" text-type payload)))
 
+(defun skroad--title-entered (pos-from pos-to)
+  (message (format "Point entered title: from=%s to='%s'" pos-to pos-from)))
+
+(defun skroad--title-left (pos-from pos-to)
+  (message (format "Point left title: from=%s to='%s'" pos-to pos-from)))
+
 (skroad--define-text-type
  'skroad-node-title
  :doc "Node title."
@@ -496,6 +517,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :init-action #'skroad--title-init
  :create-action #'skroad--title-create
  :destroy-action #'skroad--title-destroy
+ :point-enter #'skroad--title-entered
+ :point-leave #'skroad--title-left
  :face '(:weight bold :foreground "purple"
                  :height 1.5 :inverse-video t :extend t)
  :start-delim "" :end-delim "\n"
@@ -549,7 +572,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `init-action` rather than
                      (destroy (remhash key index) 'destroy-action))))
          (unless destroy (puthash key count index)) ;; update index if remains
          (let ((text-type (car key)) (payload (cdr key))) ;; args for action
-           (skroad--call-text-type-action-if-defined ;; invoke action, if any
+           (skroad--text-type-action ;; invoke action, if any
             text-type
             action text-type payload))))
    pending)
@@ -608,34 +631,33 @@ it to finalize all pending changes when no further ones are expected."
 ;; TODO: zone
 
 (defvar-local skroad--prev-point (point-min) "Point before a command.")
-(defvar-local skroad--prev-zone nil "Zone before a command.")
+(defvar-local skroad--prev-props nil "Properties at prev point.")
 
-(defun skroad--point-has-moved ()
+(defun skroad--point-has-moved (from-pos to-pos)
   "To be called whenever the point is known to have moved."
-  (let ((from-zone skroad--prev-zone) (to-zone (skroad--zone-at)))
+  (let* ((from-zone (plist-get skroad--prev-props 'id))
+         (to-zone (skroad--zone-at to-pos))
+         (from-type (plist-get skroad--prev-props 'category))
+         (to-type (get-text-property to-pos 'category)))
     (cond
-     ((not (or from-zone to-zone)) nil) ;; Moved, but outside of any zones
-     ((eq from-zone to-zone) ;; Moved while remaining inside the same zone
-      (message "moved inside zone"))
-     ((and from-zone to-zone) ;; Moved out of a zone and into another zone
-      (message "moved b/w zones"))
-     (from-zone ;; Left a zone but has not entered any other zone
-      (message "moved out of zone"))
-     (to-zone ;; Was not in any zone before, but has now entered one
-      (message "moved into zone")))
-    )
-  )
+     ((not (eq from-zone to-zone)) ;; point has moved to a different zone:
+      (when from-zone ;; point was previously in a zone, but has left it
+        (skroad--text-type-action from-type 'point-leave from-pos to-pos))
+      (when to-zone ;; point is now inside a zone
+        (skroad--text-type-action to-type 'point-enter from-pos to-pos)))
+     (to-zone ;; point has moved, but remains in the same zone as before:
+      (skroad--text-type-action to-type 'point-move from-pos to-pos)))))
 
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
   (setq-local skroad--prev-point (point))
-  (setq-local skroad--prev-zone (skroad--zone-at)))
+  (setq-local skroad--prev-props (text-properties-at (point))))
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
   (font-lock-ensure)
-  (when (not (eq skroad--prev-point (point))) ;; Point moved?
-    (skroad--point-has-moved))
+  (when (not (eq skroad--prev-point (point))) ;; Point has moved
+    (skroad--point-has-moved skroad--prev-point (point)))
   (skroad--update-local-index) ;; TODO: do it in save hook?
   (skroad--update-selector)
   (skroad--adjust-mark-if-present)
