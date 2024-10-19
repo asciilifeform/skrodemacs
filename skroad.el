@@ -239,13 +239,17 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Determine whether there is an atomic at the position prior to POS."
   (and (> pos (point-min)) (skroad--atomic-at (1- pos))))
 
-(defun skroad--id-start (pos)
-  "Return the position at which the atomic segment at POS starts."
+(defun skroad--zone-at (&optional pos)
+  "Return the zone ID at POS (or point)."
+  (get-text-property (or pos (point)) 'id))
+
+(defun skroad--zone-start (pos)
+  "Return the position at which the zone at POS starts."
   (or (previous-single-property-change (1+ pos) 'id)
       (point-min)))
 
-(defun skroad--id-end (pos)
-  "Return the position at which the atomic segment at POS ends."
+(defun skroad--zone-end (pos)
+  "Return the position at which the zone at POS ends."
   (or (next-single-property-change pos 'id)
       (point-max)))
 
@@ -264,7 +268,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (interactive)
   (let ((p (point)))
     (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
-          ((skroad--atomic-at-prev p) (delete-region (skroad--id-start (1- p)) p))
+          ((skroad--atomic-at-prev p) (delete-region (skroad--zone-start (1- p)) p))
           (t (delete-char -1)))))
 
 (defun skroad--cmd-jump-to-next-link ()
@@ -302,7 +306,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Insert a space immediately behind the atomic currently under the point."
   (interactive)
   (save-mark-and-excursion
-    (goto-char (skroad--id-start (point)))
+    (goto-char (skroad--zone-start (point)))
     (insert " ")))
 
 (defmacro skroad--define-atomics-region-cmd (wrap-command)
@@ -313,8 +317,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
      (apply #',wrap-command
             (if (use-region-p)
                 (list (region-beginning) (region-end))
-              (list (skroad--id-start (point))
-                    (skroad--id-end (point)))))))
+              (list (skroad--zone-start (point))
+                    (skroad--zone-end (point)))))))
 
 (skroad--define-atomics-region-cmd delete-region)
 (skroad--define-atomics-region-cmd kill-region)
@@ -372,8 +376,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Delinkify the link under the point to plain text by removing delimiters."
   (interactive)
   (let* ((p (point))
-         (start (skroad--id-start p))
-         (end (skroad--id-end p))
+         (start (skroad--zone-start p))
+         (end (skroad--zone-end p))
          (text (skroad--atomic-at p)))
     (save-mark-and-excursion
       (goto-char start)
@@ -454,8 +458,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (interactive)
   (skroad--with-link-at-point
    (save-mark-and-excursion
-     (goto-char (skroad--id-start (point)))
-     (search-forward "//" (skroad--id-end (point)))
+     (goto-char (skroad--zone-start (point)))
+     (search-forward "//" (skroad--zone-end (point)))
      (insert " "))))
 
 (skroad--define-text-type
@@ -601,16 +605,37 @@ it to finalize all pending changes when no further ones are expected."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar-local skroad--prev-point (point-min)
-  "Point prior to the current command.")
+;; TODO: zone
+
+(defvar-local skroad--prev-point (point-min) "Point before a command.")
+(defvar-local skroad--prev-zone nil "Zone before a command.")
+
+(defun skroad--point-has-moved ()
+  "To be called whenever the point is known to have moved."
+  (let ((from-zone skroad--prev-zone) (to-zone (skroad--zone-at)))
+    (cond
+     ((not (or from-zone to-zone)) nil) ;; Moved, but outside of any zones
+     ((eq from-zone to-zone) ;; Moved while remaining inside the same zone
+      (message "moved inside zone"))
+     ((and from-zone to-zone) ;; Moved out of a zone and into another zone
+      (message "moved b/w zones"))
+     (from-zone ;; Left a zone but has not entered any other zone
+      (message "moved out of zone"))
+     (to-zone ;; Was not in any zone before, but has now entered one
+      (message "moved into zone")))
+    )
+  )
 
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
-  (setq-local skroad--prev-point (point)))
+  (setq-local skroad--prev-point (point))
+  (setq-local skroad--prev-zone (skroad--zone-at)))
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
   (font-lock-ensure)
+  (when (not (eq skroad--prev-point (point))) ;; Point moved?
+    (skroad--point-has-moved))
   (skroad--update-local-index) ;; TODO: do it in save hook?
   (skroad--update-selector)
   (skroad--adjust-mark-if-present)
@@ -666,11 +691,11 @@ it to finalize all pending changes when no further ones are expected."
                           (skroad--atomic-at skroad--prev-point)))
                  (< p skroad--prev-point))
              ;; Go to start of link.
-             (goto-char (skroad--id-start p)))
+             (goto-char (skroad--zone-start p)))
             ;; If tried to move right from anywhere:
             ((> p skroad--prev-point)
              ;; Go to end of link.
-             (goto-char (skroad--id-end p))))))
+             (goto-char (skroad--zone-end p))))))
 
   ;; If a region is active, point may not cross title boundary:
   (let* ((was-in-title (skroad--pos-in-title-p skroad--prev-point))
@@ -688,7 +713,7 @@ it to finalize all pending changes when no further ones are expected."
     (if (and (skroad--atomic-at p)
              (not (skroad--region-selection-active-p)))
         (skroad--selector-activate
-         (skroad--id-start p) (skroad--id-end p))
+         (skroad--zone-start p) (skroad--zone-end p))
       (skroad--selector-deactivate))))
 
 (defun skroad--adjust-mark-if-present ()
@@ -714,8 +739,8 @@ it to finalize all pending changes when no further ones are expected."
   (let ((m (mark)))
     ;; When mark is set in a link, set mark to link end and alt-mark to start:
     (when (skroad--atomic-at m)
-      (set-mark (skroad--id-end m))
-      (setq-local skroad--alt-mark (skroad--id-start m))
+      (set-mark (skroad--zone-end m))
+      (setq-local skroad--alt-mark (skroad--zone-start m))
       (message "mark adjusted")
       )))
 
@@ -731,8 +756,8 @@ it to finalize all pending changes when no further ones are expected."
   (save-mark-and-excursion
     (let ((atomic (skroad--atomic-at pos))
           (fwd (<= pos limit)))
-      (cond ((and atomic fwd) (goto-char (skroad--id-end pos)))
-            (atomic (goto-char (skroad--id-start pos)))
+      (cond ((and atomic fwd) (goto-char (skroad--zone-end pos)))
+            (atomic (goto-char (skroad--zone-start pos)))
             (fwd (forward-word-strictly))
             (t (backward-word-strictly)))
       (point))))
