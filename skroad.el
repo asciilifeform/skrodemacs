@@ -628,10 +628,15 @@ it to finalize all pending changes when no further ones are expected."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: zone
+;; TODO: point mover which saves prev and then calls point-has-moved
 
 (defvar-local skroad--prev-point (point-min) "Point before a command.")
 (defvar-local skroad--prev-props nil "Properties at prev point.")
+
+(defun skroad--point-may-move ()
+  "To be called prior to a planned permanent motion of the point."
+  (setq-local skroad--prev-point (point))
+  (setq-local skroad--prev-props (text-properties-at (point))))
 
 (defun skroad--point-has-moved (from-pos to-pos)
   "To be called whenever the point is known to have moved."
@@ -648,16 +653,19 @@ it to finalize all pending changes when no further ones are expected."
      (to-zone ;; point has moved, but remains in the same zone as before:
       (skroad--text-type-action to-type 'point-move from-pos to-pos)))))
 
+(defun skroad--point-may-have-moved ()
+  "To be called whenever the point may have permanently moved."
+  (when (not (eq skroad--prev-point (point))) ;; Has point moved?
+    (skroad--point-has-moved skroad--prev-point (point))))
+
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
-  (setq-local skroad--prev-point (point))
-  (setq-local skroad--prev-props (text-properties-at (point))))
+  (skroad--point-may-move))
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
   (font-lock-ensure)
-  (when (not (eq skroad--prev-point (point))) ;; Point has moved
-    (skroad--point-has-moved skroad--prev-point (point)))
+  (skroad--point-may-have-moved)
   (skroad--update-local-index) ;; TODO: do it in save hook?
   (skroad--update-selector)
   (skroad--adjust-mark-if-present)
