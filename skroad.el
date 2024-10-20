@@ -362,8 +362,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--atomic-enter (pos-from pos-to)
   (goto-char (skroad--zone-start))
   (when (not (skroad--region-selection-active-p))
-    (skroad--selector-activate
-     (skroad--zone-start) (skroad--zone-end)))
+    (skroad--selector-activate (skroad--zone-start) (skroad--zone-end)))
   ;; (message (format "Point enter atomic: from=%s to=%s" pos-to pos-from))
   )
 
@@ -563,6 +562,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--title-destroy (text-type payload)
   (message (format "Title destroy: type=%s payload='%s'" text-type payload)))
 
+;; TODO: proper moves, in case stop point is in a zone
+
 (defun skroad--title-enter (&rest args)
   (when (skroad--region-selection-active-p) ;; If a region is active...
     (goto-char (point-min)) ;; ... prohibit moving into title.
@@ -695,8 +696,6 @@ it to finalize all pending changes when no further ones are expected."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: point mover which saves prev and then calls point-has-moved
-
 (defvar-local skroad--prev-point (point-min) "Point before a command.")
 (defvar-local skroad--prev-props nil "Properties at prev point.")
 
@@ -784,6 +783,8 @@ it to finalize all pending changes when no further ones are expected."
   ;; (skroad--update-selector)
   (setq-local mouse-highlight t)
   )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--find-word-boundary (pos limit)
   "Function for use in `find-word-boundary-function-table'."
