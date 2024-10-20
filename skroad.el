@@ -379,23 +379,6 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   ;; (message (format "Point moved in atomic: from=%s to=%s" pos-to pos-from))
   )
 
-;; (defun skroad--update-selector ()
-;;   "Update selector, because point, text under it, or both, may have changed."
-;;   (let* ((p (point)))
-;;     ;; If there is a link under the point, we may have to bounce the point:
-;;     (when (skroad--atomic-at p)
-;;       ;; Moved into link from outside of it, or tried to move left inside it:
-;;       (cond ((or (not (eq (skroad--atomic-at p)
-;;                           (skroad--atomic-at skroad--prev-point)))
-;;                  (< p skroad--prev-point))
-;;              ;; Go to start of link.
-;;              (goto-char (skroad--zone-start p)))
-;;             ;; If tried to move right from anywhere:
-;;             ((> p skroad--prev-point)
-;;              ;; Go to end of link.
-;;              (goto-char (skroad--zone-end p))))))
-;;   )
-
 (skroad--define-text-type
  'skroad-atomic
  :doc "Selected, clicked, killed, etc. as units. Point enters only first pos."
@@ -711,7 +694,7 @@ it to finalize all pending changes when no further ones are expected."
          (from-type (plist-get skroad--prev-props 'category))
          (to-type (get-text-property to-pos 'category)))
     (cond ;; text type actions `point-leave` and `point-enter` may both fire
-     ((not (eq from-zone to-zone)) ;; point has moved to and/or from a zone:
+     ((not (eq from-zone to-zone)) ;; point has moved from and/or to a zone:
       (when from-zone ;; point was previously in `from-zone`, but has left it
         (skroad--text-type-action from-type 'point-leave from-pos to-pos))
       (when to-zone ;; point has entered `to-zone`, distinct from `from-zone`
