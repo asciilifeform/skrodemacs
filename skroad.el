@@ -413,17 +413,19 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
       (goto-char end)
       (call-interactively 'set-mark-command))))
 
+(defun skroad--atomic-renderer (this)
+  "Font lock rendering for atomics."
+  (set-text-properties
+   (match-beginning 0) (match-end 0)
+   (list 'category this
+         'id (gensym)
+         'face (get this 'face)
+         'data (match-string-no-properties 1))))
+
 (skroad--define-text-type
  'skroad-atomic
  :doc "Selected, clicked, killed, etc. as units. Point enters only first pos."
- :renderer
- #'(lambda (this)
-     (set-text-properties
-      (match-beginning 0) (match-end 0)
-      (list 'category this
-            'id (gensym)
-            'face (get this 'face)
-            'data (match-string-no-properties 1))))
+ :renderer #'skroad--atomic-renderer
  :point-enter #'skroad--atomic-enter
  :point-leave #'skroad--atomic-leave
  :point-move #'skroad--atomic-move
@@ -600,17 +602,19 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
     (goto-char (line-end-position))) ;; ... prohibit moving out of title.
   )
 
+(defun skroad--title-renderer (this)
+  "Font lock rendering for title."
+  (set-text-properties
+   (match-beginning 0) (match-end 0)
+   (list 'category this
+         'id (gensym)
+         'face (get this 'face))))
+
 (skroad--define-text-type
  'skroad-node-title
  :doc "Node title."
  :title t
- :renderer
- #'(lambda (this)
-     (set-text-properties
-      (match-beginning 0) (match-end 0)
-      (list 'category this
-            'id (gensym)
-            'face (get this 'face))))
+ :renderer #'skroad--title-renderer
  :displayed t
  :indexed t
  :init-action #'skroad--title-init
@@ -627,13 +631,15 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun skroad--decor-renderer (this)
+  "Font lock rendering for decorations."
+  (add-face-text-property
+   (match-beginning 0) (match-end 0) (get this 'face) t))
+
 (skroad--define-text-type
  'skroad-decor
  :doc "Fundamental type for skroad text decorations."
- :renderer
-  #'(lambda (this)
-      (add-face-text-property
-       (match-beginning 0) (match-end 0) (get this 'face) t)))
+ :renderer #'skroad--decor-renderer)
 
 (skroad--define-text-type
  'skroad-decor-italic
