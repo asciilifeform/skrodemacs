@@ -43,6 +43,10 @@ as (foo (get NAME foo)) etc., and evaluate BODY."
         (push (cons key value) alist)))
     (reverse alist)))
 
+;; (defun skroad--eval-with-alist (alist sexpr)
+;;   "Evaluate SEXPR with ALIST as let bindings."
+;;   (eval sexpr alist))
+
 (defun skroad--get-start-of-line (pos)
   "Get the position of the start of the line on which POS resides."
   (save-mark-and-excursion
@@ -137,8 +141,8 @@ call the action with ARGS."
 (put 'default-skroad-text 'start-delim "")
 (put 'default-skroad-text 'end-delim "")
 
-;; Must define renderers:
-(put 'default-skroad-text 'renderer '(error "Renderer must be defined!"))
+;; Eggogs for undefined-by-default text type properties:
+(put 'default-skroad-text 'renderer '(error "renderer not defined for type!"))
 
 (defvar skroad--displayed-text-types nil "Text types for use with font-lock.")
 (defvar skroad--indexed-text-types nil "Text types that are indexed.")
@@ -166,11 +170,16 @@ call the action with ARGS."
     (unless (get name 'supertype)
       (put name 'supertype 'default-skroad-text))
 
-    ;; Save the type name
+    ;; Save the type name so that renderer evals can see it
     (put name 'this name)
     
     ;; Generate certain properties for displayed and indexed types:
     (when (get name 'displayed)
+
+      ;; (let* ((start-regex (regexp-quote start-delim))
+      ;;        (end-regex (regexp-quote end-delim)))
+      ;;   )
+      
       (skroad--with-sym-props name
         (start-delim payload-regex end-delim title indexed renderer)
         (unless payload-regex
@@ -189,6 +198,7 @@ call the action with ARGS."
                   (concat start-regex
                           (or payload payload-regex)
                           end-regex)))
+               
                (finder
                 (if title
                     #'skroad--find-next-title
@@ -198,12 +208,15 @@ call the action with ARGS."
                 (lambda (limit &optional payload)
                   (let ((regex (funcall make-regex payload)))
                     (funcall finder regex limit))))
+
+               (props-alist
+                (plist-to-alist (symbol-plist name)))
                
                (font-lock-matcher
                 (lambda (limit)
                   (when (funcall find-next limit)
                     (with-silent-modifications
-                      (eval renderer (plist-to-alist (symbol-plist name)))
+                      (eval renderer props-alist)
                       t))))
                
                (font-lock-rule
@@ -218,7 +231,7 @@ call the action with ARGS."
             (add-to-list 'skroad--indexed-text-types name)))))
     name))
 
-;; (symbol-plist 'skroad-decor)
+;; (symbol-plist 'skroad-decor-bold)
 ;; (plist-to-alist (symbol-plist 'skroad-decor))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
