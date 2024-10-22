@@ -34,6 +34,15 @@ as (foo (get NAME foo)) etc., and evaluate BODY."
      (progn
        ,@body)))
 
+(defun plist-to-alist (plist)
+  "Convert PLIST to an association list (alist)."
+  (let (alist)
+    (while plist
+      (let ((key (pop plist))
+            (value (pop plist)))
+        (push (cons key value) alist)))
+    (reverse alist)))
+
 (defun skroad--get-start-of-line (pos)
   "Get the position of the start of the line on which POS resides."
   (save-mark-and-excursion
@@ -128,6 +137,9 @@ call the action with ARGS."
 (put 'default-skroad-text 'start-delim "")
 (put 'default-skroad-text 'end-delim "")
 
+;; Must define renderers:
+(put 'default-skroad-text 'renderer '(error "Renderer must be defined!"))
+
 (defvar skroad--displayed-text-types nil "Text types for use with font-lock.")
 (defvar skroad--indexed-text-types nil "Text types that are indexed.")
 
@@ -154,11 +166,13 @@ call the action with ARGS."
     (unless (get name 'supertype)
       (put name 'supertype 'default-skroad-text))
 
+    ;; Save the type name
+    (put name 'this name)
+    
     ;; Generate certain properties for displayed and indexed types:
     (when (get name 'displayed)
       (skroad--with-sym-props name
-        (start-delim payload-regex end-delim
-                     title indexed decorative face atomic)
+        (start-delim payload-regex end-delim title indexed renderer)
         (unless payload-regex
           (error "A displayed text type must define payload-regex!"))
         (let* ((make-text
@@ -179,36 +193,19 @@ call the action with ARGS."
                 (if title
                     #'skroad--find-next-title
                   #'skroad--find-next-nontitle))
+
                (find-next
                 (lambda (limit &optional payload)
                   (let ((regex (funcall make-regex payload)))
                     (funcall finder regex limit))))
-               (font-lock-colorizer
-                (cond (decorative
-                       (lambda (start end)
-                         (add-face-text-property start end face t)))
-                      (atomic
-                       (lambda (start end)
-                         (set-text-properties
-                          start end
-                          (list 'category name
-                                'id (gensym)
-                                'face face
-                                'data (match-string-no-properties 1)))))
-                      (t
-                       (lambda (start end)
-                         (set-text-properties
-                          start end
-                          (list 'category name
-                                'id (gensym)
-                                'face face))))))
+               
                (font-lock-matcher
                 (lambda (limit)
                   (when (funcall find-next limit)
                     (with-silent-modifications
-                      (funcall font-lock-colorizer
-                               (match-beginning 0) (match-end 0))
+                      (eval renderer (plist-to-alist (symbol-plist name)))
                       t))))
+               
                (font-lock-rule
                 (list font-lock-matcher '(0 nil append))))
           
@@ -220,6 +217,9 @@ call the action with ARGS."
           (when indexed
             (add-to-list 'skroad--indexed-text-types name)))))
     name))
+
+;; (symbol-plist 'skroad-decor)
+;; (plist-to-alist (symbol-plist 'skroad-decor))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -408,7 +408,13 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-atomic
  :doc "Selected, clicked, killed, etc. as units. Point enters only first pos."
- :atomic t
+ :renderer
+ '(set-text-properties
+   (match-beginning 0) (match-end 0)
+   (list 'category this
+         'id (gensym)
+         'face face
+         'data (match-string-no-properties 1)))
  :point-enter #'skroad--atomic-enter
  :point-leave #'skroad--atomic-leave
  :point-move #'skroad--atomic-move
@@ -589,6 +595,12 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  'skroad-node-title
  :doc "Node title."
  :title t
+ :renderer
+ '(set-text-properties
+   (match-beginning 0) (match-end 0)
+   (list 'category this
+         'id (gensym)
+         'face face))
  :displayed t
  :indexed t
  :init-action #'skroad--title-init
@@ -606,27 +618,33 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (skroad--define-text-type
- 'skroad-italic
+ 'skroad-decor
+ :doc "Fundamental type for skroad text decorations."
+ :renderer
+ '(add-face-text-property (match-beginning 0) (match-end 0) face t))
+
+(skroad--define-text-type
+ 'skroad-decor-italic
  :doc "Italicized text."
- :decorative t
+ :supertype 'skroad-decor
  :displayed t
  :face 'italic
  :start-delim "__" :end-delim "__"
  :payload-regex "\\([^_]+\\)")
 
 (skroad--define-text-type
- 'skroad-bold
+ 'skroad-decor-bold
  :doc "Bold text."
- :decorative t
+ :supertype 'skroad-decor
  :displayed t
  :face 'bold
  :start-delim "**" :end-delim "**"
  :payload-regex "\\([^*]+\\)")
 
 (skroad--define-text-type
- 'skroad-heading
+ 'skroad-decor-heading
  :doc "Heading text."
- :decorative t
+ :supertype 'skroad-decor
  :displayed t
  :face '(:weight bold :height 1.2 :inverse-video t)
  :start-delim "##" :end-delim "##"
