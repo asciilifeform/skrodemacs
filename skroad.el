@@ -34,14 +34,14 @@ as (foo (get NAME foo)) etc., and evaluate BODY."
      (progn
        ,@body)))
 
-(defun plist-to-alist (plist)
-  "Convert PLIST to an association list (alist)."
-  (let (alist)
-    (while plist
-      (let ((key (pop plist))
-            (value (pop plist)))
-        (push (cons key value) alist)))
-    (reverse alist)))
+;; (defun plist-to-alist (plist)
+;;   "Convert PLIST to an association list (alist)."
+;;   (let (alist)
+;;     (while plist
+;;       (let ((key (pop plist))
+;;             (value (pop plist)))
+;;         (push (cons key value) alist)))
+;;     (reverse alist)))
 
 ;; (defun skroad--eval-with-alist (alist sexpr)
 ;;   "Evaluate SEXPR with ALIST as let bindings."
@@ -142,7 +142,8 @@ call the action with ARGS."
 (put 'default-skroad-text 'end-delim "")
 
 ;; Eggogs for undefined-by-default text type properties:
-(put 'default-skroad-text 'renderer '(error "renderer not defined for type!"))
+(put 'default-skroad-text 'renderer
+     #'(lambda (this) (error "renderer was not defined for %s" this)))
 
 (defvar skroad--displayed-text-types nil "Text types for use with font-lock.")
 (defvar skroad--indexed-text-types nil "Text types that are indexed.")
@@ -169,9 +170,6 @@ call the action with ARGS."
     ;; Make sure there's a `supertype' property.
     (unless (get name 'supertype)
       (put name 'supertype 'default-skroad-text))
-
-    ;; Save the type name so that renderer evals can see it
-    (put name 'this name)
     
     ;; Generate certain properties for displayed and indexed types:
     (when (get name 'displayed)
@@ -209,14 +207,11 @@ call the action with ARGS."
                   (let ((regex (funcall make-regex payload)))
                     (funcall finder regex limit))))
 
-               (props-alist
-                (plist-to-alist (symbol-plist name)))
-               
                (font-lock-matcher
                 (lambda (limit)
                   (when (funcall find-next limit)
                     (with-silent-modifications
-                      (eval renderer props-alist)
+                      (funcall renderer name)
                       t))))
                
                (font-lock-rule
@@ -422,12 +417,13 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  'skroad-atomic
  :doc "Selected, clicked, killed, etc. as units. Point enters only first pos."
  :renderer
- '(set-text-properties
-   (match-beginning 0) (match-end 0)
-   (list 'category this
-         'id (gensym)
-         'face face
-         'data (match-string-no-properties 1)))
+ #'(lambda (this)
+     (set-text-properties
+      (match-beginning 0) (match-end 0)
+      (list 'category this
+            'id (gensym)
+            'face (get this 'face)
+            'data (match-string-no-properties 1))))
  :point-enter #'skroad--atomic-enter
  :point-leave #'skroad--atomic-leave
  :point-move #'skroad--atomic-move
@@ -609,11 +605,12 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :doc "Node title."
  :title t
  :renderer
- '(set-text-properties
-   (match-beginning 0) (match-end 0)
-   (list 'category this
-         'id (gensym)
-         'face face))
+ #'(lambda (this)
+     (set-text-properties
+      (match-beginning 0) (match-end 0)
+      (list 'category this
+            'id (gensym)
+            'face (get this 'face))))
  :displayed t
  :indexed t
  :init-action #'skroad--title-init
@@ -634,7 +631,9 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  'skroad-decor
  :doc "Fundamental type for skroad text decorations."
  :renderer
- '(add-face-text-property (match-beginning 0) (match-end 0) face t))
+  #'(lambda (this)
+      (add-face-text-property
+       (match-beginning 0) (match-end 0) (get this 'face) t)))
 
 (skroad--define-text-type
  'skroad-decor-italic
