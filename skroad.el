@@ -108,23 +108,6 @@ call the action with ARGS."
     (goto-char pos)
     (skroad--point-in-title-p)))
 
-(defun skroad--find-next-nontitle (regex limit)
-  "Find next REGEX, up to LIMIT, but only outside of the title line."
-  (when (skroad--point-in-title-p)
-    (goto-char (line-beginning-position 2)))
-  (re-search-forward regex
-                     (if (< (point) limit)
-                         limit
-                       (skroad--get-end-of-line (point)))
-                     t))
-
-(defun skroad--find-next-title (regex limit)
-  "Find next REGEX, up to LIMIT, but only inside of the title line."
-  (and (skroad--point-in-title-p)
-       (re-search-forward regex
-                          (max limit (line-beginning-position 2))
-                          t)))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defface skroad--text '((t :inherit default))
@@ -179,7 +162,7 @@ call the action with ARGS."
       ;;   )
       
       (skroad--with-sym-props name
-        (start-delim payload-regex end-delim title indexed renderer)
+        (start-delim payload-regex end-delim finder indexed)
         (unless payload-regex
           (error "A displayed text type must define payload-regex!"))
         (let* ((make-text
@@ -197,29 +180,14 @@ call the action with ARGS."
                           (or payload payload-regex)
                           end-regex)))
                
-               (finder
-                (if title
-                    #'skroad--find-next-title
-                  #'skroad--find-next-nontitle))
-
                (find-next
                 (lambda (limit &optional payload)
                   (let ((regex (funcall make-regex payload)))
                     (funcall finder regex limit))))
-
-               (font-lock-matcher
-                (lambda (limit)
-                  (when (funcall find-next limit)
-                    (with-silent-modifications
-                      (funcall renderer name)
-                      t))))
-               
-               (font-lock-rule
-                (list font-lock-matcher '(0 nil append))))
+               )
           
           (put name :make-text make-text)
           (put name :find-next find-next)
-          (put name :font-lock-rule font-lock-rule)
 
           (add-to-list 'skroad--displayed-text-types name)
           (when indexed
@@ -246,10 +214,6 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--atomic-at (&optional pos)
   "Get the payload of the atomic found at the given POS, or nil if none."
   (get-text-property (or pos (point)) 'data))
-
-(defun skroad--atomic-at-prev (pos)
-  "Determine whether there is an atomic at the position prior to POS."
-  (and (> pos (point-min)) (skroad--atomic-at (1- pos))))
 
 (defun skroad--type-at (&optional pos)
   "Determine text type, if any, at position POS."
@@ -285,7 +249,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (interactive)
   (let ((p (point)))
     (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
-          ((skroad--atomic-at-prev p) (delete-region (skroad--zone-start (1- p)) p))
+          ((and (> p (point-min)) (skroad--zone-at (1- p)))
+           (delete-region (skroad--zone-start (1- p)) p))
           (t (delete-char -1)))))
 
 (defun skroad--cmd-jump-to-next-link ()
@@ -319,12 +284,32 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun skroad--find-next-nontitle (regex limit)
+  "Find next REGEX, up to LIMIT, but only outside of the title line."
+  (when (skroad--point-in-title-p)
+    (goto-char (line-beginning-position 2)))
+  (re-search-forward regex
+                     (if (< (point) limit)
+                         limit
+                       (skroad--get-end-of-line (point)))
+                     t))
+
+(skroad--define-text-type
+ 'skroad-not-title
+ :doc "Fundamental type for all text types that are not the node title."
+ :finder #'skroad--find-next-nontitle)
+
 (defun skroad--cmd-atomics-prepend-space ()
   "Insert a space immediately behind the atomic currently under the point."
   (interactive)
   (save-mark-and-excursion
     (goto-char (skroad--zone-start))
     (insert " ")))
+
+(defun skroad--deactivate-mark ()
+  "Deactivate the mark and clear the alt-mark."
+  (deactivate-mark)
+  (setq-local skroad--alt-mark nil))
 
 (defmacro skroad--define-atomics-region-cmd (wrap-command)
   "Wrap COMMAND to use region if exists, or use the atomic at point as region."
@@ -335,7 +320,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
          (call-interactively ',wrap-command)
        (skroad--with-zone (point)
          (funcall #',wrap-command start end)))
-     (deactivate-mark)))
+     (skroad--deactivate-mark)))
 
 (skroad--define-atomics-region-cmd delete-region)
 (skroad--define-atomics-region-cmd kill-region)
@@ -380,11 +365,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   ;;  (if (and mark-active (eq (mark) pos-to))
   ;;      (skroad--zone-end)
   ;;    (skroad--zone-start)))
-  
-  ;; (goto-char (skroad--zone-start))
-  (skroad--move-point (skroad--zone-start))
 
-  ;; (when (not (use-region-p)) (skroad--selector-activate))
+  (skroad--move-point (skroad--zone-start))
   (when (not mark-active) (skroad--selector-activate))
   (message (format "atomic enter from '%s' to '%s'"
                    skroad--prev-zone (skroad--zone-at pos-to)))
@@ -424,7 +406,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 (skroad--define-text-type
  'skroad-atomic
- :doc "Selected, clicked, killed, etc. as units. Point enters only first pos."
+ :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
+ :supertype 'skroad-not-title
  :renderer #'skroad--atomic-renderer
  :point-enter #'skroad--atomic-enter
  :point-leave #'skroad--atomic-leave
@@ -610,10 +593,18 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
          'id (gensym)
          'face (get this 'face))))
 
+(defun skroad--find-next-title (regex limit)
+  "Find next REGEX, up to LIMIT, but only when inside of the title line."
+  (and (skroad--point-in-title-p)
+       (re-search-forward
+        regex
+        (max limit (line-beginning-position 2))
+        t)))
+
 (skroad--define-text-type
  'skroad-node-title
  :doc "Node title."
- :title t
+ :finder #'skroad--find-next-title
  :renderer #'skroad--title-renderer
  :displayed t
  :indexed t
@@ -639,6 +630,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-decor
  :doc "Fundamental type for skroad text decorations."
+ :finder #'skroad--find-next-nontitle
  :renderer #'skroad--decor-renderer)
 
 (skroad--define-text-type
@@ -764,7 +756,6 @@ it to finalize all pending changes when no further ones are expected."
     (cond ;; text type actions `point-leave` and `point-enter` may both fire
      ((and (or pos-moved skroad--text-changed) ;; point moved or text changed
            (not (eq skroad--prev-zone zone))) ;; and point changed zones
-      (message (format "chg zone: %s" zone))
       (when skroad--prev-zone ;; point was in a zone, but has left it
         (skroad--text-type-action
          skroad--prev-type 'point-leave skroad--prev-point p))
@@ -783,25 +774,21 @@ it to finalize all pending changes when no further ones are expected."
   (skroad--zone-may-have-changed))
 
 (defun skroad--adjust-mark-if-present ()
-  (cond (mark-active
-         ;; (setq-local mouse-highlight nil)
-         (let ((m (mark)) (am skroad--alt-mark) (p (point)))
-           (when (eq p m)
-             (message "p=mark"))
+  (cond
+   (mark-active
+    (let ((m (mark)) (am skroad--alt-mark) (p (point)))
+      (when (eq p m)
+        (message "p=mark"))
 
-           (when (eq p am)
-             (message "p=altmark"))
-           
-           (when (and am (> (abs (- p am)) (abs (- p m))))
-             (set-mark am)
-             (setq-local skroad--alt-mark m)
-             (message "swapped marks!")
-             )))
-        (t
-         (message "mark disabled")
-         (setq-local skroad--alt-mark nil)
-         ;; (setq-local mouse-highlight t)
-         )))
+      (when (eq p am)
+        (message "p=altmark"))
+      
+      (when (and am (> (abs (- p am)) (abs (- p m))))
+        (set-mark am)
+        (setq-local skroad--alt-mark m)
+        (message "swapped marks!")
+        )))
+   ))
 
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
@@ -836,7 +823,7 @@ it to finalize all pending changes when no further ones are expected."
             (t (backward-word-strictly)))
       (point))))
 
-(defconst skroad-find-word-boundary-function-table
+(defconst skroad--find-word-boundary-function-table
   (let ((tab (make-char-table nil)))
     (set-char-table-range tab t #'skroad--find-word-boundary)
     tab)
@@ -844,17 +831,26 @@ it to finalize all pending changes when no further ones are expected."
 
 (defun skroad--init-font-lock ()
   "Enable font-lock for skroad mode."
-  (let ((keywords nil))
+  (let ((rules nil))
     (dolist (type skroad--displayed-text-types)
-      (push (get type :font-lock-rule) keywords))
-    (font-lock-add-keywords nil keywords t)))
+      (let ((find-next (get type :find-next))
+            (renderer (get type 'renderer)))
+        (push
+         (list
+          #'(lambda (limit)
+              (when (funcall find-next limit)
+                (with-silent-modifications
+                  (funcall renderer type)
+                  t)))
+          '(0 nil append))
+         rules)))
+    (font-lock-add-keywords nil rules t)))
 
 (defun skroad--open-node ()
   "Open a skroad node."
   (skroad--init-font-lock)
   (font-lock-ensure)
   (skroad--init-local-index)
-  ;; (setq-local mouse-highlight t)
   )
 
 (define-derived-mode skroad-mode text-mode "Skroad"
@@ -902,7 +898,7 @@ it to finalize all pending changes when no further ones are expected."
 
   ;; Handle word boundaries correctly (links are treated as unitary words) :
   (setq-local find-word-boundary-function-table
-              skroad-find-word-boundary-function-table)
+              skroad--find-word-boundary-function-table)
 
   ;; Buffer-local hooks:
   (add-hook 'skroad-mode-hook 'skroad--open-node 0 t)
