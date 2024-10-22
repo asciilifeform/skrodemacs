@@ -323,10 +323,10 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   `(defun ,(read (concat "skroad--cmd-atomics-"
                          (symbol-name wrap-command))) ()
      (interactive)
-     (apply #',wrap-command
-            (if (use-region-p)
-                (list (region-beginning) (region-end))
-              (skroad--with-zone (point) (list start end))))
+     (if (use-region-p)
+         (call-interactively ',wrap-command)
+       (skroad--with-zone (point)
+         (funcall #',wrap-command start end)))
      (deactivate-mark)))
 
 (skroad--define-atomics-region-cmd delete-region)
@@ -396,14 +396,14 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (message (format "atomic move: %s" (skroad--zone-at)))
   )
 
-(defun skroad--cmd-atomics-set-mark (arg)
+(defun skroad--cmd-atomics-set-mark ()
   "Set the mark inside an atomic."
-  (interactive "P")
+  (interactive)
   (save-excursion
     (skroad--with-zone (point)
       (setq-local skroad--alt-mark start)
       (goto-char end)
-      (set-mark-command arg))))
+      (call-interactively 'set-mark-command))))
 
 (skroad--define-text-type
  'skroad-atomic
@@ -429,11 +429,12 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--do-link-action (pos)
-  "Perform the action attribute of the link at POS, if one was defined."
-  (skroad--text-type-action
-   (get-text-property pos 'category)
-   'link-action
-   (get-text-property pos 'data)))
+  "Run action of link at POS, if one was defined, and no region is active."
+  (unless (use-region-p)
+    (skroad--text-type-action
+     (get-text-property pos 'category)
+     'link-action
+     (get-text-property pos 'data))))
 
 (defun skroad--cmd-left-click-link (click)
   "Perform the action attribute of the link that got the CLICK."
@@ -747,7 +748,7 @@ it to finalize all pending changes when no further ones are expected."
 
 (defun skroad--adjust-mark-if-present ()
   (cond (mark-active
-         (setq-local mouse-highlight nil)
+         ;; (setq-local mouse-highlight nil)
          (let ((m (mark)) (am skroad--alt-mark) (p (point)))
            (when (eq p m)
              (message "p=mark"))
@@ -763,11 +764,12 @@ it to finalize all pending changes when no further ones are expected."
         (t
          (message "mark disabled")
          (setq-local skroad--alt-mark nil)
-         (setq-local mouse-highlight t)
+         ;; (setq-local mouse-highlight t)
          )))
 
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
+  (setq-local mouse-highlight nil)
   (skroad--point-save))
 
 (defun skroad--post-command-hook ()
@@ -777,7 +779,7 @@ it to finalize all pending changes when no further ones are expected."
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
   (skroad--update-local-index) ;; TODO: do it in save hook?
   (setq-local skroad--text-changed nil) ;; reset text change flag
-  )
+  (unless (use-region-p) (setq-local mouse-highlight t)))
 
 (defadvice skroad--post-command-hook (around intercept activate)
   (condition-case err
@@ -816,7 +818,7 @@ it to finalize all pending changes when no further ones are expected."
   (skroad--init-font-lock)
   (font-lock-ensure)
   (skroad--init-local-index)
-  (setq-local mouse-highlight t)
+  ;; (setq-local mouse-highlight t)
   )
 
 (define-derived-mode skroad-mode text-mode "Skroad"
