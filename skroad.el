@@ -326,7 +326,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
      (apply #',wrap-command
             (if (use-region-p)
                 (list (region-beginning) (region-end))
-              (skroad--with-zone (point) (list start end))))))
+              (skroad--with-zone (point) (list start end))))
+     (deactivate-mark)))
 
 (skroad--define-atomics-region-cmd delete-region)
 (skroad--define-atomics-region-cmd kill-region)
