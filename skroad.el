@@ -102,12 +102,7 @@ call the action with ARGS."
   :group 'skroad-faces)
 
 (defface skroad--title-face
-  '((t :foreground "purple"
-       :weight bold
-       :height 1.5
-       :inverse-video t
-       :extend t
-       ))
+  '((t :foreground "purple" :weight bold :height 1.5 :inverse-video t :extend t))
   "Face for skroad node titles."
   :group 'skroad-faces)
 
@@ -137,7 +132,7 @@ call the action with ARGS."
 ;;  (lambda (payload)
 ;;    (concat start-delim payload end-delim)))
 
-(defvar skroad--displayed-text-types nil "Text types for use with font-lock.")
+(defvar skroad--rendered-text-types nil "Text types for use with font-lock.")
 (defvar skroad--indexed-text-types nil "Text types that are indexed.")
 
 ;; TODO: multiple inheritance
@@ -165,8 +160,8 @@ call the action with ARGS."
     (unless (get name 'supertype)
       (put name 'supertype 'default-skroad-text))
     
-    ;; Generate certain properties for displayed and indexed types:
-    (when (get name 'displayed)
+    ;; Generate certain properties for rendered and indexed types:
+    (when (get name 'rendered)
 
       ;; (let* ((start-regex (regexp-quote start-delim))
       ;;        (end-regex (regexp-quote end-delim)))
@@ -175,7 +170,7 @@ call the action with ARGS."
       (skroad--with-sym-props name
         (start-delim payload-regex end-delim finder indexed)
         (unless payload-regex
-          (error "A displayed text type must define payload-regex!"))
+          (error "A rendered text type must define payload-regex!"))
         (let* ((make-text
                 (lambda (payload)
                   (concat start-delim payload end-delim)))
@@ -200,7 +195,7 @@ call the action with ARGS."
           (put name :make-text make-text)
           (put name :find-next find-next)
 
-          (add-to-list 'skroad--displayed-text-types name)
+          (add-to-list 'skroad--rendered-text-types name)
           (when indexed
             (add-to-list 'skroad--indexed-text-types name)))))
     name))
@@ -514,7 +509,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  'skroad-live
  :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
  :supertype 'skroad-node-link
- :displayed t
+ :rendered t
  :indexed t
  :on-init #'skroad--link-init
  :on-create #'skroad--link-create
@@ -534,7 +529,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  'skroad-dead
  :doc "Dead (i.e. revivable placeholder) link to a skroad node."
  :supertype 'skroad-node-link
- :displayed t
+ :rendered t
  :indexed t
  :on-init #'skroad--link-init
  :on-create #'skroad--link-create
@@ -559,7 +554,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  'skroad-url-link
  :doc "URL."
  :supertype 'skroad-link
- :displayed t
+ :rendered t
  :indexed t
  :help-echo "External link."
  :payload-regex
@@ -609,7 +604,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :doc "Node title."
  :finder #'skroad--find-next-title
  :renderer #'skroad--title-renderer
- :displayed t
+ :rendered t
  :indexed t
  :on-init #'skroad--title-init
  :on-create #'skroad--title-create
@@ -642,7 +637,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  'skroad-decor-italic
  :doc "Italicized text."
  :supertype 'skroad-decor
- :displayed t
+ :rendered t
  :face 'italic
  :start-delim "__" :end-delim "__"
  :payload-regex "\\([^_]+\\)")
@@ -651,7 +646,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  'skroad-decor-bold
  :doc "Bold text."
  :supertype 'skroad-decor
- :displayed t
+ :rendered t
  :face 'bold
  :start-delim "**" :end-delim "**"
  :payload-regex "\\([^*]+\\)")
@@ -660,7 +655,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  'skroad-decor-heading
  :doc "Heading text."
  :supertype 'skroad-decor
- :displayed t
+ :rendered t
  :face '(:weight bold :height 1.2 :inverse-video t)
  :start-delim "##" :end-delim "##"
  :payload-regex "\\([^#\n\t\s]+[^#\n\t]*?\\)")
@@ -837,7 +832,7 @@ it to finalize all pending changes when no further ones are expected."
 (defun skroad--init-font-lock ()
   "Enable font-lock for skroad mode."
   (let ((rules nil))
-    (dolist (type skroad--displayed-text-types)
+    (dolist (type skroad--rendered-text-types)
       (let ((find-next (get type :find-next))
             (renderer (get type 'renderer)))
         (push
