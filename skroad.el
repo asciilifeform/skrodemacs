@@ -147,8 +147,7 @@ differs from its value at POS (or point, if POS not given); nil if not found."
     (font-lock-add-keywords nil rules t)))
 
 (defun skroad--define-text-type (name &rest properties)
-  ;; Add properties to the symbol:
-  (skroad--do-plist
+  (skroad--do-plist ;; Add properties, including inherited, to the symbol:
     prop val (append '(:inherit skroad--default-type) properties)
     (cond
      ((eq prop :inherit) ;; Inherit properties from given parent type:
