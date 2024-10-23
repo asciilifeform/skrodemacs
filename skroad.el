@@ -66,6 +66,9 @@ differs from its value at POS (or point, if POS not given); nil if not found."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defvar skroad--floating-title-enable t
+  "Display floating title at the top of the window if title is not in view.")
+
 (defface skroad--text-face '((t :inherit default))
   "Default face used for skrode text types."
   :group 'skroad-faces)
@@ -75,6 +78,8 @@ differs from its value at POS (or point, if POS not given); nil if not found."
        :height 300 :weight bold :extend t))
   "Face for skroad node titles."
   :group 'skroad-faces)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Default properties for skroad text types.
 (put 'skroad--default-type 'face 'skroad--text-face)
@@ -775,8 +780,8 @@ it to finalize all pending changes when no further ones are expected."
 
 (defun skroad--scroll-hook (window start)
   "Triggers when a buffer scrolls."
-  (setq-local header-line-format
-              (when (> start 1) ;; Float the title if it isn't in view
+  (setq-local header-line-format ;; Float the title if it isn't in view
+              (when (and skroad--floating-title-enable (> start 1))
                 (buffer-substring (point-min)
                                   (skroad--get-end-of-line 1)))))
 
