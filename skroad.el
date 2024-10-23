@@ -22,17 +22,6 @@
            ,@body
            (setq ,l (cddr ,l)))))))
 
-(defmacro skroad--with-sym-props (sym properties &rest body)
-  "Bind each of the given SYM's PROPERTIES -- e.g. (foo bar ...)
-as (foo (get NAME foo)) etc., and evaluate BODY."
-  (declare (indent defun))
-  `(let ,(mapcar
-          #'(lambda (p)
-              (cons (read (symbol-name p)) `((get ,sym ',p))))
-          properties)
-     (progn
-       ,@body)))
-
 (defun skroad--get-start-of-line (pos)
   "Get the position of the start of the line on which POS resides."
   (save-mark-and-excursion
@@ -103,12 +92,18 @@ differs from its value at POS (or point, if POS not given); nil if not found."
       (error "%s is not defined for type %s !" fn text-type))
     (apply fn text-type args)))
 
-(defun skroad--default-type-make-text (this payload)
-  "Return a text string of THIS text type with given PAYLOAD."
-  (concat (get this 'start-delim) payload (get this 'end-delim)))
-(put 'skroad--default-type 'make-text #'skroad--default-type-make-text)
+(defmacro skroad--define-default-type-fn (name args &rest body)
+  "Define function NAME with ARGS to assign to the default text type."
+  (declare (indent defun))
+  (let ((fn (read (concat "skroad--default-type-" (symbol-name name)))))
+    `(progn
+       (defun ,fn ,args ,@body)
+       (put 'skroad--default-type ',name #',fn))))
 
-(defun skroad--default-type-make-regex (this &optional payload)
+(skroad--define-default-type-fn make-text (this payload)
+  (concat (get this 'start-delim) payload (get this 'end-delim)))
+
+(skroad--define-default-type-fn make-regex (this &optional payload)
   (let* ((start-delim (get this 'start-delim))
          (end-delim (get this 'end-delim))
          (payload-regex (or payload (get this 'payload-regex)))
@@ -116,55 +111,57 @@ differs from its value at POS (or point, if POS not given); nil if not found."
          (end-regex (concat "\s*" (regexp-quote end-delim))))
     (concat start-regex payload-regex end-regex)))
 
-(put 'skroad--default-type 'make-regex #'skroad--default-type-make-regex)
-
-(defun skroad--default-type-find-next (this limit &optional payload)
-  "Find the next instance of THIS text type in the buffer."
+(skroad--define-default-type-fn find-next (this limit &optional payload)
   (funcall (get this 'finder)
            (skroad--type-fn this 'make-regex payload)
            limit))
 
-(put 'skroad--default-type 'find-next #'skroad--default-type-find-next)
+(skroad--define-default-type-fn make-font-lock-rule (this)
+  (let ((regex (funcall (get this 'make-regex) this))
+        (find-next (get this 'finder))
+        (renderer (get this 'renderer)))
+    (list
+     #'(lambda (limit)
+         (when (funcall find-next regex limit)
+           (with-silent-modifications
+             (funcall renderer this)
+             t)))
+     '(0 nil append))))
+
+(defvar skroad--rendered-text-types nil "Text types for use with font-lock.")
+(defvar skroad--indexed-text-types nil "Text types that are indexed.")
+
+(defun skroad--init-font-lock ()
+  "Initialize font-lock rules for a skroad mode buffer."
+  (let ((rules nil))
+    (dolist (type skroad--rendered-text-types)
+      (push (skroad--type-fn type 'make-font-lock-rule) rules))
+    (font-lock-add-keywords nil rules t)))
 
 (defun skroad--define-text-type (name &rest properties)
   ;; Add properties to the symbol:
   (skroad--do-plist prop val properties
     (cond
-     ((eq prop :inherit)
+     ((eq prop :inherit) ;; Inherit all properties from given parent type
       (skroad--do-plist parent-prop parent-val (symbol-plist val)
-        (unless (keywordp parent-prop)
-          (put name parent-prop parent-val))))
-     ((eq prop :register) (add-to-list val name))
-     ((eq prop :keymap)
+        (put name parent-prop parent-val)))
+     ((and (eq prop :rendered) val) ;; Use this type with font-lock?
+      (add-to-list 'skroad--rendered-text-types name))
+     ((and (eq prop :indexed) val) ;; Use this type with indexer?
+      (add-to-list 'skroad--indexed-text-types name))
+     ((eq prop :keymap) ;; If given a keymap:
       (let ((parent-keymap (get name 'keymap)))
-        (when parent-keymap
+        (when parent-keymap ;; stack on parent keymaps, if they exist
           (set-keymap-parent val parent-keymap))
         (put name 'keymap val)))
-     (t (put name (skroad--keyword-to-symbol prop) val))))
+     (t (put name (skroad--keyword-to-symbol prop) val)))) ;; simply save it
   name)
-
-(defvar skroad--rendered-text-types nil "Text types for use with font-lock.")
-(defvar skroad--indexed-text-types nil "Text types that are indexed.")
 
 (defun skroad--type-action (text-type action-name &rest args)
   "If ACTION-NAME is not nil, and TEXT-TYPE has a defined action of that name,
 call the action with ARGS."
   (when action-name (let ((action (get text-type action-name)))
                       (when action (apply action args)))))
-
-
-
-;; (skroad--define-text-type
-;;  'skroad-rendered
-;;  :doc "Mixin for all text types that are rendered by font-lock."
-;;  ;; :catalog 'skroad--rendered-text-types
-;;  )
-
-;; (symbol-plist 'skroad-node-title)
-
-;; (symbol-plist 'skroad-live)
-;; (symbol-plist 'skroad-decor-bold)
-;; (plist-to-alist (symbol-plist 'skroad-decor))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -482,8 +479,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :start-delim "[[" :end-delim "]]"
  :keymap (define-keymap
            "l" #'skroad--live-link-to-dead)
- :register 'skroad--rendered-text-types
- :register 'skroad--indexed-text-types)
+ :rendered t
+ :indexed t)
 
 (defun skroad--dead-link-to-live ()
   "Transform all dead links with payload LINK to live links."
@@ -502,8 +499,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :face '(:inherit link :foreground "red")
  :keymap (define-keymap
            "l" #'skroad--dead-link-to-live)
- :register 'skroad--rendered-text-types
- :register 'skroad--indexed-text-types)
+ :rendered t
+ :indexed t)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -527,8 +524,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :keymap (define-keymap
            "t" #'skroad--comment-url
            "l" #'skroad--comment-url)
- :register 'skroad--rendered-text-types
- :register 'skroad--indexed-text-types)
+ :rendered t
+ :indexed t)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -581,8 +578,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :payload-regex "\\([^\n]+\\)"
  :keymap (define-keymap
            "RET" #'ignore)
- :register 'skroad--rendered-text-types
- :register 'skroad--indexed-text-types)
+ :rendered t
+ :indexed t)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -608,7 +605,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :face 'italic
  :start-delim "__" :end-delim "__"
  :payload-regex "\\([^_]+\\)"
- :register 'skroad--rendered-text-types)
+ :rendered t)
 
 (skroad--define-text-type
  'skroad-decor-bold
@@ -617,7 +614,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :face 'bold
  :start-delim "**" :end-delim "**"
  :payload-regex "\\([^*]+\\)"
- :register 'skroad--rendered-text-types)
+ :rendered t)
 
 (skroad--define-text-type
  'skroad-decor-heading
@@ -626,7 +623,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :face '(:weight bold :height 1.2 :inverse-video t)
  :start-delim "##" :end-delim "##"
  :payload-regex "\\([^#\n\t\s]+[^#\n\t]*?\\)"
- :register 'skroad--rendered-text-types)
+ :rendered t)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -791,42 +788,6 @@ it to finalize all pending changes when no further ones are expected."
     (set-char-table-range tab t #'skroad--find-word-boundary)
     tab)
   "Assigned to `find-word-boundary-function-table' in skroad mode.")
-
-;; (defun skroad--init-font-lock ()
-;;   "Enable font-lock for skroad mode."
-;;   (let ((rules nil))
-;;     (dolist (type skroad--rendered-text-types)
-;;       (let ((find-next (get type :find-next))
-;;             (renderer (get type 'renderer)))
-;;         (push
-;;          (list
-;;           #'(lambda (limit)
-;;               (when (funcall find-next limit)
-;;                 (with-silent-modifications
-;;                   (funcall renderer type)
-;;                   t)))
-;;           '(0 nil append))
-;;          rules)))
-;;     (font-lock-add-keywords nil rules t)))
-
-(defun skroad--init-font-lock ()
-  "Enable font-lock for skroad mode."
-  (let ((rules nil))
-    (dolist (type skroad--rendered-text-types)
-      (let ((regex (funcall (get type 'make-regex) type))
-            (find-next (get type 'finder))
-            (renderer (get type 'renderer)))
-        (push
-         (list
-          #'(lambda (limit)
-              (when (funcall find-next regex limit)
-                (with-silent-modifications
-                  (funcall renderer type)
-                  t)))
-          '(0 nil append))
-         rules)))
-    (font-lock-add-keywords nil rules t)))
-
 
 (defun skroad--open-node ()
   "Open a skroad node."
