@@ -71,7 +71,8 @@ differs from its value at POS (or point, if POS not given); nil if not found."
   :group 'skroad-faces)
 
 (defface skroad--title-face
-  '((t :foreground "purple" :weight bold :height 1.5 :inverse-video t :extend t))
+  '((t :foreground "purple" :background "green"
+       :height 300 :weight bold :extend t))
   "Face for skroad node titles."
   :group 'skroad-faces)
 
@@ -162,6 +163,8 @@ differs from its value at POS (or point, if POS not given); nil if not found."
 call the action with ARGS."
   (when action-name (let ((action (get text-type action-name)))
                       (when action (apply action args)))))
+
+;; (symbol-plist 'skroad-live)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -529,11 +532,17 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defvar-local skroad--current-node-title "")
+
 (defun skroad--title-init (text-type payload)
-  (message (format "Title init: type=%s payload='%s'" text-type payload)))
+  (message (format "Title init: type=%s payload='%s'" text-type payload))
+  (setq-local skroad--current-node-title payload)
+  )
 
 (defun skroad--title-create (text-type payload)
-  (message (format "Title create: type=%s payload='%s'" text-type payload)))
+  (message (format "Title create: type=%s payload='%s'" text-type payload))
+  (setq-local skroad--current-node-title payload)
+  )
 
 (defun skroad--title-destroy (text-type payload)
   (message (format "Title destroy: type=%s payload='%s'" text-type payload)))
@@ -764,6 +773,13 @@ it to finalize all pending changes when no further ones are expected."
   (setq-local skroad--text-changed nil)
   (unless (use-region-p) (setq-local mouse-highlight t)))
 
+(defun skroad--scroll-hook (window start)
+  "Triggers when a buffer scrolls."
+  (setq-local header-line-format
+              (when (> start 1)
+                (buffer-substring (point-min)
+                                  (skroad--get-end-of-line 1)))))
+
 (defadvice skroad--post-command-hook (around intercept activate)
   (condition-case err
       ad-do-it
@@ -794,6 +810,7 @@ it to finalize all pending changes when no further ones are expected."
   (skroad--init-font-lock)
   (font-lock-ensure)
   (skroad--init-local-index)
+  (face-remap-set-base 'header-line 'skroad--title-face)
   )
 
 (define-derived-mode skroad-mode text-mode "Skroad"
@@ -827,7 +844,8 @@ it to finalize all pending changes when no further ones are expected."
   (add-hook 'after-change-functions 'skroad--after-change-function nil t)
   (add-hook 'pre-command-hook 'skroad--pre-command-hook nil t)
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
-
+  (add-hook 'window-scroll-functions 'skroad--scroll-hook nil t)
+  
   ;; Overlay for when a link is under the point. Initially inactive:
   (setq-local skroad--selector (make-overlay (point-min) (point-min)))
   (skroad--selector-deactivate)
