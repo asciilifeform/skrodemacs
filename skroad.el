@@ -238,7 +238,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (or (next-single-property-change (or pos (point)) 'id) (point-max)))
 
 (defmacro skroad--with-zone (pos &rest body)
-  "Evaluate BODY with start and end bound to boundaries of region at POS."
+  "Evaluate BODY with start and end bound to boundaries of zone at POS."
   (declare (indent defun))
   `(let ((start (skroad--zone-start ,pos))
          (end (skroad--zone-end ,pos)))
