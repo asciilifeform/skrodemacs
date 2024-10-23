@@ -85,16 +85,6 @@ call the action with ARGS."
       (when action
         (apply action args)))))
 
-(defun skroad--point-in-title-p ()
-  "Returns t if point is in the first line of the buffer, otherwise nil."
-  (eq (line-beginning-position) (point-min)))
-
-(defun skroad--pos-in-title-p (pos)
-  "Returns t if POS is in the first line of the buffer, otherwise nil."
-  (save-mark-and-excursion
-    (goto-char pos)
-    (skroad--point-in-title-p)))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defface skroad--text-face '((t :inherit default))
@@ -288,6 +278,10 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Properties added by font-lock that must be removed when unfontifying.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun skroad--point-in-title-p ()
+  "Returns t if point is in the first line of the buffer, otherwise nil."
+  (eq (line-beginning-position) (point-min)))
 
 (defun skroad--find-next-nontitle (regex limit)
   "Find next REGEX, up to LIMIT, but only outside of the title line."
