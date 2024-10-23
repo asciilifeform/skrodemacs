@@ -436,9 +436,9 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Run action of link at POS, if one was defined, and no region is active."
   (unless (use-region-p)
     (skroad--text-type-action
-     (get-text-property pos 'category)
+     (skroad--type-at pos)
      'on-activate
-     (get-text-property pos 'data))))
+     (skroad--atomic-at pos))))
 
 (defun skroad--cmd-left-click-link (click)
   "Perform the action attribute of the link that got the CLICK."
