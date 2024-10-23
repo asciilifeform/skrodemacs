@@ -28,8 +28,7 @@ as (foo (get NAME foo)) etc., and evaluate BODY."
   (declare (indent defun))
   `(let ,(mapcar
           #'(lambda (p)
-              (cons (read (symbol-name p))
-                    `((get ,sym ',p))))
+              (cons (read (symbol-name p)) `((get ,sym ',p))))
           properties)
      (progn
        ,@body)))
@@ -66,8 +65,7 @@ as (foo (get NAME foo)) etc., and evaluate BODY."
   "Find the next/previous (DIRECTION) position where PROP is not nil and
 differs from its value at POS (or point, if POS not given); nil if not found."
   (save-mark-and-excursion
-    (when pos
-      (goto-char pos))
+    (when pos (goto-char pos))
     (let ((r (funcall
               (cond ((eq direction :forward) #'text-property-search-forward)
                     ((eq direction :backward) #'text-property-search-backward)
@@ -80,10 +78,8 @@ differs from its value at POS (or point, if POS not given); nil if not found."
 (defun skroad--type-action (text-type action-name &rest args)
   "If ACTION-NAME is not nil, and TEXT-TYPE has a defined action of that name,
 call the action with ARGS."
-  (when action-name
-    (let ((action (get text-type action-name)))
-      (when action
-        (apply action args)))))
+  (when action-name (let ((action (get text-type action-name)))
+                      (when action (apply action args)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -185,6 +181,8 @@ call the action with ARGS."
           (put name :make-text make-text)
           (put name :find-next find-next)
 
+          (put name 'make-regex make-regex)
+          
           (add-to-list 'skroad--rendered-text-types name)
           (when indexed
             (add-to-list 'skroad--indexed-text-types name)))))
@@ -816,22 +814,41 @@ it to finalize all pending changes when no further ones are expected."
     tab)
   "Assigned to `find-word-boundary-function-table' in skroad mode.")
 
+;; (defun skroad--init-font-lock ()
+;;   "Enable font-lock for skroad mode."
+;;   (let ((rules nil))
+;;     (dolist (type skroad--rendered-text-types)
+;;       (let ((find-next (get type :find-next))
+;;             (renderer (get type 'renderer)))
+;;         (push
+;;          (list
+;;           #'(lambda (limit)
+;;               (when (funcall find-next limit)
+;;                 (with-silent-modifications
+;;                   (funcall renderer type)
+;;                   t)))
+;;           '(0 nil append))
+;;          rules)))
+;;     (font-lock-add-keywords nil rules t)))
+
 (defun skroad--init-font-lock ()
   "Enable font-lock for skroad mode."
   (let ((rules nil))
     (dolist (type skroad--rendered-text-types)
-      (let ((find-next (get type :find-next))
+      (let ((regex (funcall (get type 'make-regex)))
+            (find-next (get type 'finder))
             (renderer (get type 'renderer)))
         (push
          (list
           #'(lambda (limit)
-              (when (funcall find-next limit)
+              (when (funcall find-next regex limit)
                 (with-silent-modifications
                   (funcall renderer type)
                   t)))
           '(0 nil append))
          rules)))
     (font-lock-add-keywords nil rules t)))
+
 
 (defun skroad--open-node ()
   "Open a skroad node."
