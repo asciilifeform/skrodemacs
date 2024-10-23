@@ -77,7 +77,7 @@ differs from its value at POS (or point, if POS not given); nil if not found."
                   (and newval (not (eq oldval newval)))))))
       (if r (prop-match-beginning r)))))
 
-(defun skroad--text-type-action (text-type action-name &rest args)
+(defun skroad--type-action (text-type action-name &rest args)
   "If ACTION-NAME is not nil, and TEXT-TYPE has a defined action of that name,
 call the action with ARGS."
   (when action-name
@@ -233,6 +233,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   `(let ((start (skroad--zone-start ,pos)) (end (skroad--zone-end ,pos)))
      ,@body))
 
+;; TODO: abolish
 (defmacro skroad--with-link-at-point (&rest body)
   "Evaluate BODY with link bound to the link under the point."
   `(let ((link (skroad--atomic-at (point))))
@@ -428,7 +429,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--do-link-action (pos)
   "Run action of link at POS, if one was defined, and no region is active."
   (unless (use-region-p)
-    (skroad--text-type-action
+    (skroad--type-action
      (skroad--type-at pos) 'on-activate (skroad--atomic-at pos))))
 
 (defun skroad--cmd-left-click-link (click)
@@ -668,9 +669,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
                      (destroy (remhash key index) 'on-destroy))))
          (unless destroy (puthash key count index)) ;; update index if remains
          (let ((text-type (car key)) (payload (cdr key))) ;; args for action
-           (skroad--text-type-action ;; invoke action, if any
-            text-type
-            action text-type payload))))
+           (skroad--type-action text-type action text-type payload))))
    pending)
   t)
 
@@ -748,14 +747,11 @@ it to finalize all pending changes when no further ones are expected."
      ((and (or pos-moved skroad--text-changed) ;; point moved or text changed
            (not (eq skroad--prev-zone zone))) ;; and point changed zones
       (when skroad--prev-zone ;; point was in a zone, but has left it
-        (skroad--text-type-action
-         skroad--prev-type 'on-leave skroad--prev-point p))
+        (skroad--type-action skroad--prev-type 'on-leave skroad--prev-point p))
       (when zone ;; point has entered a different zone
-        (skroad--text-type-action
-         type 'on-enter skroad--prev-point p)))
+        (skroad--type-action type 'on-enter skroad--prev-point p)))
      ((and pos-moved skroad--prev-zone) ;; point moved, but remained in zone
-      (skroad--text-type-action
-       skroad--prev-type 'on-move skroad--prev-point p)))
+      (skroad--type-action skroad--prev-type 'on-move skroad--prev-point p)))
     t))
 
 (defun skroad--move-point (pos)
