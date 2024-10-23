@@ -135,7 +135,7 @@ call the action with ARGS."
 (defvar skroad--rendered-text-types nil "Text types for use with font-lock.")
 (defvar skroad--indexed-text-types nil "Text types that are indexed.")
 
-;; TODO: multiple inheritance
+;; TODO: multiple inheritance?
 
 (defun skroad--define-text-type (name &rest properties)
   (let ((super (or (plist-get properties 'supertype)
@@ -436,9 +436,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Run action of link at POS, if one was defined, and no region is active."
   (unless (use-region-p)
     (skroad--text-type-action
-     (skroad--type-at pos)
-     'on-activate
-     (skroad--atomic-at pos))))
+     (skroad--type-at pos) 'on-activate (skroad--atomic-at pos))))
 
 (defun skroad--cmd-left-click-link (click)
   "Perform the action attribute of the link that got the CLICK."
