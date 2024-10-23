@@ -131,7 +131,7 @@ call the action with ARGS."
 ;;   (concat start-delim payload end-delim))
 
 ;; (put 'default-skroad-text 'find-text
-     
+
 
 ;; (make-text
 ;;  (lambda (payload)
@@ -139,6 +139,8 @@ call the action with ARGS."
 
 (defvar skroad--displayed-text-types nil "Text types for use with font-lock.")
 (defvar skroad--indexed-text-types nil "Text types that are indexed.")
+
+;; TODO: multiple inheritance
 
 (defun skroad--define-text-type (name &rest properties)
   (let ((super (or (plist-get properties 'supertype)
@@ -295,13 +297,11 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 (defun skroad--find-next-nontitle (regex limit)
   "Find next REGEX, up to LIMIT, but only outside of the title line."
-  (when (skroad--point-in-title-p)
-    (goto-char (line-beginning-position 2)))
-  (re-search-forward regex
-                     (if (< (point) limit)
-                         limit
-                       (skroad--get-end-of-line (point)))
-                     t))
+  (when (skroad--point-in-title-p) (goto-char (line-beginning-position 2)))
+  (re-search-forward
+   regex
+   (if (< (point) limit) limit (skroad--get-end-of-line (point)))
+   t))
 
 (skroad--define-text-type
  'skroad-not-title
@@ -418,9 +418,9 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
  :supertype 'skroad-not-title
  :renderer #'skroad--atomic-renderer
- :point-enter #'skroad--atomic-enter
- :point-leave #'skroad--atomic-leave
- :point-move #'skroad--atomic-move
+ :on-enter #'skroad--atomic-enter
+ :on-leave #'skroad--atomic-leave
+ :on-move #'skroad--atomic-move
  :keymap
  (define-keymap
    "SPC" #'skroad--cmd-atomics-prepend-space
@@ -442,7 +442,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (unless (use-region-p)
     (skroad--text-type-action
      (get-text-property pos 'category)
-     'link-action
+     'on-activate
      (get-text-property pos 'data))))
 
 (defun skroad--cmd-left-click-link (click)
@@ -516,11 +516,11 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :supertype 'skroad-node-link
  :displayed t
  :indexed t
- :init-action #'skroad--link-init
- :create-action #'skroad--link-create
- :destroy-action #'skroad--link-destroy
+ :on-init #'skroad--link-init
+ :on-create #'skroad--link-create
+ :on-destroy #'skroad--link-destroy
+ :on-activate #'skroad--browse-skroad-link
  :start-delim "[[" :end-delim "]]"
- :link-action #'skroad--browse-skroad-link
  :keymap (define-keymap
            "l" #'skroad--live-link-to-dead))
 
@@ -536,9 +536,9 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :supertype 'skroad-node-link
  :displayed t
  :indexed t
- :init-action #'skroad--link-init
- :create-action #'skroad--link-create
- :destroy-action #'skroad--link-destroy
+ :on-init #'skroad--link-init
+ :on-create #'skroad--link-create
+ :on-destroy #'skroad--link-destroy
  :start-delim "[-[" :end-delim "]-]"
  :face '(:inherit link :foreground "red")
  :keymap (define-keymap
@@ -564,7 +564,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :help-echo "External link."
  :payload-regex
  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\t\s]+\\)"
- :link-action #'browse-url
+ :on-activate #'browse-url
  :keymap (define-keymap
            "t" #'skroad--comment-url
            "l" #'skroad--comment-url))
@@ -611,11 +611,11 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :renderer #'skroad--title-renderer
  :displayed t
  :indexed t
- :init-action #'skroad--title-init
- :create-action #'skroad--title-create
- :destroy-action #'skroad--title-destroy
- :point-enter #'skroad--title-enter
- :point-leave #'skroad--title-leave
+ :on-init #'skroad--title-init
+ :on-create #'skroad--title-create
+ :on-destroy #'skroad--title-destroy
+ :on-enter #'skroad--title-enter
+ :on-leave #'skroad--title-leave
  :face 'skroad--title-face
  :start-delim "" :end-delim "\n"
  :payload-regex "\\([^\n]+\\)"
@@ -669,8 +669,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 (defun skroad--index-update (index pending &optional init-scan)
   "Update INDEX by applying all PENDING changes, and run text type actions when
-appropriate. If `INIT-SCAN` is t, run a text type's `init-action` rather than
-`create-action` for created entries; `destroy-action` runs for destroyed ones."
+appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
+`on-create` for created entries; `on-destroy` runs for destroyed ones."
   (maphash
    #'(lambda (key delta) ;; key and count delta in pending changes table
        (let* ((prior (or (gethash key index) 0)) ;; copies in index prior
@@ -678,8 +678,8 @@ appropriate. If `INIT-SCAN` is t, run a text type's `init-action` rather than
               (count (+ prior delta)) ;; copies of item in index + delta
               (destroy (zerop count)) ;; t if change will destroy all copies
               (action ;; text type action to invoke, if any. nil if none.
-               (cond (create (if init-scan 'init-action 'create-action))
-                     (destroy (remhash key index) 'destroy-action))))
+               (cond (create (if init-scan 'on-init 'on-create))
+                     (destroy (remhash key index) 'on-destroy))))
          (unless destroy (puthash key count index)) ;; update index if remains
          (let ((text-type (car key)) (payload (cdr key))) ;; args for action
            (skroad--text-type-action ;; invoke action, if any
@@ -711,7 +711,7 @@ it to finalize all pending changes when no further ones are expected."
   (unless (null skroad--index)
     (error "Text type index already exists for this buffer!"))
   (setq skroad--index (make-hash-table :test 'equal))
-  ;; Populate while dispatching `init-action`s
+  ;; Populate while dispatching `on-init`s
   (let ((init-populate (make-hash-table :test 'equal)))
     (skroad--index-scan-region init-populate (point-min) (point-max) 1)
     (skroad--index-update skroad--index init-populate t)))
@@ -758,18 +758,18 @@ it to finalize all pending changes when no further ones are expected."
          (pos-moved (not (eq skroad--prev-point p)))
          (zone (skroad--zone-at p))
          (type (skroad--type-at p)))
-    (cond ;; text type actions `point-leave` and `point-enter` may both fire
+    (cond ;; text type actions `on-leave` and `on-enter` may both fire
      ((and (or pos-moved skroad--text-changed) ;; point moved or text changed
            (not (eq skroad--prev-zone zone))) ;; and point changed zones
       (when skroad--prev-zone ;; point was in a zone, but has left it
         (skroad--text-type-action
-         skroad--prev-type 'point-leave skroad--prev-point p))
+         skroad--prev-type 'on-leave skroad--prev-point p))
       (when zone ;; point has entered a different zone
         (skroad--text-type-action
-         type 'point-enter skroad--prev-point p)))
+         type 'on-enter skroad--prev-point p)))
      ((and pos-moved skroad--prev-zone) ;; point moved, but remained in zone
       (skroad--text-type-action
-       skroad--prev-type 'point-move skroad--prev-point p)))
+       skroad--prev-type 'on-move skroad--prev-point p)))
     t))
 
 (defun skroad--move-point (pos)
