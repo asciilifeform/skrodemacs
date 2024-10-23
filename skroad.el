@@ -776,7 +776,7 @@ it to finalize all pending changes when no further ones are expected."
 (defun skroad--scroll-hook (window start)
   "Triggers when a buffer scrolls."
   (setq-local header-line-format
-              (when (> start 1)
+              (when (> start 1) ;; Float the title if it isn't in view
                 (buffer-substring (point-min)
                                   (skroad--get-end-of-line 1)))))
 
