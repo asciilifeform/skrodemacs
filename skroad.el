@@ -82,6 +82,8 @@ differs from its value at POS (or point, if POS not given); nil if not found."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Default properties for skroad text types.
+(put 'skroad--default-type 'mixin t)
+
 (put 'skroad--default-type 'face 'skroad--text-face)
 
 ;; Prevent insertions adjacent to skroad text from inheriting its properties.
@@ -146,20 +148,25 @@ differs from its value at POS (or point, if POS not given); nil if not found."
 
 (defun skroad--define-text-type (name &rest properties)
   ;; Add properties to the symbol:
-  (skroad--do-plist prop val properties
+  (skroad--do-plist
+    prop val (append '(:inherit skroad--default-type) properties)
     (cond
-     ((eq prop :inherit) ;; Inherit all properties from given parent type
+     ((eq prop :inherit) ;; Inherit properties from given parent type:
       (skroad--do-plist parent-prop parent-val (symbol-plist val)
-        (put name parent-prop parent-val)))
-     ((and (eq prop :rendered) val) ;; Use this type with font-lock?
-      (add-to-list 'skroad--rendered-text-types name))
-     ((and (eq prop :indexed) val) ;; Use this type with indexer?
-      (add-to-list 'skroad--indexed-text-types name))
+        (cond
+         ((eq parent-prop 'doc) ;; Agglomerate doc strings from upstream
+          (put name 'doc (concat parent-val ";" (or (get name 'doc) ""))))
+         ((or (null (get name 'parent-prop)) (null (get name 'mixin)))
+          (put name parent-prop parent-val))))) ;; don't clobber if mixin
      ((eq prop :keymap) ;; If given a keymap:
       (let ((parent-keymap (get name 'keymap)))
         (when parent-keymap ;; stack on parent keymaps, if they exist
           (set-keymap-parent val parent-keymap))
         (put name 'keymap val)))
+     ((and (eq prop :rendered) val) ;; Use this type with font-lock?
+      (add-to-list 'skroad--rendered-text-types name))
+     ((and (eq prop :indexed) val) ;; Use this type with indexer?
+      (add-to-list 'skroad--indexed-text-types name))
      (t (put name (skroad--keyword-to-symbol prop) val)))) ;; simply save it
   name)
 
@@ -168,8 +175,6 @@ differs from its value at POS (or point, if POS not given); nil if not found."
 call the action with ARGS."
   (when action-name (let ((action (get text-type action-name)))
                       (when action (apply action args)))))
-
-;; (symbol-plist 'skroad-live)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -273,6 +278,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-not-title
  :doc "Mixin type for all text types that do not apply to the node title."
+ :mixin t
  :finder #'skroad--find-next-nontitle)
 
 (defun skroad--cmd-atomics-prepend-space ()
@@ -424,7 +430,6 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-link
  :doc "Fundamental type from which all skroad links are derived."
- :inherit 'skroad--default-type
  :inherit 'skroad-atomic
  :inherit 'skroad-not-title
  :face 'link
@@ -579,7 +584,6 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-node-title
  :doc "Node title."
- :inherit 'skroad--default-type
  :finder #'skroad--find-next-title
  :renderer #'skroad--title-renderer
  :on-init #'skroad--title-init
@@ -608,7 +612,6 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-decor
  :doc "Fundamental type for skroad text decorations."
- :inherit 'skroad--default-type
  :finder #'skroad--find-next-anywhere
  :renderer #'skroad--decor-renderer)
 
