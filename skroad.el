@@ -71,7 +71,7 @@ differs from its value at POS (or point, if POS not given); nil if not found."
   :group 'skroad-faces)
 
 (defface skroad--title-face
-  '((t :foreground "purple" :background "green"
+  '((t :foreground "white" :background "purple"
        :height 300 :weight bold :extend t))
   "Face for skroad node titles."
   :group 'skroad-faces)
