@@ -159,7 +159,7 @@ differs from its value at POS (or point, if POS not given); nil if not found."
           (put name parent-prop parent-val))))) ;; don't clobber if mixin
      ((eq prop :keymap) ;; If given a keymap:
       (let ((parent-keymap (get name 'keymap)))
-        (when parent-keymap ;; stack on parent keymaps, if they exist
+        (when parent-keymap ;; stack it on top of any existing keymaps
           (set-keymap-parent val parent-keymap))
         (put name 'keymap val)))
      ((and (eq prop :rendered) val) ;; Use this type with font-lock?
