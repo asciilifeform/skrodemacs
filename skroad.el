@@ -34,19 +34,6 @@ as (foo (get NAME foo)) etc., and evaluate BODY."
      (progn
        ,@body)))
 
-;; (defun plist-to-alist (plist)
-;;   "Convert PLIST to an association list (alist)."
-;;   (let (alist)
-;;     (while plist
-;;       (let ((key (pop plist))
-;;             (value (pop plist)))
-;;         (push (cons key value) alist)))
-;;     (reverse alist)))
-
-;; (defun skroad--eval-with-alist (alist sexpr)
-;;   "Evaluate SEXPR with ALIST as let bindings."
-;;   (eval sexpr alist))
-
 (defun skroad--get-start-of-line (pos)
   "Get the position of the start of the line on which POS resides."
   (save-mark-and-excursion
@@ -110,12 +97,22 @@ call the action with ARGS."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defface skroad--text '((t :inherit default))
+(defface skroad--text-face '((t :inherit default))
   "Default face used for skrode text types."
-  :group 'basic-faces)
+  :group 'skroad-faces)
+
+(defface skroad--title-face
+  '((t :foreground "purple"
+       :weight bold
+       :height 1.5
+       :inverse-video t
+       :extend t
+       ))
+  "Face for skroad node titles."
+  :group 'skroad-faces)
 
 ;; Default properties for skroad text types.
-(put 'default-skroad-text 'face 'skroad--text)
+(put 'default-skroad-text 'face 'skroad--text-face)
 
 ;; Prevent insertions adjacent to skroad text from inheriting its properties.
 (put 'default-skroad-text 'rear-nonsticky t)
@@ -126,7 +123,19 @@ call the action with ARGS."
 
 ;; Eggogs for undefined-by-default text type properties:
 (put 'default-skroad-text 'renderer
-     #'(lambda (this) (error "renderer was not defined for %s" this)))
+     #'(lambda (this) (error "renderer was not defined for %s !" this)))
+(put 'default-skroad-text 'finder
+     #'(lambda (regex limit) (error "finder was not defined for type!")))
+
+;; (defun skroad--default-make-text (payload)
+;;   (concat start-delim payload end-delim))
+
+;; (put 'default-skroad-text 'find-text
+     
+
+;; (make-text
+;;  (lambda (payload)
+;;    (concat start-delim payload end-delim)))
 
 (defvar skroad--displayed-text-types nil "Text types for use with font-lock.")
 (defvar skroad--indexed-text-types nil "Text types that are indexed.")
@@ -249,7 +258,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (interactive)
   (let ((p (point)))
     (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
-          ((and (> p (point-min)) (skroad--zone-at (1- p)))
+          ((and (> p (point-min)) (skroad--atomic-at (1- p)))
            (delete-region (skroad--zone-start (1- p)) p))
           (t (delete-char -1)))))
 
@@ -572,18 +581,15 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (message (format "Title destroy: type=%s payload='%s'" text-type payload)))
 
 ;; TODO: proper moves, in case stop point is in a zone
-
 (defun skroad--title-enter (&rest args)
-  (when mark-active ;; If a region is active...
-    (goto-char (point-min)) ;; ... prohibit moving into title.
-    (goto-char (line-beginning-position 2))) ;; stop right below the title.
-  )
+  (when mark-active ;; If a region is active, prohibit moving into title.
+    (goto-char (point-min))
+    (goto-char (line-beginning-position 2)))) ;; stop right below the title.
 
 (defun skroad--title-leave (&rest args)
-  (when mark-active ;; If a region is active...
+  (when mark-active ;; If a region is active, prohibit moving out of title.
     (goto-char (point-min))
-    (goto-char (line-end-position))) ;; ... prohibit moving out of title.
-  )
+    (goto-char (line-end-position))))
 
 (defun skroad--title-renderer (this)
   "Font lock rendering for title."
@@ -596,10 +602,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--find-next-title (regex limit)
   "Find next REGEX, up to LIMIT, but only when inside of the title line."
   (and (skroad--point-in-title-p)
-       (re-search-forward
-        regex
-        (max limit (line-beginning-position 2))
-        t)))
+       (re-search-forward regex (max limit (line-beginning-position 2)) t)))
 
 (skroad--define-text-type
  'skroad-node-title
@@ -613,8 +616,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :destroy-action #'skroad--title-destroy
  :point-enter #'skroad--title-enter
  :point-leave #'skroad--title-leave
- :face '(:weight bold :foreground "purple"
-                 :height 1.5 :inverse-video t :extend t)
+ :face 'skroad--title-face
  :start-delim "" :end-delim "\n"
  :payload-regex "\\([^\n]+\\)"
  :keymap (define-keymap
@@ -622,15 +624,18 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun skroad--find-next-anywhere (regex limit)
+  "Find next REGEX, up to LIMIT, anywhere (including in the node title.)"
+  (re-search-forward regex limit t))
+
 (defun skroad--decor-renderer (this)
   "Font lock rendering for decorations."
-  (add-face-text-property
-   (match-beginning 0) (match-end 0) (get this 'face) t))
+  (add-face-text-property (match-beginning 0) (match-end 0) (get this 'face)))
 
 (skroad--define-text-type
  'skroad-decor
  :doc "Fundamental type for skroad text decorations."
- :finder #'skroad--find-next-nontitle
+ :finder #'skroad--find-next-anywhere
  :renderer #'skroad--decor-renderer)
 
 (skroad--define-text-type
@@ -801,7 +806,7 @@ it to finalize all pending changes when no further ones are expected."
   (skroad--zone-may-have-changed)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
   (skroad--update-local-index) ;; TODO: do it in save hook?
-  (setq-local skroad--text-changed nil) ;; reset text change flag
+  (setq-local skroad--text-changed nil)
   (unless (use-region-p) (setq-local mouse-highlight t)))
 
 (defadvice skroad--post-command-hook (around intercept activate)
