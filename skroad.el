@@ -143,14 +143,14 @@ differs from its value at POS (or point, if POS not given); nil if not found."
 
 (defun skroad--define-text-type (name &rest properties)
   (skroad--do-plist ;; Add properties, including inherited, to the symbol:
-    prop val (append '(:inherit skroad--default-type) properties)
+    prop val (append properties '(:inherit skroad--default-type))
     (cond
      ((eq prop :inherit) ;; Inherit properties from given parent type:
       (skroad--do-plist parent-prop parent-val (symbol-plist val)
         (cond
          ((eq parent-prop 'doc) ;; Agglomerate doc strings from upstream
           (put name 'doc (concat parent-val ";" (or (get name 'doc) ""))))
-         ((or (null (get name 'parent-prop)) (null (get name 'mixin)))
+         ((or (null (get name parent-prop)) (null (get val 'mixin)))
           (put name parent-prop parent-val))))) ;; don't clobber if mixin
      ((eq prop :keymap) ;; If given a keymap:
       (let ((parent-keymap (get name 'keymap)))
