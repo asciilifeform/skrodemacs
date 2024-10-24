@@ -759,7 +759,7 @@ it to finalize all pending changes when no further ones are expected."
         (setq-local skroad--alt-mark m)
         (message "swapped marks!")
         )))
-   ))
+    (t (setq-local skroad--alt-mark nil))))
 
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
