@@ -190,11 +190,11 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--atomic-at (&optional pos)
-  "Get the payload of the atomic found at the given POS, or nil if none."
+  "Get the payload of the atomic found at the given POS or point, nil if none."
   (get-text-property (or pos (point)) 'data))
 
 (defun skroad--type-at (&optional pos)
-  "Determine text type, if any, at position POS."
+  "Determine text type, if any, at position POS (or point.)"
   (get-text-property (or pos (point)) 'category))
 
 (defun skroad--zone-at (&optional pos)
@@ -209,10 +209,10 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Return the position at which the zone at POS ends."
   (or (next-single-property-change (or pos (point)) 'id) (point-max)))
 
-(defmacro skroad--with-zone (pos &rest body)
-  "Evaluate BODY with start and end bound to boundaries of zone at POS."
+(defmacro skroad--with-zone (&rest body)
+  "Evaluate BODY with start and end bound to boundaries of zone at point."
   (declare (indent defun))
-  `(let ((start (skroad--zone-start ,pos)) (end (skroad--zone-end ,pos)))
+  `(let ((start (skroad--zone-start)) (end (skroad--zone-end)))
      ,@body))
 
 ;; TODO: abolish
@@ -299,7 +299,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
      (interactive)
      (if (use-region-p)
          (call-interactively ',wrap-command)
-       (skroad--with-zone (point)
+       (skroad--with-zone
          (funcall #',wrap-command start end)))
      (skroad--deactivate-mark)))
 
@@ -317,7 +317,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 (defun skroad--selector-activate ()
   "Activate (if inactive) or move the selector to the current zone."
-  (skroad--with-zone (point)
+  (skroad--with-zone
     (move-overlay skroad--selector start end (current-buffer)))
   ;; (setq-local cursor-type nil)
   )
@@ -360,7 +360,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   )
 
 (defun skroad--atomic-move (pos-from pos-to)
-  (skroad--with-zone (point)
+  (skroad--with-zone
     (if (>= pos-to pos-from)
         (skroad--move-point end)
       (goto-char start)))
@@ -371,7 +371,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Set the mark inside an atomic."
   (interactive)
   (save-excursion
-    (skroad--with-zone (point)
+    (skroad--with-zone
       (setq-local skroad--alt-mark start)
       (goto-char end)
       (call-interactively 'set-mark-command))))
@@ -440,7 +440,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--link-to-plain-text ()
   "Delinkify the link under the point to plain text by removing delimiters."
   (interactive)
-  (skroad--with-zone (point)
+  (skroad--with-zone
     (let ((text (skroad--atomic-at)))
       (save-mark-and-excursion
         (goto-char start)
@@ -519,7 +519,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--comment-url ()
   "Debuttonize the URL at point by inserting a space after the prefix."
   (interactive)
-  (skroad--with-zone (point)
+  (skroad--with-zone
     (save-mark-and-excursion
       (goto-char start)
       (search-forward "//" end)
