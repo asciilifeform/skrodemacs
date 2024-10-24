@@ -83,13 +83,8 @@ differs from its value at POS (or point, if POS not given); nil if not found."
 
 ;; Default properties for skroad text types.
 (put 'skroad--default-type 'mixin t)
-
 (put 'skroad--default-type 'face 'skroad--text-face)
-
-;; Prevent insertions adjacent to skroad text from inheriting its properties.
 (put 'skroad--default-type 'rear-nonsticky t)
-
-;; Default delimiters are null strings:
 (put 'skroad--default-type 'start-delim "")
 (put 'skroad--default-type 'end-delim "")
 
