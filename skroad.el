@@ -306,23 +306,26 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Selector overlay active when an atomic is under the point.")
 
 (defconst skroad--selector-properties
-  `((face highlight)
-    (evaporate t))
+  `((face highlight) (evaporate t))
   "Text properties of the selector.")
+
+(defun skroad--selector-show ()
+  "Reveal the selector overlay when it may have been hidden."
+  (when (skroad--selector-active-p)
+    (overlay-put skroad--selector 'face 'highlight)))
+
+(defun skroad--selector-hide ()
+  "Hide (but not destroy) the selector overlay."
+  (when (skroad--selector-active-p) (overlay-put skroad--selector 'face nil)))
 
 (defun skroad--selector-activate ()
   "Activate (if inactive) or move the selector to the current zone."
   (skroad--with-zone
-    (move-overlay skroad--selector start end (current-buffer)))
-  ;; (setq-local cursor-type nil)
-  )
+    (move-overlay skroad--selector start end (current-buffer))))
 
 (defun skroad--selector-deactivate ()
   "Deactivate the selector; it can be reactivated again."
-  (when (skroad--selector-active-p)
-    (delete-overlay skroad--selector))
-  ;; (setq-local cursor-type t)
-  )
+  (when (skroad--selector-active-p) (delete-overlay skroad--selector)))
 
 (defun skroad--selector-active-p ()
   "Return t if the selector is active; otherwise nil."
@@ -336,30 +339,36 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 ;;   "Return t if a region selection is active (even if length 0); otherwise nil."
 ;;   (or (use-region-p) skroad--alt-mark))
 
-(defun skroad--atomic-enter (pos-from pos-to)
-  ;; (skroad--move-point
-  ;;  (if (and mark-active (eq (mark) pos-to))
-  ;;      (skroad--zone-end)
-  ;;    (skroad--zone-start)))
+(defun skroad--atomic-enter (pos-from auto)
+  (setq-local cursor-type nil)
+  (skroad--selector-activate)
+  
+  (message (format "atomic enter1 data=%s pos=%s mark=%s alt-mark=%s"
+                   (skroad--atomic-at)
+                   (point) (and mark-active (mark)) skroad--alt-mark))
+  
+  (goto-char (skroad--zone-start))
 
-  (skroad--move-point (skroad--zone-start))
-  (when (not mark-active) (skroad--selector-activate))
-  (message (format "atomic enter from '%s' to '%s'"
-                   skroad--prev-zone (skroad--zone-at pos-to)))
+  (message (format "atomic enter2; pos=%s mark=%s alt-mark=%s"
+                   (point) (and mark-active (mark)) skroad--alt-mark))
   )
 
-(defun skroad--atomic-leave (pos-from pos-to)
+(defun skroad--atomic-leave (pos-from auto)
+  (setq-local cursor-type t)
+  
   (skroad--selector-deactivate)
   (message (format "atomic leave from '%s' to '%s'"
-                   skroad--prev-zone (skroad--zone-at pos-to)))
+                   skroad--prev-zone (skroad--zone-at)))
   )
 
-(defun skroad--atomic-move (pos-from pos-to)
-  (skroad--with-zone
-    (if (>= pos-to pos-from)
-        (skroad--move-point end)
-      (goto-char start)))
-  (message (format "atomic move: %s" (skroad--zone-at)))
+(defun skroad--atomic-move (pos-from auto)
+  (message (format "atomic move1: %s to %s" pos-from (point)))
+  (if (>= (point) pos-from)
+      (goto-char (skroad--zone-end))
+    (goto-char (skroad--zone-start)))
+
+  
+  (message (format "atomic move2 to %s" (skroad--atomic-at)))
   )
 
 (defun skroad--cmd-atomics-set-mark ()
@@ -551,14 +560,17 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--title-destroy (text-type payload)
   (message (format "Title destroy: type=%s payload='%s'" text-type payload)))
 
-;; TODO: proper moves, in case stop point is in a zone
-(defun skroad--title-enter (&rest args)
-  (when mark-active ;; If a region is active, prohibit moving into title.
-    (goto-char (point-min))
-    (goto-char (line-beginning-position 2)))) ;; stop right below the title.
+(defun skroad--title-enter (pos-from auto)
+  (message (format "title enter from=%s auto=%s" pos-from auto))
+  ;; If a region is active, prohibit moving into title.
+  (when (and mark-active (not auto))
+    (goto-char (point-min)) ;; stop right below the title.
+    (goto-char (line-beginning-position 2))))
 
-(defun skroad--title-leave (&rest args)
-  (when mark-active ;; If a region is active, prohibit moving out of title.
+(defun skroad--title-leave (pos-from auto)
+  (message (format "title leave from=%s auto=%s" pos-from auto))
+  ;; If a region is active, prohibit moving out of title.
+  (when (and mark-active (not auto))
     (goto-char (point-min))
     (goto-char (line-end-position))))
 
@@ -721,33 +733,51 @@ it to finalize all pending changes when no further ones are expected."
   (setq-local skroad--prev-zone (skroad--zone-at))
   (setq-local skroad--prev-type (skroad--type-at)))
 
-(defun skroad--zone-may-have-changed ()
+(defun skroad--zone-may-have-changed (prev-p prev-zone prev-type &optional auto)
   "To be called whenever the zone under the point may have changed."
   (let* ((p (point))
-         (pos-moved (not (eq skroad--prev-point p)))
+         (pos-moved (not (eq prev-p p)))
          (zone (skroad--zone-at p))
          (type (skroad--type-at p)))
     (cond ;; text type actions `on-leave` and `on-enter` may both fire
-     ((and (or pos-moved skroad--text-changed) ;; point moved or text changed
-           (not (eq skroad--prev-zone zone))) ;; and point changed zones
-      (when skroad--prev-zone ;; point was in a zone, but has left it
-        (skroad--type-action skroad--prev-type 'on-leave skroad--prev-point p))
+     ((not (eq prev-zone zone)) ;; point moved or text changed
+      ;; (message (format "prev-zone=%s zone=%s" prev-zone zone))
+      (when prev-zone ;; point was in a zone, but has left it
+        (skroad--type-action prev-type 'on-leave prev-p auto)
+        (skroad--zone-may-have-changed p zone type t))
       (when zone ;; point has entered a different zone
-        (skroad--type-action type 'on-enter skroad--prev-point p)))
-     ((and pos-moved skroad--prev-zone) ;; point moved, but remained in zone
-      (skroad--type-action skroad--prev-type 'on-move skroad--prev-point p)))
+        (skroad--type-action type 'on-enter prev-p auto)
+        (skroad--zone-may-have-changed p zone type t)))
+     ((and pos-moved prev-zone) ;; point moved, but remained in zone
+      (skroad--type-action prev-type 'on-move prev-p auto)
+      (skroad--zone-may-have-changed p zone type t)))
     t))
-
-(defun skroad--move-point (pos)
-  "Move point to POS, triggering text type actions if necessary."
-  (skroad--point-save)
-  (goto-char pos)
-  (skroad--zone-may-have-changed))
 
 (defun skroad--adjust-mark-if-present ()
   (cond
    (mark-active
+    (skroad--selector-hide)
+    
     (let ((m (mark)) (am skroad--alt-mark) (p (point)))
+
+      (when (eq (point) (mark))
+        (message "repeat prev=%s point=%s" skroad--prev-point (point))
+        
+        (when (> p skroad--prev-point)
+          (skroad--point-save)
+          (message "fwd")
+          (forward-char))
+      
+        (when (< p skroad--prev-point)
+          (skroad--point-save)
+          (message "back")
+          (backward-char))
+
+        (skroad--zone-may-have-changed
+         skroad--prev-point skroad--prev-zone skroad--prev-type t)
+        
+        )
+      
       (when (eq p m)
         (message "p=mark"))
 
@@ -758,8 +788,13 @@ it to finalize all pending changes when no further ones are expected."
         (set-mark am)
         (setq-local skroad--alt-mark m)
         (message "swapped marks!")
-        )))
-    (t (setq-local skroad--alt-mark nil))))
+        )
+
+      ))
+   (t
+    (skroad--selector-show)
+    (setq-local skroad--alt-mark nil)
+    )))
 
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
@@ -768,8 +803,10 @@ it to finalize all pending changes when no further ones are expected."
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
-  (font-lock-ensure)
-  (skroad--zone-may-have-changed)
+  (message "cmd")
+  ;; (font-lock-ensure)
+  (skroad--zone-may-have-changed
+   skroad--prev-point skroad--prev-zone skroad--prev-type)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
   (skroad--update-local-index) ;; TODO: do it in save hook?
   (setq-local skroad--text-changed nil)
@@ -781,6 +818,18 @@ it to finalize all pending changes when no further ones are expected."
               (when (and skroad--floating-title-enable (> start 1))
                 (buffer-substring (point-min)
                                   (skroad--get-end-of-line 1)))))
+
+;; (defun skroad--activate-mark-hook ()
+;;   "Triggers when the mark is activated or reactivated."
+;;   (message "mark on")
+;;   )
+
+;; (defun skroad--deactivate-mark-hook ()
+;;   "Triggers when the mark becomes inactive."
+;;   (setq-local skroad--alt-mark nil)
+;;   ;; (setq-local mouse-highlight t)
+;;   (message "mark off")
+;;   )
 
 (defadvice skroad--post-command-hook (around intercept activate)
   (condition-case err
@@ -847,6 +896,8 @@ it to finalize all pending changes when no further ones are expected."
   (add-hook 'pre-command-hook 'skroad--pre-command-hook nil t)
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
   (add-hook 'window-scroll-functions 'skroad--scroll-hook nil t)
+  ;; (add-hook 'activate-mark-hook 'skroad--activate-mark-hook nil t)
+  ;; (add-hook 'deactivate-mark-hook 'skroad--deactivate-mark-hook nil t)
   
   ;; Overlay for when a link is under the point. Initially inactive:
   (setq-local skroad--selector (make-overlay (point-min) (point-min)))
