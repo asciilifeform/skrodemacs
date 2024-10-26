@@ -282,6 +282,9 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
     (goto-char (skroad--zone-start))
     (insert " ")))
 
+(defvar-local skroad--alt-mark nil
+  "Opposite end of a link in which the mark had been set.")
+
 (defun skroad--deactivate-mark ()
   "Deactivate the mark and clear the alt-mark."
   (deactivate-mark)
@@ -321,55 +324,36 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--selector-activate ()
   "Activate (if inactive) or move the selector to the current zone."
   (skroad--with-zone
-    (move-overlay skroad--selector start end (current-buffer))))
+    (move-overlay skroad--selector start end (current-buffer))
+    (setq-local cursor-type nil)
+    (setq-local show-paren-mode nil)))
 
 (defun skroad--selector-deactivate ()
   "Deactivate the selector; it can be reactivated again."
-  (when (skroad--selector-active-p) (delete-overlay skroad--selector)))
+  (when (skroad--selector-active-p)
+    (delete-overlay skroad--selector)
+    (setq-local cursor-type t)
+    (setq-local show-paren-mode t)))
 
 (defun skroad--selector-active-p ()
   "Return t if the selector is active; otherwise nil."
   (and (overlayp skroad--selector)
        (eq (current-buffer) (overlay-buffer skroad--selector))))
 
-(defvar-local skroad--alt-mark nil
-  "Opposite end of a link in which the mark had been set.")
-
-;; (defun skroad--region-selection-active-p ()
-;;   "Return t if a region selection is active (even if length 0); otherwise nil."
-;;   (or (use-region-p) skroad--alt-mark))
-
 (defun skroad--atomic-enter (pos-from auto)
-  (setq-local cursor-type nil)
+  "Point has entered an atomic."
   (skroad--selector-activate)
-  
-  (message (format "atomic enter1 data=%s pos=%s mark=%s alt-mark=%s"
-                   (skroad--atomic-at)
-                   (point) (and mark-active (mark)) skroad--alt-mark))
-  
-  (goto-char (skroad--zone-start))
-
-  (message (format "atomic enter2; pos=%s mark=%s alt-mark=%s"
-                   (point) (and mark-active (mark)) skroad--alt-mark))
-  )
+  (goto-char (skroad--zone-start)))
 
 (defun skroad--atomic-leave (pos-from auto)
-  (setq-local cursor-type t)
-  
-  (skroad--selector-deactivate)
-  (message (format "atomic leave from '%s' to '%s'"
-                   skroad--prev-zone (skroad--zone-at)))
-  )
+  "Point has exited an atomic."
+  (skroad--selector-deactivate))
 
 (defun skroad--atomic-move (pos-from auto)
-  (message (format "atomic move1: %s to %s" pos-from (point)))
-  (if (>= (point) pos-from)
+  "Point has moved inside an atomic."
+  (if (> (point) pos-from)
       (goto-char (skroad--zone-end))
-    (goto-char (skroad--zone-start)))
-
-  
-  (message (format "atomic move2 to %s" (skroad--atomic-at)))
-  )
+    (goto-char (skroad--zone-start))))
 
 (defun skroad--cmd-atomics-set-mark ()
   "Set the mark inside an atomic."
@@ -561,6 +545,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (message (format "Title destroy: type=%s payload='%s'" text-type payload)))
 
 (defun skroad--title-enter (pos-from auto)
+  "Point has entered the title."
   (message (format "title enter from=%s auto=%s" pos-from auto))
   ;; If a region is active, prohibit moving into title.
   (when (and mark-active (not auto))
@@ -568,6 +553,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
     (goto-char (line-beginning-position 2))))
 
 (defun skroad--title-leave (pos-from auto)
+  "Point has exited the title."
   (message (format "title leave from=%s auto=%s" pos-from auto))
   ;; If a region is active, prohibit moving out of title.
   (when (and mark-active (not auto))
@@ -741,7 +727,6 @@ it to finalize all pending changes when no further ones are expected."
          (type (skroad--type-at p)))
     (cond ;; text type actions `on-leave` and `on-enter` may both fire
      ((not (eq prev-zone zone)) ;; point moved or text changed
-      ;; (message (format "prev-zone=%s zone=%s" prev-zone zone))
       (when prev-zone ;; point was in a zone, but has left it
         (skroad--type-action prev-type 'on-leave prev-p auto)
         (skroad--zone-may-have-changed p zone type t))
@@ -819,18 +804,6 @@ it to finalize all pending changes when no further ones are expected."
                 (buffer-substring (point-min)
                                   (skroad--get-end-of-line 1)))))
 
-;; (defun skroad--activate-mark-hook ()
-;;   "Triggers when the mark is activated or reactivated."
-;;   (message "mark on")
-;;   )
-
-;; (defun skroad--deactivate-mark-hook ()
-;;   "Triggers when the mark becomes inactive."
-;;   (setq-local skroad--alt-mark nil)
-;;   ;; (setq-local mouse-highlight t)
-;;   (message "mark off")
-;;   )
-
 (defadvice skroad--post-command-hook (around intercept activate)
   (condition-case err
       ad-do-it
@@ -896,8 +869,6 @@ it to finalize all pending changes when no further ones are expected."
   (add-hook 'pre-command-hook 'skroad--pre-command-hook nil t)
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
   (add-hook 'window-scroll-functions 'skroad--scroll-hook nil t)
-  ;; (add-hook 'activate-mark-hook 'skroad--activate-mark-hook nil t)
-  ;; (add-hook 'deactivate-mark-hook 'skroad--deactivate-mark-hook nil t)
   
   ;; Overlay for when a link is under the point. Initially inactive:
   (setq-local skroad--selector (make-overlay (point-min) (point-min)))
