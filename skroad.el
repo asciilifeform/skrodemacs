@@ -342,15 +342,18 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 (defun skroad--atomic-enter (pos-from auto)
   "Point has entered an atomic."
+  ;; (message (format "atomic enter from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
   (skroad--selector-activate)
   (goto-char (skroad--zone-start)))
 
 (defun skroad--atomic-leave (pos-from auto)
   "Point has exited an atomic."
+  ;; (message (format "atomic leave from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
   (skroad--selector-deactivate))
 
 (defun skroad--atomic-move (pos-from auto)
   "Point has moved inside an atomic."
+  ;; (message (format "atomic move from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
   (if (> (point) pos-from)
       (goto-char (skroad--zone-end))
     (goto-char (skroad--zone-start))))
@@ -725,17 +728,24 @@ it to finalize all pending changes when no further ones are expected."
          (pos-moved (not (eq prev-p p)))
          (zone (skroad--zone-at p))
          (type (skroad--type-at p)))
-    (cond ;; text type actions `on-leave` and `on-enter` may both fire
-     ((not (eq prev-zone zone)) ;; point moved or text changed
-      (when prev-zone ;; point was in a zone, but has left it
-        (skroad--type-action prev-type 'on-leave prev-p auto)
-        (skroad--zone-may-have-changed p zone type t))
-      (when zone ;; point has entered a different zone
-        (skroad--type-action type 'on-enter prev-p auto)
-        (skroad--zone-may-have-changed p zone type t)))
-     ((and pos-moved prev-zone) ;; point moved, but remained in zone
-      (skroad--type-action prev-type 'on-move prev-p auto)
-      (skroad--zone-may-have-changed p zone type t)))
+    (when
+        (cond ;; text type actions `on-leave` and `on-enter` may both fire
+         ((not (eq prev-zone zone)) ;; point moved or text changed under it
+          (when prev-zone ;; point was in a zone, but has left it
+            (skroad--type-action prev-type 'on-leave prev-p auto))
+          (when zone ;; point has entered a different zone
+            (skroad--type-action type 'on-enter prev-p auto))
+          t)
+         ((and pos-moved prev-zone) ;; point moved, but remained in zone
+          (skroad--type-action prev-type 'on-move prev-p auto)
+          t))
+
+      (when (eq p (point))
+        (when (and mark-active skroad--alt-mark (eq p (mark)))
+          (message "bump")
+          (if (< skroad--alt-mark p) (forward-char) (backward-char))))
+      
+      (skroad--zone-may-have-changed p zone type t))
     t))
 
 (defun skroad--adjust-mark-if-present ()
@@ -744,32 +754,9 @@ it to finalize all pending changes when no further ones are expected."
     (skroad--selector-hide)
     
     (let ((m (mark)) (am skroad--alt-mark) (p (point)))
-
-      (when (eq (point) (mark))
-        (message "repeat prev=%s point=%s" skroad--prev-point (point))
-        
-        (when (> p skroad--prev-point)
-          (skroad--point-save)
-          (message "fwd")
-          (forward-char))
-      
-        (when (< p skroad--prev-point)
-          (skroad--point-save)
-          (message "back")
-          (backward-char))
-
-        (skroad--zone-may-have-changed
-         skroad--prev-point skroad--prev-zone skroad--prev-type t)
-        
-        )
-      
-      (when (eq p m)
-        (message "p=mark"))
-
-      (when (eq p am)
-        (message "p=altmark"))
       
       (when (and am (> (abs (- p am)) (abs (- p m))))
+
         (set-mark am)
         (setq-local skroad--alt-mark m)
         (message "swapped marks!")
@@ -777,6 +764,7 @@ it to finalize all pending changes when no further ones are expected."
 
       ))
    (t
+    (message "mark off!")
     (skroad--selector-show)
     (setq-local skroad--alt-mark nil)
     )))
