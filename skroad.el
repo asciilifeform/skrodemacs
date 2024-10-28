@@ -324,16 +324,16 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (defun skroad--selector-activate ()
   "Activate (if inactive) or move the selector to the current zone."
   (skroad--with-zone
-    (move-overlay skroad--selector start end (current-buffer))
-    (setq-local cursor-type nil)
-    (setq-local show-paren-mode nil)))
+    (move-overlay skroad--selector start end (current-buffer)))
+  (setq-local cursor-type nil)
+  (setq-local show-paren-mode nil))
 
 (defun skroad--selector-deactivate ()
   "Deactivate the selector; it can be reactivated again."
   (when (skroad--selector-active-p)
-    (delete-overlay skroad--selector)
-    (setq-local cursor-type t)
-    (setq-local show-paren-mode t)))
+    (delete-overlay skroad--selector))
+  (setq-local cursor-type t)
+  (setq-local show-paren-mode t))
 
 (defun skroad--selector-active-p ()
   "Return t if the selector is active; otherwise nil."
@@ -342,18 +342,18 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 (defun skroad--atomic-enter (pos-from auto)
   "Point has entered an atomic."
-  ;; (message (format "atomic enter from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
+  (message (format "atomic enter from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
   (skroad--selector-activate)
   (goto-char (skroad--zone-start)))
 
 (defun skroad--atomic-leave (pos-from auto)
   "Point has exited an atomic."
-  ;; (message (format "atomic leave from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
+  (message (format "atomic leave from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
   (skroad--selector-deactivate))
 
 (defun skroad--atomic-move (pos-from auto)
   "Point has moved inside an atomic."
-  ;; (message (format "atomic move from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
+  (message (format "atomic move from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
   (if (> (point) pos-from)
       (goto-char (skroad--zone-end))
     (goto-char (skroad--zone-start))))
@@ -721,6 +721,7 @@ it to finalize all pending changes when no further ones are expected."
 
 (defun skroad--motion (prev &optional auto)
   "To be called whenever the zone under the point may have changed."
+  (message "motion")
   (let ((current (skroad--point-state)))
     (seq-let (old-p old-zone old-type p zone type) (append prev current)
       (when
@@ -734,9 +735,10 @@ it to finalize all pending changes when no further ones are expected."
            ((and (not (eq old-p p)) old-zone) ;; moved and remained in zone
             (skroad--type-action old-type 'on-move old-p auto)
             t))
-        (when (and (eq p (point)) mark-active skroad--alt-mark (eq p (mark)))
+        ;; If done moving the point, and we went over alt-mark to mark, jump:
+        (when (and mark-active skroad--alt-mark (eq p (point)) (eq p (mark)))
           (if (< skroad--alt-mark p) (forward-char) (backward-char)))
-        (skroad--motion current t)))
+        (skroad--motion current t))) ;; Handle possible auto zone change
     t))
 
 (defun skroad--adjust-mark-if-present ()
@@ -746,11 +748,9 @@ it to finalize all pending changes when no further ones are expected."
     (let ((m (mark)) (am skroad--alt-mark) (p (point)))
       (when (and am (> (abs (- p am)) (abs (- p m))))
         (set-mark am)
-        (setq-local skroad--alt-mark m)
-        ;; (message "swapped marks!")
-        )
-      ))
+        (setq-local skroad--alt-mark m))))
    (t
+    (message "mark off")
     (skroad--selector-show)
     (setq-local skroad--alt-mark nil))))
 
@@ -801,6 +801,16 @@ it to finalize all pending changes when no further ones are expected."
     tab)
   "Assigned to `find-word-boundary-function-table' in skroad mode.")
 
+;; TODO: does this need with-silent-modifications for textmode temp buffers
+;;       where skroad--silence-modifications is not in effect?
+(defun skroad--yank-handler (category start end)
+  "Handler for use with `yank-handled-properties`."
+  (message (format "yank! c=%s" category))
+  (remove-list-of-text-properties start end skroad--text-properties)
+  (skroad--with-whole-lines start end
+    (font-lock-ensure start-expanded end-expanded))
+  (skroad--deactivate-mark))
+
 (defun skroad--open-node ()
   "Open a skroad node."
   (skroad--init-font-lock)
@@ -822,18 +832,7 @@ it to finalize all pending changes when no further ones are expected."
   (setq-local font-lock-extra-managed-props skroad--text-properties)
   
   ;; Zap properties and refontify during yank.
-  ;; TODO: does this need with-silent-modifications for textmode temp buffers
-  ;;       where skroad--silence-modifications is not in effect?
-  (setq-local yank-handled-properties
-              '((button . (lambda (category start end)
-                            (remove-list-of-text-properties
-                             start end skroad--text-properties)
-                            (skroad--with-whole-lines
-                              start end
-                              (font-lock-ensure
-                               start-expanded end-expanded))
-                            ))))
-  ;; TODO: not button ^ ??
+  (setq-local yank-handled-properties '((id . skroad--yank-handler)))
 
   ;; Buffer-local hooks:
   (add-hook 'before-change-functions 'skroad--before-change-function nil t)
