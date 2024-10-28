@@ -712,74 +712,58 @@ it to finalize all pending changes when no further ones are expected."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar-local skroad--prev-point (point-min) "Point before a command.")
-(defvar-local skroad--prev-zone nil "Zone at prev point.")
-(defvar-local skroad--prev-type nil "Text type at prev point.")
+(defvar-local skroad--pre-command-snapshot (list (point-min) nil nil)
+  "Point, zone at point, and type at point prior to a command.")
 
-(defun skroad--point-save ()
-  "Save previous point and properties."
-  (setq-local skroad--prev-point (point))
-  (setq-local skroad--prev-zone (skroad--zone-at))
-  (setq-local skroad--prev-type (skroad--type-at)))
+(defun skroad--point-state ()
+  "Return a snapshot of the current point, zone, and type."
+  (list (point) (skroad--zone-at) (skroad--type-at)))
 
-(defun skroad--zone-may-have-changed (prev-p prev-zone prev-type &optional auto)
+(defun skroad--motion (prev &optional auto)
   "To be called whenever the zone under the point may have changed."
-  (let* ((p (point))
-         (pos-moved (not (eq prev-p p)))
-         (zone (skroad--zone-at p))
-         (type (skroad--type-at p)))
-    (when
-        (cond ;; text type actions `on-leave` and `on-enter` may both fire
-         ((not (eq prev-zone zone)) ;; point moved or text changed under it
-          (when prev-zone ;; point was in a zone, but has left it
-            (skroad--type-action prev-type 'on-leave prev-p auto))
-          (when zone ;; point has entered a different zone
-            (skroad--type-action type 'on-enter prev-p auto))
-          t)
-         ((and pos-moved prev-zone) ;; point moved, but remained in zone
-          (skroad--type-action prev-type 'on-move prev-p auto)
-          t))
-
-      (when (eq p (point))
-        (when (and mark-active skroad--alt-mark (eq p (mark)))
-          (message "bump")
-          (if (< skroad--alt-mark p) (forward-char) (backward-char))))
-      
-      (skroad--zone-may-have-changed p zone type t))
+  (let ((current (skroad--point-state)))
+    (seq-let (old-p old-zone old-type p zone type) (append prev current)
+      (when
+          (cond ;; text type actions `on-leave` and `on-enter` may both fire
+           ((not (eq old-zone zone)) ;; point moved or text changed under it
+            (when old-zone ;; point was in a zone, but has left it
+              (skroad--type-action old-type 'on-leave old-p auto))
+            (when zone ;; point has entered a different zone
+              (skroad--type-action type 'on-enter old-p auto))
+            t)
+           ((and (not (eq old-p p)) old-zone) ;; moved and remained in zone
+            (skroad--type-action old-type 'on-move old-p auto)
+            t))
+        (when (and (eq p (point)) mark-active skroad--alt-mark (eq p (mark)))
+          (if (< skroad--alt-mark p) (forward-char) (backward-char)))
+        (skroad--motion current t)))
     t))
 
 (defun skroad--adjust-mark-if-present ()
   (cond
    (mark-active
     (skroad--selector-hide)
-    
     (let ((m (mark)) (am skroad--alt-mark) (p (point)))
-      
       (when (and am (> (abs (- p am)) (abs (- p m))))
-
         (set-mark am)
         (setq-local skroad--alt-mark m)
-        (message "swapped marks!")
+        ;; (message "swapped marks!")
         )
-
       ))
    (t
-    (message "mark off!")
     (skroad--selector-show)
-    (setq-local skroad--alt-mark nil)
-    )))
+    (setq-local skroad--alt-mark nil))))
 
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
   (setq-local mouse-highlight nil)
-  (skroad--point-save))
+  (setq-local skroad--pre-command-snapshot (skroad--point-state)))
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
   (message "cmd")
   ;; (font-lock-ensure)
-  (skroad--zone-may-have-changed
-   skroad--prev-point skroad--prev-zone skroad--prev-type)
+  (skroad--motion skroad--pre-command-snapshot)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
   (skroad--update-local-index) ;; TODO: do it in save hook?
   (setq-local skroad--text-changed nil)
