@@ -342,18 +342,18 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 (defun skroad--atomic-enter (pos-from auto)
   "Point has entered an atomic."
-  (message (format "atomic enter from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
+  ;; (message (format "atomic enter from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
   (skroad--selector-activate)
   (goto-char (skroad--zone-start)))
 
 (defun skroad--atomic-leave (pos-from auto)
   "Point has exited an atomic."
-  (message (format "atomic leave from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
+  ;; (message (format "atomic leave from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
   (skroad--selector-deactivate))
 
 (defun skroad--atomic-move (pos-from auto)
   "Point has moved inside an atomic."
-  (message (format "atomic move from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
+  ;; (message (format "atomic move from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
   (if (> (point) pos-from)
       (goto-char (skroad--zone-end))
     (goto-char (skroad--zone-start))))
@@ -721,7 +721,6 @@ it to finalize all pending changes when no further ones are expected."
 
 (defun skroad--motion (prev &optional auto)
   "To be called whenever the zone under the point may have changed."
-  (message "motion")
   (let ((current (skroad--point-state)))
     (seq-let (old-p old-zone old-type p zone type) (append prev current)
       (when
@@ -732,10 +731,10 @@ it to finalize all pending changes when no further ones are expected."
             (when zone ;; point has entered a different zone
               (skroad--type-action type 'on-enter old-p auto))
             t)
-           ((and (not (eq old-p p)) old-zone) ;; moved and remained in zone
+           ((and (not (eq old-p p)) old-zone) ;; moved but remained in zone
             (skroad--type-action old-type 'on-move old-p auto)
             t))
-        ;; If done moving the point, and we went over alt-mark to mark, jump:
+        ;; If done moving point, and we went over alt-mark to mark, jump it:
         (when (and mark-active skroad--alt-mark (eq p (point)) (eq p (mark)))
           (if (< skroad--alt-mark p) (forward-char) (backward-char)))
         (skroad--motion current t))) ;; Handle possible auto zone change
@@ -750,7 +749,6 @@ it to finalize all pending changes when no further ones are expected."
         (set-mark am)
         (setq-local skroad--alt-mark m))))
    (t
-    (message "mark off")
     (skroad--selector-show)
     (setq-local skroad--alt-mark nil))))
 
@@ -762,7 +760,6 @@ it to finalize all pending changes when no further ones are expected."
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
   (message "cmd")
-  ;; (font-lock-ensure)
   (skroad--motion skroad--pre-command-snapshot)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
   (skroad--update-local-index) ;; TODO: do it in save hook?
@@ -806,8 +803,9 @@ it to finalize all pending changes when no further ones are expected."
 (defun skroad--yank-handler (category start end)
   "Handler for use with `yank-handled-properties`."
   (message (format "yank! c=%s" category))
-  (remove-list-of-text-properties start end skroad--text-properties)
   (skroad--with-whole-lines start end
+    (remove-list-of-text-properties
+     start-expanded end-expanded skroad--text-properties)
     (font-lock-ensure start-expanded end-expanded))
   (skroad--deactivate-mark))
 
