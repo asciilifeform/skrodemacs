@@ -741,6 +741,7 @@ it to finalize all pending changes when no further ones are expected."
     t))
 
 (defun skroad--adjust-mark-if-present ()
+  "Put mark and alt-mark in the right order, and show/hide selector."
   (cond
    (mark-active
     (skroad--selector-hide)
@@ -764,7 +765,7 @@ it to finalize all pending changes when no further ones are expected."
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
   (skroad--update-local-index) ;; TODO: do it in save hook?
   (setq-local skroad--text-changed nil)
-  (unless (use-region-p) (setq-local mouse-highlight t)))
+  (unless mark-active (setq-local mouse-highlight t)))
 
 (defun skroad--scroll-hook (window start)
   "Triggers when a buffer scrolls."
