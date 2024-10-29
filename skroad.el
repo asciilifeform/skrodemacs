@@ -79,6 +79,11 @@ differs from its value at POS (or point, if POS not given); nil if not found."
   "Face for skroad node titles."
   :group 'skroad-faces)
 
+(defface skroad--renamer-face
+  '((t :foreground "white" :background "purple"))
+  "Face for use with renamer."
+  :group 'skroad-faces)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Default properties for skroad text types.
@@ -568,7 +573,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (set-text-properties
    (match-beginning 0) (match-end 0)
    (list 'category this
-         'id (gensym)
+         'id (gensym) ;; TODO: make constant?
          'face (get this 'face))))
 
 (defun skroad--find-next-title (regex limit)
@@ -593,6 +598,37 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
            "RET" #'ignore)
  :rendered t
  :indexed t)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun skroad--renamer-create (text-type payload)
+  (message (format "Renamer create: type=%s payload='%s'" text-type payload))
+  )
+
+(defun skroad--renamer-destroy (text-type payload)
+  (message (format "Renamer destroy: type=%s payload='%s'" text-type payload))
+  )
+
+(defun skroad--renamer-enter (pos-from auto)
+  "Point has entered the renamer."
+  (message (format "renamer enter from=%s auto=%s" pos-from auto))
+  )
+
+(defun skroad--renamer-leave (pos-from auto)
+  "Point has exited the renamer."
+  (message (format "renamer leave from=%s auto=%s" pos-from auto))
+  )
+
+;; (skroad--define-text-type
+;;  'skroad-renamer
+;;  :doc "Renamer."
+;;  :face 'skroad--renamer-face
+;;  :on-create #'skroad--renamer-create
+;;  :on-destroy #'skroad--renamer-destroy
+;;  :on-enter #'skroad--renamer-enter
+;;  :on-leave #'skroad--renamer-leave
+ 
+;;  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
