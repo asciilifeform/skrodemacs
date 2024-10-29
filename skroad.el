@@ -633,8 +633,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :doc "Heading text."
  :inherit 'skroad-decor
  :face '(:weight bold :height 1.2 :inverse-video t)
- :start-delim "##" :end-delim "##"
- :payload-regex "\\([^#\n\t\s]+[^#\n\t]*?\\)"
+ :payload-regex "^##\s*\\([^\n\t\s]+[^\n\t]*\\)"
  :rendered t)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
