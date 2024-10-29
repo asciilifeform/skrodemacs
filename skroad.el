@@ -85,8 +85,6 @@ differs from its value at POS (or point, if POS not given); nil if not found."
 (put 'skroad--default-type 'mixin t)
 (put 'skroad--default-type 'face 'skroad--text-face)
 (put 'skroad--default-type 'rear-nonsticky t)
-(put 'skroad--default-type 'start-delim "")
-(put 'skroad--default-type 'end-delim "")
 
 (defun skroad--type-fn (text-type name &rest args)
   "Evaluate function NAME, which must be defined for TEXT-TYPE, with ARGS."
@@ -110,8 +108,10 @@ differs from its value at POS (or point, if POS not given); nil if not found."
   (let* ((start-delim (get this 'start-delim))
          (end-delim (get this 'end-delim))
          (payload-regex (or payload (get this 'payload-regex)))
-         (start-regex (concat (regexp-quote start-delim) "\s*"))
-         (end-regex (concat "\s*" (regexp-quote end-delim))))
+         (start-regex
+          (if (null start-delim) "" (concat (regexp-quote start-delim) "\s*")))
+         (end-regex
+          (if (null end-delim) "" (concat "\s*" (regexp-quote end-delim)))))
     (concat start-regex payload-regex end-regex)))
 
 (skroad--define-default-type-fn find-next (this limit &optional payload)
