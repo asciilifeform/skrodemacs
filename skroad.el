@@ -699,12 +699,8 @@ it to finalize all pending changes when no further ones are expected."
     (skroad--index-scan-region
      skroad--changes start-expanded end-expanded -1)))
 
-(defvar-local skroad--text-changed nil
-  "Whether buffer text has changed (incl. undo, i.e. buffer `not modified`)")
-
 (defun skroad--after-change-function (start end length)
   "Triggers following a change in a skroad buffer in region START...END."
-  (setq-local skroad--text-changed t)
   (skroad--with-whole-lines start end
     (skroad--index-scan-region
      skroad--changes start-expanded end-expanded 1)))
@@ -763,7 +759,6 @@ it to finalize all pending changes when no further ones are expected."
   (skroad--motion skroad--pre-command-snapshot)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
   (skroad--update-local-index) ;; TODO: do it in save hook?
-  (setq-local skroad--text-changed nil)
   (unless mark-active (setq-local mouse-highlight t)))
 
 (defun skroad--scroll-hook (window start)
