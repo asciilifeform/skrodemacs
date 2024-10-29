@@ -342,18 +342,15 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 
 (defun skroad--atomic-enter (pos-from auto)
   "Point has entered an atomic."
-  ;; (message (format "atomic enter from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
   (skroad--selector-activate)
   (goto-char (skroad--zone-start)))
 
 (defun skroad--atomic-leave (pos-from auto)
   "Point has exited an atomic."
-  ;; (message (format "atomic leave from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
   (skroad--selector-deactivate))
 
 (defun skroad--atomic-move (pos-from auto)
   "Point has moved inside an atomic."
-  ;; (message (format "atomic move from %s to %s (%s)" pos-from (point) (skroad--atomic-at)))
   (if (> (point) pos-from)
       (goto-char (skroad--zone-end))
     (goto-char (skroad--zone-start))))
@@ -463,13 +460,16 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (message (format "Live link pushed: '%s'" data)))
 
 (defun skroad--link-init (text-type payload)
-  (message (format "Link init: type=%s payload='%s'" text-type payload)))
+  (message (format "Link init: type=%s payload='%s'" text-type payload))
+  )
 
 (defun skroad--link-create (text-type payload)
-  (message (format "Link create: type=%s payload='%s'" text-type payload)))
+  (message (format "Link create: type=%s payload='%s'" text-type payload))
+  )
 
 (defun skroad--link-destroy (text-type payload)
-  (message (format "Link destroy: type=%s payload='%s'" text-type payload)))
+  (message (format "Link destroy: type=%s payload='%s'" text-type payload))
+  )
 
 (skroad--define-text-type
  'skroad-live
