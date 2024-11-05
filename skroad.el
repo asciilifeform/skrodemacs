@@ -6,11 +6,16 @@
 
 ;;; Utility functions. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defvar skroad--debug nil)
+
+(unless skroad--debug
+  (setq byte-compile-warnings nil))
+
 (defun skroad--keyword-to-symbol (exp)
   "If EXP is a keyword, convert it to a symbol. If not, return it as-is."
-  (if (keywordp exp)
-      (read (substring (symbol-name exp) 1))
-    exp))
+  (unless (keywordp exp)
+    (error "%s is not a keyword!" exp))
+  (read (substring (symbol-name exp) 1)))
 
 (defmacro skroad--do-plist (key val plist &rest body)
   "Evaluate BODY for side-effects with key,val bound to each pair in PLIST."
@@ -50,20 +55,6 @@
                        (apply orig-fun args))
                    (apply orig-fun args)))))
 
-(defun skroad--find-different-text-property (prop direction &optional pos)
-  "Find the next/previous (DIRECTION) position where PROP is not nil and
-differs from its value at POS (or point, if POS not given); nil if not found."
-  (save-mark-and-excursion
-    (when pos (goto-char pos))
-    (let ((r (funcall
-              (cond ((eq direction :forward) #'text-property-search-forward)
-                    ((eq direction :backward) #'text-property-search-backward)
-                    (t (error "Invalid direction: %s !" direction)))
-              prop (get-text-property (point) prop)
-              #'(lambda (oldval newval)
-                  (and newval (not (eq oldval newval)))))))
-      (if r (prop-match-beginning r)))))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--floating-title-enable t
@@ -79,17 +70,22 @@ differs from its value at POS (or point, if POS not given); nil if not found."
   "Face for skroad node titles."
   :group 'skroad-faces)
 
+(defface skroad--dead-link-face
+  '((t :inherit link :foreground "red"))
+  "Face used for dead links.."
+  :group 'skroad-faces)
+
+(defface skroad--heading-face
+  '((t :inherit default :weight bold :height 1.2 :inverse-video t))
+  "Face used for skroad heading text."
+  :group 'skroad-faces)
+
 (defface skroad--renamer-face
   '((t :foreground "white" :background "purple"))
   "Face for use with renamer."
   :group 'skroad-faces)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Default properties for skroad text types.
-(put 'skroad--default-type 'mixin t)
-(put 'skroad--default-type 'face 'skroad--text-face)
-(put 'skroad--default-type 'rear-nonsticky t)
 
 (defun skroad--type-fn (text-type name &rest args)
   "Evaluate function NAME, which must be defined for TEXT-TYPE, with ARGS."
@@ -98,76 +94,403 @@ differs from its value at POS (or point, if POS not given); nil if not found."
       (error "%s is not defined for type %s !" fn text-type))
     (apply fn text-type args)))
 
-(defmacro skroad--define-default-type-fn (name args &rest body)
-  "Define function NAME with ARGS to assign to the default text type."
-  (declare (indent defun))
-  (let ((fn (read (concat "skroad--default-type-" (symbol-name name)))))
-    `(progn
-       (defun ,fn ,args ,@body)
-       (put 'skroad--default-type ',name #',fn))))
+(defun skroad--define-text-type (name &rest properties)
+  "Define a new skroad text type NAME with given PROPERTIES."
+  (if (plist-get properties :mixin) ;; Save a mixin's properties verbatim.
+      (setf (symbol-plist name) properties) ;; ...will be eaten when :use'd.
+    (letrec ;; Otherwise, walk all properties, including from any :use'd types:
+        ((env nil) ;; Lexical environment for eval to use
+         (save-pv #'(lambda (prop val) ;; when we get final value of a prop,
+                      (put name prop val) ;; record as a symbol-prop of name,
+                      (push (cons prop val) env))) ;; and to where eval sees it
+         (require-prop #'(lambda (prop) ;; Verify that prop was defined already
+                           (when (null (alist-get prop env))
+                             (error "%s must be defined for %s!" prop name))))
+         (eat-props ;; Walk a plist, find and save effective value of each prop
+          #'(lambda (plist)
+              (skroad--do-plist prop val plist
+                (cond
+                 ((memq prop '(:doc :mixin)) nil) ;; Specials
+                 ((eq prop :register) (add-to-list val name)) ;; Add to list
+                 ((eq prop :use) ;; Val is another type; eat all of its props
+                  (funcall eat-props (symbol-plist val))) ;; recursively
+                 ((eq prop :defaults) ;; Default values for props when needed
+                  (dolist (kv val)
+                    (let ((def-prop (car kv)) (def-val (cadr kv)))
+                      (when (null (alist-get def-prop env))
+                        (funcall save-pv def-prop def-val)))))
+                 ((eq prop :require) ;; val is mandatory prop (or list of them)
+                  (if (listp val)
+                      (dolist (p val) (funcall require-prop p))
+                    (funcall require-prop val)))
+                 ((keywordp prop) ;; Explicitly-defined property (:prop value)
+                  (funcall
+                   save-pv (skroad--keyword-to-symbol prop) ;; lose the `:`
+                   (cond
+                    ((eq prop :keymap) ;; If provided a keymap:
+                     (let ((parent-keymap (alist-get 'keymap env)))
+                       (when parent-keymap ;; stack on any existing keymap
+                         (set-keymap-parent val parent-keymap))
+                       val))
+                    ((and (symbolp val) ;; symbols with global bindings:
+                          (or (boundp val) (fboundp val) (facep val))) val)
+                    (t (byte-compile (eval val env)))))) ;; compile form
+                 ;; Property from :use, so don't re-eval it, just store it:
+                 (t (unless (eq prop 'type-name) ;; Don't save :use'd type names
+                      (funcall save-pv prop val))))))))
+      (funcall save-pv 'type-name name) ;; Save the type name to symbol and env
+      ;; Add properties, starting with the default ones:
+      (funcall eat-props (append '(:use skroad--default-type) properties))))
+  name)
 
-(skroad--define-default-type-fn make-text (this payload)
-  (concat (get this 'start-delim) payload (get this 'end-delim)))
+(skroad--define-text-type
+ 'skroad--default-type
+ :doc "Default text type from which all other types (except mixins) inherit."
+ :mixin t
+ :face 'skroad--text-face
+ :rear-nonsticky t)
 
-(skroad--define-default-type-fn make-regex (this &optional payload)
-  (let* ((start-delim (get this 'start-delim))
-         (end-delim (get this 'end-delim))
-         (payload-regex (or payload (get this 'payload-regex)))
-         (start-regex
-          (if (null start-delim) "" (concat (regexp-quote start-delim) "\s*")))
-         (end-regex
-          (if (null end-delim) "" (concat "\s*" (regexp-quote end-delim)))))
-    (concat start-regex payload-regex end-regex)))
+(skroad--define-text-type
+ 'skroad--text-delimited
+ :doc "Base mixin for delimited text types. Define delimiters before mixing."
+ :mixin t
+ :require 'payload-regex
+ :defaults '((start-delim "") (end-delim "") (match-number 1))
+ :make-text '(lambda (payload) (concat start-delim payload end-delim))
+ :start-delim-regex
+ '(if (string-empty-p start-delim) "" (concat (regexp-quote start-delim) "\s*"))
+ :end-delim-regex
+ '(if (string-empty-p end-delim) "" (concat "\s*" (regexp-quote end-delim)))
+ :make-regex '(lambda (s) (concat start-delim-regex s end-delim-regex))
+ :regex-any '(funcall make-regex payload-regex))
 
-(skroad--define-default-type-fn find-next (this limit &optional payload)
-  (funcall (get this 'finder)
-           (skroad--type-fn this 'make-regex payload)
-           limit))
+(skroad--define-text-type
+ 'skroad--text-findable
+ :doc "Mixin for findable text types. (Internal use only.)"
+ :mixin t
+ :require '(make-regex regex-any finder-regex-forward)
+ :find-any-forward '(funcall finder-regex-forward regex-any)
+ :find-any-backward '(funcall finder-regex-backward regex-any)
+ :find-string-forward
+ '(lambda (limit s)
+    (funcall (funcall finder-regex-forward (funcall make-regex s)) limit))
+ :find-string-backward
+ '(lambda (limit s)
+    (funcall (funcall finder-regex-backward (funcall make-regex s)) limit))
+ :jump-next-from
+ '(lambda (pos)
+    (goto-char
+     (or (save-mark-and-excursion
+           (when (or (and (goto-char pos)
+                          (funcall find-any-forward (point-max)))
+                     (and (goto-char (point-min))
+                          (funcall find-any-forward (point-max))))
+             (match-beginning 0)))
+         (point))))
+ :jump-prev-from
+ '(lambda (pos)
+    (goto-char
+     (or (save-mark-and-excursion
+           (when (or (and (goto-char pos)
+                          (funcall find-any-backward (point-min)))
+                     (and (goto-char (point-max))
+                          (funcall find-any-backward (point-min))))
+             (match-beginning 0)))
+         (point))))
+ :for-all-in-region-forward
+ '(lambda (start end f)
+    (save-mark-and-excursion
+      (goto-char start)
+      (while (funcall find-any-forward end)
+        (funcall f (match-string-no-properties match-number))))))
 
-(skroad--define-default-type-fn make-font-lock-rule (this)
-  (let ((regex (funcall (get this 'make-regex) this))
-        (find-next (get this 'finder))
-        (renderer (get this 'renderer)))
-    (list
-     #'(lambda (limit)
-         (when (funcall find-next regex limit)
-           (with-silent-modifications
-             (funcall renderer this)
-             t)))
-     '(0 nil append))))
+(defun skroad--finder-regex-forward (r)
+  "Generate a forward finder for regex R."
+  (lambda (limit) (re-search-forward r limit t)))
+
+(defun skroad--finder-regex-backward (r)
+  "Generate a backward finder for regex R."
+  (lambda (limit) (re-search-forward r limit t)))
+
+(skroad--define-text-type
+ 'skroad--text-delimited-anywhere
+ :doc "Mixin for delimited text types found anywhere in the buffer."
+ :mixin t
+ :use 'skroad--text-delimited
+ :finder-regex-forward #'skroad--finder-regex-forward
+ :finder-regex-backward #'skroad--finder-regex-backward
+ :use 'skroad--text-findable)
+
+(defun skroad--in-title-p (&optional pos)
+  "Return t if POS (default: point) is in the node title; otherwise nil."
+  (save-mark-and-excursion
+    (when pos (goto-char pos))
+    (eq (line-beginning-position) (point-min))))
+
+(defun skroad--body-start ()
+  "Return the first position in the buffer outside of the node title."
+  (save-mark-and-excursion
+    (goto-char (point-min))
+    (goto-char (line-beginning-position 2))
+    (point)))
+
+(defun skroad--finder-regex-forward-non-title (r)
+  "Generate a forward finder for regex R which excludes the title."
+  (lambda (limit)
+    (when (skroad--in-title-p) (goto-char (skroad--body-start)))
+    (let ((lim (if (< (point) (or limit (point-max)))
+                   limit (line-end-position))))
+      (re-search-forward r lim t))))
+
+(defun skroad--finder-regex-backward-non-title (r)
+  "Generate a backward finder for regex R which excludes the title."
+  (lambda (limit)
+    (let ((lim (if (skroad--in-title-p limit) (skroad--body-start) limit)))
+      (unless (skroad--in-title-p) (re-search-backward r lim t)))))
+
+(skroad--define-text-type
+ 'skroad--text-delimited-non-title
+ :doc "Mixin for delimited text types excluded from the node title."
+ :mixin t
+ :use 'skroad--text-delimited
+ :finder-regex-forward #'skroad--finder-regex-forward-non-title
+ :finder-regex-backward #'skroad--finder-regex-backward-non-title
+ :use 'skroad--text-findable)
 
 (defvar skroad--rendered-text-types nil "Text types for use with font-lock.")
-(defvar skroad--indexed-text-types nil "Text types that are indexed.")
+
+(skroad--define-text-type
+ 'skroad--text-rendered
+ :doc "Finalization mixin for all text types rendered by font-lock."
+ :mixin t
+ :require '(find-any-forward render)
+ :render-next
+ '(lambda (limit)
+    (when (funcall find-any-forward limit)
+      (with-silent-modifications (funcall render) t)))
+ :font-lock-rule '(lambda () (list render-next '(0 nil append)))
+ :register 'skroad--rendered-text-types)
 
 (defun skroad--init-font-lock ()
   "Initialize font-lock rules for a skroad mode buffer."
   (let ((rules nil))
     (dolist (type skroad--rendered-text-types)
-      (push (skroad--type-fn type 'make-font-lock-rule) rules))
+      (push (funcall (get type 'font-lock-rule)) rules))
     (font-lock-add-keywords nil rules t)))
 
-(defun skroad--define-text-type (name &rest properties)
-  (skroad--do-plist ;; Add properties, including inherited, to the symbol:
-    prop val (append properties '(:inherit skroad--default-type))
-    (cond
-     ((eq prop :inherit) ;; Inherit properties from given parent type:
-      (skroad--do-plist parent-prop parent-val (symbol-plist val)
-        (cond
-         ((eq parent-prop 'doc) ;; Agglomerate doc strings from upstream
-          (put name 'doc (concat parent-val ";" (or (get name 'doc) ""))))
-         ((or (null (get name parent-prop)) (null (get val 'mixin)))
-          (put name parent-prop parent-val))))) ;; don't clobber if mixin
-     ((eq prop :keymap) ;; If given a keymap:
-      (let ((parent-keymap (get name 'keymap)))
-        (when parent-keymap ;; stack it on top of any existing keymaps
-          (set-keymap-parent val parent-keymap))
-        (put name 'keymap val)))
-     ((and (eq prop :rendered) val) ;; Use this type with font-lock?
-      (add-to-list 'skroad--rendered-text-types name))
-     ((and (eq prop :indexed) val) ;; Use this type with indexer?
-      (add-to-list 'skroad--indexed-text-types name))
-     (t (put name (skroad--keyword-to-symbol prop) val)))) ;; simply save it
-  name)
+(skroad--define-text-type
+ 'skroad--text-render-delimited-zoned
+ :doc "Mixin for zoned delimited text types rendered by font-lock."
+ :mixin t
+ :require 'face
+ :render
+ '(lambda ()
+    (set-text-properties
+     (match-beginning 0) (match-end 0)
+     (list 'category type-name
+           'id (gensym)
+           'face face
+           'data (match-string-no-properties match-number))))
+ :use 'skroad--text-rendered)
+
+(skroad--define-text-type
+ 'skroad--text-render-delimited-decorative
+ :doc "Mixin for decorative delimited text types rendered by font-lock."
+ :mixin t
+ :use 'skroad--text-delimited-anywhere
+ :require 'face
+ :render
+ '(lambda () (add-face-text-property (match-beginning 0) (match-end 0) face))
+ :use 'skroad--text-rendered)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(skroad--define-text-type
+ 'skroad-decorative-italic
+ :doc "Italicized text."
+ :face 'italic
+ :start-delim "__" :end-delim "__"
+ :payload-regex "\\([^_]+\\)"
+ :use 'skroad--text-render-delimited-decorative)
+
+(skroad--define-text-type
+ 'skroad-decorative-bold
+ :doc "Bold text."
+ :face 'bold
+ :start-delim "**" :end-delim "**"
+ :payload-regex "\\([^*]+\\)"
+ :use 'skroad--text-render-delimited-decorative)
+
+(skroad--define-text-type
+ 'skroad-decorative-heading
+ :doc "Heading text."
+ :face 'skroad--heading-face
+ :payload-regex "^##\s*\\([^\n\t\s]+[^\n\t]*\\)"
+ :use 'skroad--text-render-delimited-decorative)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defvar skroad--indexed-text-types nil "Text types that are indexed.")
+
+(skroad--define-text-type
+ 'skroad--text-indexed
+ :doc "Finalization mixin for indexed text types."
+ :mixin t
+ :require 'for-all-in-region-forward
+ :register 'skroad--indexed-text-types)
+
+(defun skroad--index-scan-region (changes start end delta)
+  "Apply DELTA (must be 1 or -1) to each indexed item found in START..END,
+updating the hash table CHANGES, and `skroad--index-update` must be called on
+it to finalize all pending changes when no further ones are expected."
+  (dolist (text-type skroad--indexed-text-types) ;; try all indexed types
+    (funcall
+     (get text-type 'for-all-in-region-forward) start end
+     #'(lambda (payload)
+         (let* ((key (cons text-type payload)) ;; key for changes table
+                (count (+ delta (or (gethash key changes) 0)))) ;; inc/dec
+           (if (zerop count) ;; if both added and removed since last update.
+               (remhash key changes) ;; ...discard item from changes table.
+             (puthash key count changes))))))) ;; else update the count.
+
+(defun skroad--index-update (index pending &optional init-scan)
+  "Update INDEX by applying all PENDING changes, and run text type actions when
+appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
+`on-create` for created entries; `on-destroy` runs for destroyed ones."
+  (maphash
+   #'(lambda (key delta) ;; key and count delta in pending changes table
+       (let* ((prior (or (gethash key index) 0)) ;; copies in index prior
+              (create (zerop prior)) ;; t if index did not contain this item
+              (count (+ prior delta)) ;; copies of item in index + delta
+              (destroy (zerop count)) ;; t if change will destroy all copies
+              (action ;; text type action to invoke, if any. nil if none.
+               (cond (create (if init-scan 'on-init 'on-create))
+                     (destroy (remhash key index) 'on-destroy))))
+         (unless destroy (puthash key count index)) ;; update index if remains
+         (let ((text-type (car key)) (payload (cdr key))) ;; args for action
+           (skroad--type-action text-type action text-type payload))))
+   pending)
+  t)
+
+(defvar-local skroad--index nil "Text type index for current buffer.")
+(defvar-local skroad--changes nil "Pending index changes for current buffer.")
+
+(defun skroad--init-local-index ()
+  "Create the buffer-local indices and populate them from current buffer."
+  (unless (null skroad--index)
+    (error "Text type index already exists for this buffer!"))
+  (setq skroad--index (make-hash-table :test 'equal))
+  ;; Populate while dispatching `on-init`s
+  (let ((init-populate (make-hash-table :test 'equal)))
+    (skroad--index-scan-region init-populate (point-min) (point-max) 1)
+    (skroad--index-update skroad--index init-populate t)))
+
+(defun skroad--update-local-index ()
+  "Apply all pending changes queued for the buffer-local text type index."
+  (when skroad--changes
+    (skroad--index-update skroad--index skroad--changes)
+    (setq skroad--changes nil)))
+
+(defun skroad--before-change-function (start end)
+  "Triggers prior to a change in a skroad buffer in region START...END."
+  (when (null skroad--changes)
+    (setq skroad--changes (make-hash-table :test 'equal)))
+  (skroad--with-whole-lines start end
+    (skroad--index-scan-region
+     skroad--changes start-expanded end-expanded -1)))
+
+(defun skroad--after-change-function (start end length)
+  "Triggers following a change in a skroad buffer in region START...END."
+  (skroad--with-whole-lines start end
+    (skroad--index-scan-region
+     skroad--changes start-expanded end-expanded 1)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defvar-local skroad--current-node-title "")
+
+(defun skroad--title-init (text-type payload)
+  (message (format "Title init: type=%s payload='%s'" text-type payload))
+  (setq-local skroad--current-node-title payload)
+  )
+
+(defun skroad--title-create (text-type payload)
+  (message (format "Title create: type=%s payload='%s'" text-type payload))
+  (setq-local skroad--current-node-title payload)
+  )
+
+(defun skroad--title-destroy (text-type payload)
+  (message (format "Title destroy: type=%s payload='%s'" text-type payload)))
+
+(defun skroad--get-title ()
+  "Get the current node title from the buffer."
+  (buffer-substring-no-properties (point-min) (skroad--get-end-of-line 1)))
+
+(skroad--define-text-type
+ 'skroad-node-title
+ :doc "Node title."
+ :face 'skroad--title-face
+ :keymap (define-keymap
+           "RET" #'ignore)
+ :on-init #'skroad--title-init
+ :on-create #'skroad--title-create
+ :on-destroy #'skroad--title-destroy
+ :on-enter
+ '(lambda (pos-from auto)
+    (message (format "title enter from=%s auto=%s" pos-from auto))
+    (when (and mark-active (not auto)) ;; If region is active, don't enter
+      (goto-char (skroad--body-start)))) ;; ...stop right under it.
+ :on-leave
+ '(lambda (pos-from auto)
+    (message (format "title leave from=%s auto=%s" pos-from auto))
+    (when (and mark-active (not auto)) ;; If region is active, don't leave
+      (goto-char (point-min)) ;; ...jump to its end.
+      (goto-char (line-end-position))))
+ :find-any-forward
+ '(lambda (limit)
+    (when (eq (point) (point-min)) (goto-char (skroad--body-start)) t))
+ :render
+ '(lambda ()
+    (set-text-properties
+     (point-min) (skroad--body-start)
+     (list 'category type-name
+           'id type-name ;; there can only be one
+           'face face
+           'data (skroad--get-title))))
+ :use 'skroad--text-rendered
+ :for-all-in-region-forward
+ '(lambda (start end f)
+    (when (eq start (point-min)) (funcall f (skroad--get-title))))
+ :use 'skroad--text-indexed
+ )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+    ;; (index final
+    ;;   (let ((env))
+    ;;     (skroad--do-plist p v (symbol-plist name) (push (cons p v) env))
+    ;;     (dolist (f (reverse functions))
+    ;;       (let* ((f-name (car f))
+    ;;              (f-def (cadr f))
+    ;;              (fn (read
+    ;;                   (format "skroad--type-%s-%s"
+    ;;                           (symbol-name name) (symbol-name f-name))))
+    ;;              ;; (compiled
+    ;;              ;;  (eval
+    ;;              ;;   `(byte-compile (lambda ,(car f-def) ,@(cdr f-def))) env))
+    ;;              (compiled
+    ;;               (eval
+    ;;                `(lambda ,(car f-def) ,@(cdr f-def)) env))
+    ;;              )
+    ;;         (message (format "fn=%s body=%s" f-name compiled))
+    ;;         ;; (message (format "fn=%s body=%s" f-name f-def))
+    ;;         (defalias fn compiled)
+    ;;         (push (cons f-name compiled) env)
+    ;;         (put name f-name fn)))
+    ;;     (message (format "env=%s done" env))
+    ;;     )))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--type-action (text-type action-name &rest args)
   "If ACTION-NAME is not nil, and TEXT-TYPE has a defined action of that name,
@@ -184,8 +507,10 @@ call the action with ARGS."
 instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (save-mark-and-excursion
     (goto-char (point-min))
-    (while (skroad--type-fn text-type-old 'find-next (point-max) payload-old)
-      (replace-match (skroad--type-fn text-type-new 'make-text payload-new)))))
+    (while (skroad--type-action text-type-old
+                                'find-string-forward (point-max) payload-old)
+      (replace-match
+       (skroad--type-action text-type-new 'make-text payload-new)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -227,25 +552,19 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (interactive)
   (let ((p (point)))
     (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
-          ((and (> p (point-min)) (skroad--atomic-at (1- p)))
+          ((and (> p (skroad--body-start)) (skroad--atomic-at (1- p)))
            (delete-region (skroad--zone-start (1- p)) p))
           (t (delete-char -1)))))
 
 (defun skroad--cmd-jump-to-next-link ()
   "Jump to the next link following point; cycle to first after the last."
   (interactive)
-  (goto-char
-   (or (skroad--find-different-text-property 'data :forward)
-       (skroad--find-different-text-property 'data :forward (point-min))
-       (point))))
+  (funcall (get 'skroad-live 'jump-next-from) (point)))
 
 (defun skroad--cmd-jump-to-prev-link ()
   "Jump to the previous link preceding point; cycle to last after the first."
   (interactive)
-  (goto-char
-   (or (skroad--find-different-text-property 'data :backward)
-       (skroad--find-different-text-property 'data :backward (point-max))
-       (point))))
+  (funcall (get 'skroad-live 'jump-prev-from) (point)))
 
 (defvar skroad--mode-keymap
   (define-keymap
@@ -261,24 +580,6 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Properties added by font-lock that must be removed when unfontifying.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun skroad--point-in-title-p ()
-  "Returns t if point is in the first line of the buffer, otherwise nil."
-  (eq (line-beginning-position) (point-min)))
-
-(defun skroad--find-next-nontitle (regex limit)
-  "Find next REGEX, up to LIMIT, but only outside of the title line."
-  (when (skroad--point-in-title-p) (goto-char (line-beginning-position 2)))
-  (re-search-forward
-   regex
-   (if (< (point) limit) limit (skroad--get-end-of-line (point)))
-   t))
-
-(skroad--define-text-type
- 'skroad-not-title
- :doc "Mixin type for all text types that do not apply to the node title."
- :mixin t
- :finder #'skroad--find-next-nontitle)
 
 (defun skroad--cmd-atomics-prepend-space ()
   "Insert a space immediately behind the atomic currently under the point."
@@ -345,21 +646,6 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (and (overlayp skroad--selector)
        (eq (current-buffer) (overlay-buffer skroad--selector))))
 
-(defun skroad--atomic-enter (pos-from auto)
-  "Point has entered an atomic."
-  (skroad--selector-activate)
-  (goto-char (skroad--zone-start)))
-
-(defun skroad--atomic-leave (pos-from auto)
-  "Point has exited an atomic."
-  (skroad--selector-deactivate))
-
-(defun skroad--atomic-move (pos-from auto)
-  "Point has moved inside an atomic."
-  (if (> (point) pos-from)
-      (goto-char (skroad--zone-end))
-    (goto-char (skroad--zone-start))))
-
 (defun skroad--cmd-atomics-set-mark ()
   "Set the mark inside an atomic."
   (interactive)
@@ -369,24 +655,25 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
       (goto-char end)
       (call-interactively 'set-mark-command))))
 
-(defun skroad--atomic-renderer (this)
-  "Font lock rendering for atomics."
-  (set-text-properties
-   (match-beginning 0) (match-end 0)
-   (list 'category this
-         'id (gensym)
-         'face (get this 'face)
-         'data (match-string-no-properties 1))))
+(defun skroad--cmd-atomics-jump-to-next-link ()
+  "Jump to the next link following this atomic; cycle to first after the last."
+  (interactive)
+  (funcall (get 'skroad-live 'jump-next-from) (skroad--zone-end)))
 
 (skroad--define-text-type
  'skroad-atomic
  :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
- :renderer #'skroad--atomic-renderer
- :on-enter #'skroad--atomic-enter
- :on-leave #'skroad--atomic-leave
- :on-move #'skroad--atomic-move
+ :on-enter '(lambda (pos-from auto)
+              (skroad--selector-activate)
+              (goto-char (skroad--zone-start)))
+ :on-leave '(lambda (pos-from auto) (skroad--selector-deactivate))
+ :on-move '(lambda (pos-from auto)
+             (goto-char
+              (if (> (point) pos-from)
+                  (skroad--zone-end) (skroad--zone-start))))
  :keymap
  (define-keymap
+   "<tab>" #'skroad--cmd-atomics-jump-to-next-link
    "SPC" #'skroad--cmd-atomics-prepend-space
    "<remap> <set-mark-command>" #'skroad--cmd-atomics-set-mark
    "<remap> <self-insert-command>" #'ignore
@@ -397,7 +684,8 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
    "<mouse-1>" #'ignore "<mouse-2>" #'ignore "<mouse-3>" #'ignore
    "<remap> <kill-region>" #'skroad--cmd-atomics-kill-region
    "<remap> <kill-ring-save>" #'skroad--cmd-atomics-kill-ring-save
-   ))
+   )
+ )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -422,8 +710,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-link
  :doc "Fundamental type from which all skroad links are derived."
- :inherit 'skroad-atomic
- :inherit 'skroad-not-title
+ :use 'skroad-atomic
  :face 'link
  :mouse-face 'highlight
  :keymap (define-keymap
@@ -449,7 +736,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-node-link
  :doc "Fundamental type for skroad node links (live or dead)."
- :inherit 'skroad-link
+ :use 'skroad-link
  :help-echo 'skroad--link-mouseover
  :payload-regex "\\([^][\n\t\s]+[^][\n\t]*?\\)"
  :keymap (define-keymap
@@ -479,7 +766,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-live
  :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
- :inherit 'skroad-node-link
+ :use 'skroad-node-link
  :on-init #'skroad--link-init
  :on-create #'skroad--link-create
  :on-destroy #'skroad--link-destroy
@@ -487,8 +774,10 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :start-delim "[[" :end-delim "]]"
  :keymap (define-keymap
            "l" #'skroad--live-link-to-dead)
- :rendered t
- :indexed t)
+ :use 'skroad--text-delimited-non-title
+ :use 'skroad--text-render-delimited-zoned
+ :use 'skroad--text-indexed
+ )
 
 (defun skroad--dead-link-to-live ()
   "Transform all dead links with payload LINK to live links."
@@ -499,16 +788,18 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-dead
  :doc "Dead (i.e. revivable placeholder) link to a skroad node."
- :inherit 'skroad-node-link
+ :use 'skroad-node-link
  :on-init #'skroad--link-init
  :on-create #'skroad--link-create
  :on-destroy #'skroad--link-destroy
  :start-delim "[-[" :end-delim "]-]"
- :face '(:inherit link :foreground "red")
+ :face 'skroad--dead-link-face
  :keymap (define-keymap
            "l" #'skroad--dead-link-to-live)
- :rendered t
- :indexed t)
+ :use 'skroad--text-delimited-non-title
+ :use 'skroad--text-render-delimited-zoned
+ :use 'skroad--text-indexed
+ )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -524,7 +815,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 (skroad--define-text-type
  'skroad-url-link
  :doc "URL."
- :inherit 'skroad-link
+ :use 'skroad-link
  :help-echo "External link."
  :payload-regex
  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\t\s]+\\)"
@@ -532,92 +823,30 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
  :keymap (define-keymap
            "t" #'skroad--comment-url
            "l" #'skroad--comment-url)
- :rendered t
- :indexed t)
+ :use 'skroad--text-delimited-non-title
+ :use 'skroad--text-render-delimited-zoned
+ :use 'skroad--text-indexed
+ )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar-local skroad--current-node-title "")
+;; (defun skroad--renamer-create (text-type payload)
+;;   (message (format "Renamer create: type=%s payload='%s'" text-type payload))
+;;   )
 
-(defun skroad--title-init (text-type payload)
-  (message (format "Title init: type=%s payload='%s'" text-type payload))
-  (setq-local skroad--current-node-title payload)
-  )
+;; (defun skroad--renamer-destroy (text-type payload)
+;;   (message (format "Renamer destroy: type=%s payload='%s'" text-type payload))
+;;   )
 
-(defun skroad--title-create (text-type payload)
-  (message (format "Title create: type=%s payload='%s'" text-type payload))
-  (setq-local skroad--current-node-title payload)
-  )
+;; (defun skroad--renamer-enter (pos-from auto)
+;;   "Point has entered the renamer."
+;;   (message (format "renamer enter from=%s auto=%s" pos-from auto))
+;;   )
 
-(defun skroad--title-destroy (text-type payload)
-  (message (format "Title destroy: type=%s payload='%s'" text-type payload)))
-
-(defun skroad--title-enter (pos-from auto)
-  "Point has entered the title."
-  (message (format "title enter from=%s auto=%s" pos-from auto))
-  ;; If a region is active, prohibit moving into title.
-  (when (and mark-active (not auto))
-    (goto-char (point-min)) ;; stop right below the title.
-    (goto-char (line-beginning-position 2))))
-
-(defun skroad--title-leave (pos-from auto)
-  "Point has exited the title."
-  (message (format "title leave from=%s auto=%s" pos-from auto))
-  ;; If a region is active, prohibit moving out of title.
-  (when (and mark-active (not auto))
-    (goto-char (point-min))
-    (goto-char (line-end-position))))
-
-(defun skroad--title-renderer (this)
-  "Font lock rendering for title."
-  (set-text-properties
-   (match-beginning 0) (match-end 0)
-   (list 'category this
-         'id (gensym) ;; TODO: make constant?
-         'face (get this 'face))))
-
-(defun skroad--find-next-title (regex limit)
-  "Find next REGEX, up to LIMIT, but only when inside of the title line."
-  (and (skroad--point-in-title-p)
-       (re-search-forward regex (max limit (line-beginning-position 2)) t)))
-
-(skroad--define-text-type
- 'skroad-node-title
- :doc "Node title."
- :finder #'skroad--find-next-title
- :renderer #'skroad--title-renderer
- :on-init #'skroad--title-init
- :on-create #'skroad--title-create
- :on-destroy #'skroad--title-destroy
- :on-enter #'skroad--title-enter
- :on-leave #'skroad--title-leave
- :face 'skroad--title-face
- :start-delim "" :end-delim "\n"
- :payload-regex "\\([^\n]+\\)"
- :keymap (define-keymap
-           "RET" #'ignore)
- :rendered t
- :indexed t)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun skroad--renamer-create (text-type payload)
-  (message (format "Renamer create: type=%s payload='%s'" text-type payload))
-  )
-
-(defun skroad--renamer-destroy (text-type payload)
-  (message (format "Renamer destroy: type=%s payload='%s'" text-type payload))
-  )
-
-(defun skroad--renamer-enter (pos-from auto)
-  "Point has entered the renamer."
-  (message (format "renamer enter from=%s auto=%s" pos-from auto))
-  )
-
-(defun skroad--renamer-leave (pos-from auto)
-  "Point has exited the renamer."
-  (message (format "renamer leave from=%s auto=%s" pos-from auto))
-  )
+;; (defun skroad--renamer-leave (pos-from auto)
+;;   "Point has exited the renamer."
+;;   (message (format "renamer leave from=%s auto=%s" pos-from auto))
+;;   )
 
 ;; (skroad--define-text-type
 ;;  'skroad-renamer
@@ -629,117 +858,6 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
 ;;  :on-leave #'skroad--renamer-leave
  
 ;;  )
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun skroad--find-next-anywhere (regex limit)
-  "Find next REGEX, up to LIMIT, anywhere (including in the node title.)"
-  (re-search-forward regex limit t))
-
-(defun skroad--decor-renderer (this)
-  "Font lock rendering for decorations."
-  (add-face-text-property (match-beginning 0) (match-end 0) (get this 'face)))
-
-(skroad--define-text-type
- 'skroad-decor
- :doc "Fundamental type for skroad text decorations."
- :finder #'skroad--find-next-anywhere
- :renderer #'skroad--decor-renderer)
-
-(skroad--define-text-type
- 'skroad-decor-italic
- :doc "Italicized text."
- :inherit 'skroad-decor
- :face 'italic
- :start-delim "__" :end-delim "__"
- :payload-regex "\\([^_]+\\)"
- :rendered t)
-
-(skroad--define-text-type
- 'skroad-decor-bold
- :doc "Bold text."
- :inherit 'skroad-decor
- :face 'bold
- :start-delim "**" :end-delim "**"
- :payload-regex "\\([^*]+\\)"
- :rendered t)
-
-(skroad--define-text-type
- 'skroad-decor-heading
- :doc "Heading text."
- :inherit 'skroad-decor
- :face '(:weight bold :height 1.2 :inverse-video t)
- :payload-regex "^##\s*\\([^\n\t\s]+[^\n\t]*\\)"
- :rendered t)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun skroad--index-update (index pending &optional init-scan)
-  "Update INDEX by applying all PENDING changes, and run text type actions when
-appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
-`on-create` for created entries; `on-destroy` runs for destroyed ones."
-  (maphash
-   #'(lambda (key delta) ;; key and count delta in pending changes table
-       (let* ((prior (or (gethash key index) 0)) ;; copies in index prior
-              (create (zerop prior)) ;; t if index did not contain this item
-              (count (+ prior delta)) ;; copies of item in index + delta
-              (destroy (zerop count)) ;; t if change will destroy all copies
-              (action ;; text type action to invoke, if any. nil if none.
-               (cond (create (if init-scan 'on-init 'on-create))
-                     (destroy (remhash key index) 'on-destroy))))
-         (unless destroy (puthash key count index)) ;; update index if remains
-         (let ((text-type (car key)) (payload (cdr key))) ;; args for action
-           (skroad--type-action text-type action text-type payload))))
-   pending)
-  t)
-
-(defun skroad--index-scan-region (changes start end delta)
-  "Apply DELTA (must be 1 or -1) to each indexed item found in START..END,
-updating the hash table CHANGES, and `skroad--index-update` must be called on
-it to finalize all pending changes when no further ones are expected."
-  (dolist (text-type skroad--indexed-text-types) ;; try all indexed types
-    (save-mark-and-excursion
-      (goto-char start)
-      (while (skroad--type-fn text-type 'find-next end)  ;; got match in region
-        (let* ((payload (match-string-no-properties 1)) ;; item payload
-               (key (cons text-type payload)) ;; key for changes table
-               (count (+ delta (or (gethash key changes) 0)))) ;; inc or dec
-          (if (zerop count) ;; if both added and removed since last update...
-              (remhash key changes) ;; ...discard item from changes table.
-            (puthash key count changes))))))) ;; otherwise update the count.
-
-(defvar-local skroad--index nil "Text type index for current buffer.")
-(defvar-local skroad--changes nil "Pending index changes for current buffer.")
-
-(defun skroad--init-local-index ()
-  "Create the buffer-local indices and populate them from current buffer."
-  (unless (null skroad--index)
-    (error "Text type index already exists for this buffer!"))
-  (setq skroad--index (make-hash-table :test 'equal))
-  ;; Populate while dispatching `on-init`s
-  (let ((init-populate (make-hash-table :test 'equal)))
-    (skroad--index-scan-region init-populate (point-min) (point-max) 1)
-    (skroad--index-update skroad--index init-populate t)))
-
-(defun skroad--update-local-index ()
-  "Apply all pending changes queued for the buffer-local text type index."
-  (when skroad--changes
-    (skroad--index-update skroad--index skroad--changes)
-    (setq skroad--changes nil)))
-
-(defun skroad--before-change-function (start end)
-  "Triggers prior to a change in a skroad buffer in region START...END."
-  (when (null skroad--changes)
-    (setq skroad--changes (make-hash-table :test 'equal)))
-  (skroad--with-whole-lines start end
-    (skroad--index-scan-region
-     skroad--changes start-expanded end-expanded -1)))
-
-(defun skroad--after-change-function (start end length)
-  "Triggers following a change in a skroad buffer in region START...END."
-  (skroad--with-whole-lines start end
-    (skroad--index-scan-region
-     skroad--changes start-expanded end-expanded 1)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -804,11 +922,12 @@ it to finalize all pending changes when no further ones are expected."
                 (buffer-substring (point-min)
                                   (skroad--get-end-of-line 1)))))
 
-(defadvice skroad--post-command-hook (around intercept activate)
-  (condition-case err
-      ad-do-it
-    ;; Let the debugger run
-    ((debug error) (signal (car err) (cdr err)))))
+(when skroad--debug
+  (defadvice skroad--post-command-hook (around intercept activate)
+    (condition-case err
+        ad-do-it
+      ;; Let the debugger run
+      ((debug error) (signal (car err) (cdr err))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
