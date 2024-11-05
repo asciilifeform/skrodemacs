@@ -305,31 +305,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(skroad--define-text-type
- 'skroad-decorative-italic
- :doc "Italicized text."
- :face 'italic
- :start-delim "__" :end-delim "__"
- :payload-regex "\\([^_]+\\)"
- :use 'skroad--text-render-delimited-decorative)
-
-(skroad--define-text-type
- 'skroad-decorative-bold
- :doc "Bold text."
- :face 'bold
- :start-delim "**" :end-delim "**"
- :payload-regex "\\([^*]+\\)"
- :use 'skroad--text-render-delimited-decorative)
-
-(skroad--define-text-type
- 'skroad-decorative-heading
- :doc "Heading text."
- :face 'skroad--heading-face
- :payload-regex "^##\s*\\([^\n\t\s]+[^\n\t]*\\)"
- :use 'skroad--text-render-delimited-decorative)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (defvar skroad--indexed-text-types nil "Text types that are indexed.")
 
 (skroad--define-text-type
@@ -447,8 +422,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
       (goto-char (point-min)) ;; ...jump to its end.
       (goto-char (line-end-position))))
  :find-any-forward
- '(lambda (limit)
-    (when (eq (point) (point-min)) (goto-char (skroad--body-start)) t))
+ '(lambda (limit) (when (bobp) (goto-char (skroad--body-start)) t))
  :render
  '(lambda ()
     (set-text-properties
@@ -463,6 +437,31 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (when (eq start (point-min)) (funcall f (skroad--get-title))))
  :use 'skroad--text-indexed
  )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(skroad--define-text-type
+ 'skroad-decorative-italic
+ :doc "Italicized text."
+ :face 'italic
+ :start-delim "__" :end-delim "__"
+ :payload-regex "\\([^_]+\\)"
+ :use 'skroad--text-render-delimited-decorative)
+
+(skroad--define-text-type
+ 'skroad-decorative-bold
+ :doc "Bold text."
+ :face 'bold
+ :start-delim "**" :end-delim "**"
+ :payload-regex "\\([^*]+\\)"
+ :use 'skroad--text-render-delimited-decorative)
+
+(skroad--define-text-type
+ 'skroad-decorative-heading
+ :doc "Heading text."
+ :face 'skroad--heading-face
+ :payload-regex "^##\s*\\([^\n\t\s]+[^\n\t]*\\)"
+ :use 'skroad--text-render-delimited-decorative)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
