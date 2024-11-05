@@ -312,21 +312,24 @@
  :doc "Finalization mixin for indexed text types."
  :mixin t
  :require 'for-all-in-region-forward
+ :index-scan-region
+ '(lambda (changes start end delta)
+    (funcall
+     for-all-in-region-forward start end
+     #'(lambda (payload)
+         (let* ((key (cons type-name payload))
+                (count (+ delta (or (gethash key changes) 0)))) ;; inc/dec
+           (if (zerop count) ;; if both added and removed since last update.
+               (remhash key changes) ;; ...discard item from changes table.
+             (puthash key count changes))))))
  :register 'skroad--indexed-text-types)
 
 (defun skroad--index-scan-region (changes start end delta)
   "Apply DELTA (must be 1 or -1) to each indexed item found in START..END,
 updating the hash table CHANGES, and `skroad--index-update` must be called on
 it to finalize all pending changes when no further ones are expected."
-  (dolist (text-type skroad--indexed-text-types) ;; try all indexed types
-    (funcall
-     (get text-type 'for-all-in-region-forward) start end
-     #'(lambda (payload)
-         (let* ((key (cons text-type payload)) ;; key for changes table
-                (count (+ delta (or (gethash key changes) 0)))) ;; inc/dec
-           (if (zerop count) ;; if both added and removed since last update.
-               (remhash key changes) ;; ...discard item from changes table.
-             (puthash key count changes))))))) ;; else update the count.
+  (dolist (text-type skroad--indexed-text-types) ;; walk all indexed types
+    (funcall (get text-type 'index-scan-region) changes start end delta)))
 
 (defun skroad--index-update (index pending &optional init-scan)
   "Update INDEX by applying all PENDING changes, and run text type actions when
@@ -419,7 +422,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  '(lambda (pos-from auto)
     (message (format "title leave from=%s auto=%s" pos-from auto))
     (when (and mark-active (not auto)) ;; If region is active, don't leave
-      (goto-char (point-min)) ;; ...jump to its end.
+      (goto-char pos-from) ;; ...jump to its end.
       (goto-char (line-end-position))))
  :find-any-forward
  '(lambda (limit) (when (bobp) (goto-char (skroad--body-start)) t))
@@ -751,7 +754,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   (message (format "Live link pushed: '%s'" data)))
 
 (defun skroad--link-init (text-type payload)
-  (message (format "Link init: type=%s payload='%s'" text-type payload))
+  ;; (message (format "Link init: type=%s payload='%s'" text-type payload))
   )
 
 (defun skroad--link-create (text-type payload)
