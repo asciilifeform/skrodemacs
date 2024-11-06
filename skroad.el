@@ -168,7 +168,7 @@
  'skroad--text-findable
  :doc "Mixin for findable text types. (Internal use only.)"
  :mixin t
- :require '(make-regex regex-any finder-regex-forward)
+ :require '(make-regex regex-any finder-regex-forward make-text)
  :find-any-forward '(funcall finder-regex-forward regex-any)
  :find-any-backward '(funcall finder-regex-backward regex-any)
  :find-string-forward
@@ -202,7 +202,16 @@
     (save-mark-and-excursion
       (goto-char start)
       (while (funcall find-any-forward end)
-        (funcall f (match-string-no-properties match-number))))))
+        (funcall f (match-string-no-properties match-number)))))
+ :replace-all
+ '(lambda (s s-new)
+    (save-mark-and-excursion
+      (goto-char (point-min))
+      (while (funcall find-string-forward (point-max) s)
+        (replace-match s-new))))
+ :replace-with-type
+ '(lambda (s new-type)
+    (funcall replace-all s (funcall (get new-type 'make-text) s))))
 
 (defun skroad--finder-regex-forward (r)
   "Generate a forward finder for regex R."
@@ -502,20 +511,6 @@ call the action with ARGS."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: return t if any replacements happened
-(defun skroad--text-type-replace-all
-    (text-type-old payload-old text-type-new payload-new)
-  "Replace all text of TEXT-TYPE-OLD having PAYLOAD-OLD with
-instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
-  (save-mark-and-excursion
-    (goto-char (point-min))
-    (while (skroad--type-action text-type-old
-                                'find-string-forward (point-max) payload-old)
-      (replace-match
-       (skroad--type-action text-type-new 'make-text payload-new)))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (defun skroad--atomic-at (&optional pos)
   "Get the payload of the atomic found at the given POS or point, nil if none."
   (get-text-property (or pos (point)) 'data))
@@ -748,7 +743,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Transform all live links with payload LINK to dead links."
   (interactive)
   (skroad--with-link-at-point
-   (skroad--text-type-replace-all 'skroad-live link 'skroad-dead link)))
+   (funcall (get 'skroad-live 'replace-with-type) link 'skroad-dead)))
 
 (defun skroad--browse-skroad-link (data)
   (message (format "Live link pushed: '%s'" data)))
@@ -785,7 +780,7 @@ instances of TEXT-TYPE-NEW having PAYLOAD-NEW."
   "Transform all dead links with payload LINK to live links."
   (interactive)
   (skroad--with-link-at-point
-   (skroad--text-type-replace-all 'skroad-dead link 'skroad-live link)))
+   (funcall (get 'skroad-dead 'replace-with-type) link 'skroad-live)))
 
 (skroad--define-text-type
  'skroad-dead
