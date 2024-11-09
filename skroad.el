@@ -46,6 +46,22 @@
          (end-expanded (skroad--get-end-of-line ,end)))
      ,@body))
 
+(defun skroad--hide-text (start end)
+  "Hide the text in the current buffer positions from START to END."
+  (let ((hider (make-overlay start end (current-buffer))))
+    (overlay-put hider 'invisible t)))
+
+(defun skroad--unhide-text (start end)
+  "Unhide all hidden text in the current buffer positions from START to END."
+  (dolist (o (overlays-in start end))
+    (when (overlay-get o 'invisible)
+      (delete-overlay o))))
+
+(defun skroad--overlay-active-p (overlay)
+  "Determine whether OVERLAY is currently active."
+  (and (overlayp overlay)
+       (eq (current-buffer) (overlay-buffer overlay))))
+
 (defmacro skroad--silence-modifications (function)
   "Prevent FUNCTION from triggering modification hooks while in this mode."
   `(advice-add ,function :around
@@ -197,6 +213,12 @@
                           (funcall find-any-backward (point-min))))
              (match-beginning 0)))
          (point))))
+ :payload-range
+ '(lambda (start)
+    (save-mark-and-excursion
+      (goto-char start)
+      (funcall find-any-forward (point-max))
+      (list (match-beginning match-number) (match-end match-number))))
  :for-all-in-region-forward
  '(lambda (start end f)
     (save-mark-and-excursion
@@ -361,6 +383,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defvar-local skroad--index nil "Text type index for current buffer.")
 (defvar-local skroad--changes nil "Pending index changes for current buffer.")
+(defvar-local skroad--enable-index t "Enable index updates for current buffer.")
 
 (defun skroad--init-local-index ()
   "Create the buffer-local indices and populate them from current buffer."
@@ -374,7 +397,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defun skroad--update-local-index ()
   "Apply all pending changes queued for the buffer-local text type index."
-  (when skroad--changes
+  (when (and skroad--changes skroad--enable-index)
     (skroad--index-update skroad--index skroad--changes)
     (setq skroad--changes nil)))
 
@@ -477,6 +500,59 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defvar-local skroad--renamer nil "Node renamer overlay.")
+(defvar-local skroad--renamer-changes nil "Change group for renamer.")
+
+(defun skroad--live-link-rename ()
+  "Activate the renamer for the current live link."
+  (interactive)
+  (skroad--renamer-activate))
+
+(defun skroad--renamer-activate ()
+  "Activate the renamer in the current zone."
+  (skroad--deactivate-mark)
+  (setq-local cursor-type t)
+
+  (setq skroad--renamer-changes (prepare-change-group))
+  (activate-change-group skroad--renamer-changes)
+  
+  (skroad--with-zone
+    (skroad--hide-text start end)
+    (goto-char end)
+    (insert (concat " " (skroad--atomic-at start) " "))
+    (setq-local skroad--renamer (make-overlay end (point) (current-buffer)))
+    (overlay-put skroad--renamer 'category 'skroad-renamer)
+    (goto-char end)
+    )
+  )
+
+(defun skroad--renamer-deactivate ()
+  "Deactivate the renamer if it was currently active."
+  (when (skroad--overlay-active-p skroad--renamer)
+    (delete-overlay skroad--renamer))
+  (skroad--deactivate-mark)
+  (undo-amalgamate-change-group skroad--renamer-changes)
+  (cancel-change-group skroad--renamer-changes)
+  (skroad--unhide-text (point-min) (point-max))
+  )
+
+(skroad--define-text-type
+ 'skroad-renamer
+ :doc "Renamer."
+ :face 'skroad--renamer-face
+ :rear-advance t
+ :id 'type-name
+ :field 'id
+ :before-string "[["
+ :after-string "]]"
+ :on-leave '(lambda (pos-from auto)
+              (message "renamer leave")
+              (skroad--renamer-deactivate)
+              )
+ )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
     ;; (index final
     ;;   (let ((env))
     ;;     (skroad--do-plist p v (symbol-plist name) (push (cons p v) env))
@@ -517,11 +593,11 @@ call the action with ARGS."
 
 (defun skroad--type-at (&optional pos)
   "Determine text type, if any, at position POS (or point.)"
-  (get-text-property (or pos (point)) 'category))
+  (get-char-property (or pos (point)) 'category))
 
 (defun skroad--zone-at (&optional pos)
   "Return the zone ID at POS (or point)."
-  (get-text-property (or pos (point)) 'id))
+  (get-char-property (or pos (point)) 'id))
 
 (defun skroad--zone-start (&optional pos)
   "Return the position at which the zone at POS starts."
@@ -617,12 +693,13 @@ call the action with ARGS."
 
 (defun skroad--selector-show ()
   "Reveal the selector overlay when it may have been hidden."
-  (when (skroad--selector-active-p)
+  (when (skroad--overlay-active-p skroad--selector)
     (overlay-put skroad--selector 'face 'highlight)))
 
 (defun skroad--selector-hide ()
   "Hide (but not destroy) the selector overlay."
-  (when (skroad--selector-active-p) (overlay-put skroad--selector 'face nil)))
+  (when (skroad--overlay-active-p skroad--selector)
+    (overlay-put skroad--selector 'face nil)))
 
 (defun skroad--selector-activate ()
   "Activate (if inactive) or move the selector to the current zone."
@@ -633,15 +710,10 @@ call the action with ARGS."
 
 (defun skroad--selector-deactivate ()
   "Deactivate the selector; it can be reactivated again."
-  (when (skroad--selector-active-p)
+  (when (skroad--overlay-active-p skroad--selector)
     (delete-overlay skroad--selector))
   (setq-local cursor-type t)
   (setq-local show-paren-mode t))
-
-(defun skroad--selector-active-p ()
-  "Return t if the selector is active; otherwise nil."
-  (and (overlayp skroad--selector)
-       (eq (current-buffer) (overlay-buffer skroad--selector))))
 
 (defun skroad--cmd-atomics-set-mark ()
   "Set the mark inside an atomic."
@@ -663,7 +735,10 @@ call the action with ARGS."
  :on-enter '(lambda (pos-from auto)
               (skroad--selector-activate)
               (goto-char (skroad--zone-start)))
- :on-leave '(lambda (pos-from auto) (skroad--selector-deactivate))
+ :on-leave '(lambda (pos-from auto)
+              (skroad--selector-deactivate)
+              ;; (skroad--renamer-deactivate)
+              )
  :on-move '(lambda (pos-from auto)
              (goto-char
               (if (> (point) pos-from)
@@ -770,7 +845,9 @@ call the action with ARGS."
  :on-activate #'skroad--browse-skroad-link
  :start-delim "[[" :end-delim "]]"
  :keymap (define-keymap
-           "l" #'skroad--live-link-to-dead)
+           "l" #'skroad--live-link-to-dead
+           "r" #'skroad--live-link-rename
+           )
  :use 'skroad--text-delimited-non-title
  :use 'skroad--text-render-delimited-zoned
  :use 'skroad--text-indexed
@@ -824,37 +901,6 @@ call the action with ARGS."
  :use 'skroad--text-render-delimited-zoned
  :use 'skroad--text-indexed
  )
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; (defun skroad--renamer-create (text-type payload)
-;;   (message (format "Renamer create: type=%s payload='%s'" text-type payload))
-;;   )
-
-;; (defun skroad--renamer-destroy (text-type payload)
-;;   (message (format "Renamer destroy: type=%s payload='%s'" text-type payload))
-;;   )
-
-;; (defun skroad--renamer-enter (pos-from auto)
-;;   "Point has entered the renamer."
-;;   (message (format "renamer enter from=%s auto=%s" pos-from auto))
-;;   )
-
-;; (defun skroad--renamer-leave (pos-from auto)
-;;   "Point has exited the renamer."
-;;   (message (format "renamer leave from=%s auto=%s" pos-from auto))
-;;   )
-
-;; (skroad--define-text-type
-;;  'skroad-renamer
-;;  :doc "Renamer."
-;;  :face 'skroad--renamer-face
-;;  :on-create #'skroad--renamer-create
-;;  :on-destroy #'skroad--renamer-destroy
-;;  :on-enter #'skroad--renamer-enter
-;;  :on-leave #'skroad--renamer-leave
- 
-;;  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
