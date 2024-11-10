@@ -500,57 +500,6 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar-local skroad--renamer nil "Node renamer overlay.")
-(defvar-local skroad--renamer-changes nil "Change group for renamer.")
-
-(defun skroad--live-link-rename ()
-  "Activate the renamer for the current live link."
-  (interactive)
-  (skroad--renamer-activate))
-
-(defun skroad--renamer-activate ()
-  "Activate the renamer in the current zone."
-  (message "Rename node: press <return> to rename, or leave field to cancel.")
-  (skroad--deactivate-mark)
-  (setq-local cursor-type t)
-  (setq skroad--renamer-changes (prepare-change-group))
-  (activate-change-group skroad--renamer-changes)
-  (skroad--with-zone
-    (skroad--hide-text start end)
-    (goto-char end)
-    (insert (concat " " (skroad--atomic-at start) " "))
-    (setq-local skroad--renamer (make-overlay end (point) (current-buffer)))
-    (overlay-put skroad--renamer 'category 'skroad-renamer)
-    (goto-char end)))
-
-(defun skroad--renamer-deactivate ()
-  "Deactivate the renamer if it was currently active."
-  (when (skroad--overlay-active-p skroad--renamer)
-    (delete-overlay skroad--renamer)
-    (skroad--deactivate-mark)
-    (undo-amalgamate-change-group skroad--renamer-changes)
-    (cancel-change-group skroad--renamer-changes)
-    (skroad--unhide-text (point-min) (point-max))))
-
-(skroad--define-text-type
- 'skroad-renamer
- :doc "Renamer."
- :face 'skroad--renamer-face
- :rear-advance t
- :id 'type-name
- :field 'id
- :before-string " " :after-string " "
- :keymap (define-keymap
-           "<remap> <end-of-line>"
-           #'(lambda () (interactive) (goto-char (1- (field-end))))
-           "RET" #'ignore)
- :on-leave '(lambda (pos-from auto)
-              (message "Rename node: changes discarded.")
-              (skroad--renamer-deactivate))
- )
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
     ;; (index final
     ;;   (let ((env))
     ;;     (skroad--do-plist p v (symbol-plist name) (push (cons p v) env))
@@ -734,9 +683,7 @@ call the action with ARGS."
               (skroad--selector-activate)
               (goto-char (skroad--zone-start)))
  :on-leave '(lambda (pos-from auto)
-              (skroad--selector-deactivate)
-              ;; (skroad--renamer-deactivate)
-              )
+              (skroad--selector-deactivate))
  :on-move '(lambda (pos-from auto)
              (goto-char
               (if (> (point) pos-from)
@@ -898,6 +845,57 @@ call the action with ARGS."
  :use 'skroad--text-delimited-non-title
  :use 'skroad--text-render-delimited-zoned
  :use 'skroad--text-indexed
+ )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defvar-local skroad--renamer nil "Node renamer overlay.")
+(defvar-local skroad--renamer-changes nil "Change group for renamer.")
+
+(defun skroad--live-link-rename ()
+  "Activate the renamer for the current live link."
+  (interactive)
+  (skroad--renamer-activate))
+
+(defun skroad--renamer-activate ()
+  "Activate the renamer in the current zone."
+  (message "Rename node: press <return> to rename, or leave field to cancel.")
+  (skroad--deactivate-mark)
+  (setq-local cursor-type t)
+  (setq skroad--renamer-changes (prepare-change-group))
+  (activate-change-group skroad--renamer-changes)
+  (skroad--with-zone
+    (skroad--hide-text start end)
+    (goto-char end)
+    (insert (concat " " (skroad--atomic-at start) " "))
+    (setq-local skroad--renamer (make-overlay end (point) (current-buffer)))
+    (overlay-put skroad--renamer 'category 'skroad-renamer)
+    (goto-char end)))
+
+(defun skroad--renamer-deactivate ()
+  "Deactivate the renamer if it was currently active."
+  (when (skroad--overlay-active-p skroad--renamer)
+    (delete-overlay skroad--renamer)
+    (skroad--deactivate-mark)
+    (undo-amalgamate-change-group skroad--renamer-changes)
+    (cancel-change-group skroad--renamer-changes)
+    (skroad--unhide-text (point-min) (point-max))))
+
+(skroad--define-text-type
+ 'skroad-renamer
+ :doc "Renamer."
+ :face 'skroad--renamer-face
+ :rear-advance t
+ :id 'type-name
+ :field 'id
+ :before-string " " :after-string " "
+ :keymap (define-keymap
+           "<remap> <end-of-line>"
+           #'(lambda () (interactive) (goto-char (1- (field-end))))
+           "RET" #'ignore)
+ :on-leave '(lambda (pos-from auto)
+              (message "Rename node: changes discarded.")
+              (skroad--renamer-deactivate))
  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
