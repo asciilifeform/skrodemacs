@@ -213,12 +213,12 @@
                           (funcall find-any-backward (point-min))))
              (match-beginning 0)))
          (point))))
- :payload-range
- '(lambda (start)
-    (save-mark-and-excursion
-      (goto-char start)
-      (funcall find-any-forward (point-max))
-      (list (match-beginning match-number) (match-end match-number))))
+ ;; :payload-range
+ ;; '(lambda (start)
+ ;;    (save-mark-and-excursion
+ ;;      (goto-char start)
+ ;;      (funcall find-any-forward (point-max))
+ ;;      (list (match-beginning match-number) (match-end match-number))))
  :for-all-in-region-forward
  '(lambda (start end f)
     (save-mark-and-excursion
@@ -304,8 +304,12 @@
 
 (defun skroad--init-font-lock ()
   "Initialize font-lock rules for a skroad mode buffer."
-  (let ((rules nil))
-    (dolist (type skroad--rendered-text-types)
+  (let ((rules nil)
+        (types (sort skroad--rendered-text-types
+                     #'(lambda (a b)
+                         (> (or (get a 'priority) 0)
+                            (or (get b 'priority) 0))))))
+    (dolist (type types)
       (push (funcall (get type 'font-lock-rule)) rules))
     (font-lock-add-keywords nil rules t)))
 
@@ -332,6 +336,7 @@
  :require 'face
  :render
  '(lambda () (add-face-text-property (match-beginning 0) (match-end 0) face))
+ :priority 1000
  :use 'skroad--text-rendered)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -682,8 +687,7 @@ call the action with ARGS."
  :on-enter '(lambda (pos-from auto)
               (skroad--selector-activate)
               (goto-char (skroad--zone-start)))
- :on-leave '(lambda (pos-from auto)
-              (skroad--selector-deactivate))
+ :on-leave '(lambda (pos-from auto) (skroad--selector-deactivate))
  :on-move '(lambda (pos-from auto)
              (goto-char
               (if (> (point) pos-from)
