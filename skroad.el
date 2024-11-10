@@ -510,31 +510,27 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defun skroad--renamer-activate ()
   "Activate the renamer in the current zone."
+  (message "Rename node: press <return> to rename, or leave field to cancel.")
   (skroad--deactivate-mark)
   (setq-local cursor-type t)
-
   (setq skroad--renamer-changes (prepare-change-group))
   (activate-change-group skroad--renamer-changes)
-  
   (skroad--with-zone
     (skroad--hide-text start end)
     (goto-char end)
     (insert (concat " " (skroad--atomic-at start) " "))
     (setq-local skroad--renamer (make-overlay end (point) (current-buffer)))
     (overlay-put skroad--renamer 'category 'skroad-renamer)
-    (goto-char end)
-    )
-  )
+    (goto-char end)))
 
 (defun skroad--renamer-deactivate ()
   "Deactivate the renamer if it was currently active."
   (when (skroad--overlay-active-p skroad--renamer)
-    (delete-overlay skroad--renamer))
-  (skroad--deactivate-mark)
-  (undo-amalgamate-change-group skroad--renamer-changes)
-  (cancel-change-group skroad--renamer-changes)
-  (skroad--unhide-text (point-min) (point-max))
-  )
+    (delete-overlay skroad--renamer)
+    (skroad--deactivate-mark)
+    (undo-amalgamate-change-group skroad--renamer-changes)
+    (cancel-change-group skroad--renamer-changes)
+    (skroad--unhide-text (point-min) (point-max))))
 
 (skroad--define-text-type
  'skroad-renamer
@@ -543,12 +539,14 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :rear-advance t
  :id 'type-name
  :field 'id
- :before-string "[["
- :after-string "]]"
+ :before-string " " :after-string " "
+ :keymap (define-keymap
+           "<remap> <end-of-line>"
+           #'(lambda () (interactive) (goto-char (1- (field-end))))
+           "RET" #'ignore)
  :on-leave '(lambda (pos-from auto)
-              (message "renamer leave")
-              (skroad--renamer-deactivate)
-              )
+              (message "Rename node: changes discarded.")
+              (skroad--renamer-deactivate))
  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -952,7 +950,6 @@ call the action with ARGS."
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
-  (message "cmd")
   (skroad--motion skroad--pre-command-snapshot)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
   (skroad--update-local-index) ;; TODO: do it in save hook?
