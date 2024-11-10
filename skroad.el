@@ -163,6 +163,7 @@
  'skroad--default-type
  :doc "Default text type from which all other types (except mixins) inherit."
  :mixin t
+ :priority 100
  :face 'skroad--text-face
  :rear-nonsticky t)
 
@@ -306,9 +307,7 @@
   "Initialize font-lock rules for a skroad mode buffer."
   (let ((rules nil)
         (types (sort skroad--rendered-text-types
-                     #'(lambda (a b)
-                         (> (or (get a 'priority) 0)
-                            (or (get b 'priority) 0))))))
+                     #'(lambda (a b) (> (get a 'priority) (get b 'priority))))))
     (dolist (type types)
       (push (funcall (get type 'font-lock-rule)) rules))
     (font-lock-add-keywords nil rules t)))
@@ -469,6 +468,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (skroad--define-text-type
  'skroad-node-title
  :doc "Node title."
+ :priority 500
  :face 'skroad--title-face
  :keymap (define-keymap
            "RET" #'ignore)
