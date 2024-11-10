@@ -163,7 +163,7 @@
  'skroad--default-type
  :doc "Default text type from which all other types (except mixins) inherit."
  :mixin t
- :priority 100
+ :priority 100 ;; higher priority will get rendered first
  :face 'skroad--text-face
  :rear-nonsticky t)
 
