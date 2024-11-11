@@ -850,7 +850,7 @@ call the action with ARGS."
     (message (format "renamed: '%s'" renamed))))
 
 (skroad--define-text-type
- 'skroad-renamer
+ 'skroad-renamer-overlay
  :doc "Base mixin for renamer overlays."
  :mixin t
  :rear-advance t
@@ -867,15 +867,15 @@ call the action with ARGS."
 
 (skroad--define-text-type
  'skroad-node-remote-renamer
- :doc "Renamer for a changing node title while standing on a link."
- :use 'skroad-renamer
+ :doc "Renamer for editing a node's title while standing on a link to the node."
+ :use 'skroad-renamer-overlay
  :face 'skroad--renamer-face
  :before-string " " :after-string " ")
 
 (skroad--define-text-type
  'skroad-node-title-renamer
- :doc "Renamer for a changing node title directly."
- :use 'skroad-renamer
+ :doc "Renamer for editing a node's title directly."
+ :use 'skroad-renamer-overlay
  :face 'skroad--title-renamer-face
  :before-string "" :after-string " \n")
 
