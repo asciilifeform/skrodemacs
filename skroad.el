@@ -739,7 +739,8 @@ call the action with ARGS."
   "Activate the renamer for the current zone."
   (interactive)
   (skroad--with-zone
-    (skroad--renamer-activate start end)))
+    (skroad--renamer-activate
+     'skroad-node-remote-renamer start end)))
 
 (skroad--define-text-type
  'skroad-live
@@ -816,7 +817,7 @@ call the action with ARGS."
 (defvar-local skroad--renamer nil "Node renamer overlay.")
 (defvar-local skroad--renamer-changes nil "Change group for renamer.")
 
-(defun skroad--renamer-activate (start end)
+(defun skroad--renamer-activate (renamer-type start end)
   "Activate the renamer in the current zone."
   (message "Rename node: press <return> to rename, or leave field to cancel.")
   (skroad--deactivate-mark)
@@ -828,7 +829,7 @@ call the action with ARGS."
   (goto-char end)
   (insert (concat " " (skroad--atomic-at start) " "))
   (setq-local skroad--renamer (make-overlay end (point) (current-buffer)))
-  (overlay-put skroad--renamer 'category 'skroad-renamer)
+  (overlay-put skroad--renamer 'category renamer-type)
   (goto-char end))
 
 (defun skroad--renamer-deactivate ()
@@ -850,12 +851,11 @@ call the action with ARGS."
 
 (skroad--define-text-type
  'skroad-renamer
- :doc "Renamer."
- :face 'skroad--renamer-face
+ :doc "Base mixin for renamer overlays."
+ :mixin t
  :rear-advance t
  :id 'type-name
  :field 'id
- :before-string " " :after-string " "
  :keymap (define-keymap
            "<remap> <end-of-line>"
            #'(lambda () (interactive) (goto-char (1- (field-end))))
@@ -864,6 +864,20 @@ call the action with ARGS."
               (message "Rename node: changes discarded.")
               (skroad--renamer-deactivate))
  )
+
+(skroad--define-text-type
+ 'skroad-node-remote-renamer
+ :doc "Renamer for a changing node title while standing on a link."
+ :use 'skroad-renamer
+ :face 'skroad--renamer-face
+ :before-string " " :after-string " ")
+
+(skroad--define-text-type
+ 'skroad-node-title-renamer
+ :doc "Renamer for a changing node title directly."
+ :use 'skroad-renamer
+ :face 'skroad--title-renamer-face
+ :before-string "" :after-string " \n")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -912,10 +926,8 @@ call the action with ARGS."
 (defun skroad--cmd-change-node-title ()
   "Activate the renamer for the current node's title."
   (interactive)
-  (skroad--renamer-activate (point-min) (skroad--body-start))
-  (overlay-put skroad--renamer 'face 'skroad--title-renamer-face)
-  (overlay-put skroad--renamer 'before-string "")
-  (overlay-put skroad--renamer 'after-string " \n"))
+  (skroad--renamer-activate
+   'skroad-node-title-renamer (point-min) (skroad--body-start)))
 
 (skroad--define-text-type
  'skroad-node-title
