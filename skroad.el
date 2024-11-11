@@ -1052,7 +1052,6 @@ call the action with ARGS."
 (defun skroad--open-node ()
   "Open a skroad node."
   (skroad--init-font-lock)
-  (font-lock-ensure)
   (skroad--init-local-index)
   (face-remap-set-base 'header-line 'skroad--title-face)
   )
