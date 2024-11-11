@@ -151,8 +151,9 @@
                        (when parent-keymap ;; stack on any existing keymap
                          (set-keymap-parent val parent-keymap))
                        val))
-                    ((and (symbolp val) ;; symbols with global bindings:
-                          (or (boundp val) (fboundp val) (facep val))) val)
+                    ((symbolp val) ;; symbols
+                     (if (or (boundp val) (fboundp val) (facep val))
+                         val (eval val env))) ;; if globally-bound, self-eval
                     (t (byte-compile (eval val env)))))) ;; compile form
                  ;; Property from :use, so don't re-eval it, just store it:
                  (t (unless (eq prop 'type-name) ;; Don't save :use'd type names
