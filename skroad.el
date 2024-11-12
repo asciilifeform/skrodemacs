@@ -74,10 +74,10 @@
   "Face for use with atomic selections."
   :group 'skroad-faces)
 
-(defface skroad--remote-retitler-face
+(defface skroad--indirect-retitler-face
   '((t :inherit skroad--text-face
        :foreground "white" :background "ForestGreen"))
-  "Face for use with remote (via link) retitler."
+  "Face for use with indirect (via link) retitler."
   :group 'skroad-faces)
 
 (defface skroad--title-face
@@ -740,7 +740,7 @@ call the action with ARGS."
   (interactive)
   (skroad--with-zone
     (skroad--retitler-activate
-     'skroad-remote-retitler start end)))
+     'skroad-indirect-retitler start end)))
 
 (skroad--define-text-type
  'skroad-live
@@ -866,10 +866,10 @@ call the action with ARGS."
  )
 
 (skroad--define-text-type
- 'skroad-remote-retitler
+ 'skroad-indirect-retitler
  :doc "Retitler for editing a node's title while standing on a link to the node."
  :use 'skroad-retitler-overlay
- :face 'skroad--remote-retitler-face
+ :face 'skroad--indirect-retitler-face
  :before-string " " :after-string " ")
 
 (skroad--define-text-type
