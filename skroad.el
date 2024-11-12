@@ -62,6 +62,9 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defvar skroad--node-title-regex "\\([^][\n\r\f\t\s]+[^][\n\r\f\t]*?\\)"
+  "Regex for valid skroad node titles.")
+
 (defvar skroad--floating-title-enable t
   "Display floating title at the top of the window if title is not in view.")
 
@@ -340,7 +343,7 @@
  :require 'face
  :render
  '(lambda () (add-face-text-property (match-beginning 0) (match-end 0) face))
- :order 1000
+ :order 1000 ;; Render these last, so they can amend all other rendered faces
  :use 'skroad--text-rendered)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -365,7 +368,7 @@
  'skroad-decorative-heading
  :doc "Heading text."
  :face 'skroad--heading-face
- :payload-regex "^##\s*\\([^\n\t\s]+[^\n\t]*\\)"
+ :payload-regex "^##\s*\\([^\n\r\f\t\s]+[^\n\r\f\t]*\\)"
  :use 'skroad--text-render-delimited-decorative)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -673,6 +676,12 @@ call the action with ARGS."
   (overlay-put skroad--renamer 'category renamer-type)
   (goto-char end))
 
+(defun skroad--renamer-text ()
+  "Return the current text in the renamer, or nil if the latter is inactive."
+  (when (skroad--overlay-active-p skroad--renamer)
+    (string-trim (field-string-no-properties
+                  (overlay-start skroad--renamer)))))
+
 (defun skroad--renamer-deactivate ()
   "Deactivate the renamer if it is currently active."
   (when (skroad--overlay-active-p skroad--renamer)
@@ -682,6 +691,21 @@ call the action with ARGS."
     (cancel-change-group skroad--renamer-changes)
     (goto-char (overlay-start skroad--hider))
     (delete-overlay skroad--hider)))
+
+;; (defun skroad--renamer-valid ()
+;;   (and (skroad--overlay-active-p skroad--renamer)
+;;        (save-mark-and-excursion
+;;          (goto-char (overlay-start skroad--renamer))
+         
+         
+         ;; (skroad--prop-at 'find-find-any-forward
+         ;;                  (overlay-start skroad--renamer))
+
+;; (defun skroad--renamer-validate-if-active ()
+;;   (when (skroad--overlay-active-p skroad--renamer)
+    
+;;     )
+;;   )
 
 (defun skroad--renamer-cmd-accept-changes ()
   "Accept a proposed renaming."
@@ -772,7 +796,7 @@ call the action with ARGS."
  :doc "Fundamental type for skroad node links (live or dead)."
  :use 'skroad-link
  :help-echo 'skroad--link-mouseover
- :payload-regex "\\([^][\n\t\s]+[^][\n\t]*?\\)"
+ :payload-regex skroad--node-title-regex
  :keymap (define-keymap
            "t" #'skroad--link-to-plain-text))
 
@@ -862,7 +886,7 @@ call the action with ARGS."
  :use 'skroad-link
  :help-echo "External link."
  :payload-regex
- "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\t\s]+\\)"
+ "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\r\f\t\s]+\\)"
  :on-activate #'browse-url
  :keymap (define-keymap
            "t" #'skroad--comment-url)
@@ -930,9 +954,7 @@ call the action with ARGS."
  :order 500
  :keymap
  (define-keymap
-   "<tab>" #'skroad--cmd-atomics-jump-to-next-link
-   "RET" #'ignore
-   "SPC" #'ignore
+   "RET" #'ignore "SPC" #'ignore
    "<deletechar>" #'ignore "<backspace>" #'ignore
    "<remap> <set-mark-command>" #'ignore
    "<remap> <self-insert-command>" #'ignore
@@ -953,8 +975,7 @@ call the action with ARGS."
            'id type-name ;; there can only be one
            'face face
            'data (skroad--get-title))))
- :use 'skroad--text-rendered
- )
+ :use 'skroad--text-rendered)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1006,6 +1027,9 @@ call the action with ARGS."
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
+  (when (or (buffer-modified-p) (eq last-command 'undo))
+    (save-mark-and-excursion
+      (font-lock-ensure (beginning-of-line) (end-of-line))))
   (skroad--motion skroad--pre-command-snapshot)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
   (skroad--update-local-index) ;; TODO: do it in save hook?
