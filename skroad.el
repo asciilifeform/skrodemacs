@@ -4,12 +4,59 @@
 ;;; (add-to-list 'auto-mode-alist '("\\.skroad\\'" . skroad-mode))
 ;;; After this is done, s/skroad/skrode.
 
-;;; Utility functions. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Knobs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--debug nil)
 
 (unless skroad--debug
   (setq byte-compile-warnings nil))
+
+(defvar skroad--node-title-regex "\\([^][\n\r\f\t\s]+[^][\n\r\f\t]*?\\)"
+  "Regex for valid skroad node titles.")
+
+(defvar skroad--floating-title-enable t
+  "Display floating title at the top of the window if title is not in view.")
+
+(defface skroad--text-face '((t :inherit default))
+  "Default face used for skrode text types."
+  :group 'skroad-faces)
+
+(defface skroad--selector-face
+  '((t :inherit highlight :extend t))
+  "Face for use with atomic selections."
+  :group 'skroad-faces)
+
+(defface skroad--indirect-renamer-face
+  '((t :inherit skroad--text-face
+       :foreground "white" :background "ForestGreen"))
+  "Face for use with indirect (via link) renamer."
+  :group 'skroad-faces)
+
+(defface skroad--title-face
+  '((t :inherit skroad--text-face
+       :foreground "white" :background "purple"
+       :height 300 :weight bold :extend t))
+  "Face for skroad node titles."
+  :group 'skroad-faces)
+
+(defface skroad--direct-renamer-face
+  '((t :inherit skroad--title-face
+       :foreground "white" :background "ForestGreen"))
+  "Face for use with direct (via node title line) renamer."
+  :group 'skroad-faces)
+
+(defface skroad--dead-link-face
+  '((t :inherit link :foreground "red"))
+  "Face used for dead links.."
+  :group 'skroad-faces)
+
+(defface skroad--heading-face
+  '((t :inherit skroad--text-face
+       :weight bold :height 1.2 :inverse-video t))
+  "Face used for skroad heading text."
+  :group 'skroad-faces)
+
+;;; Utility functions. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--keyword-to-symbol (exp)
   "If EXP is a keyword, convert it to a symbol. If not, return it as-is."
@@ -63,53 +110,6 @@
                      (with-silent-modifications
                        (apply orig-fun args))
                    (apply orig-fun args)))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defvar skroad--node-title-regex "\\([^][\n\r\f\t\s]+[^][\n\r\f\t]*?\\)"
-  "Regex for valid skroad node titles.")
-
-(defvar skroad--floating-title-enable t
-  "Display floating title at the top of the window if title is not in view.")
-
-(defface skroad--text-face '((t :inherit default))
-  "Default face used for skrode text types."
-  :group 'skroad-faces)
-
-(defface skroad--selector-face
-  '((t :inherit highlight :extend t))
-  "Face for use with atomic selections."
-  :group 'skroad-faces)
-
-(defface skroad--indirect-renamer-face
-  '((t :inherit skroad--text-face
-       :foreground "white" :background "ForestGreen"))
-  "Face for use with indirect (via link) renamer."
-  :group 'skroad-faces)
-
-(defface skroad--title-face
-  '((t :inherit skroad--text-face
-       :foreground "white" :background "purple"
-       :height 300 :weight bold :extend t))
-  "Face for skroad node titles."
-  :group 'skroad-faces)
-
-(defface skroad--direct-renamer-face
-  '((t :inherit skroad--title-face
-       :foreground "white" :background "ForestGreen"))
-  "Face for use with direct (via node title line) renamer."
-  :group 'skroad-faces)
-
-(defface skroad--dead-link-face
-  '((t :inherit link :foreground "red"))
-  "Face used for dead links.."
-  :group 'skroad-faces)
-
-(defface skroad--heading-face
-  '((t :inherit skroad--text-face
-       :weight bold :height 1.2 :inverse-video t))
-  "Face used for skroad heading text."
-  :group 'skroad-faces)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -859,7 +859,7 @@ call the action with ARGS."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--comment-url ()
-  "Debuttonize the URL at point by inserting a space after the prefix."
+  "Turn the URL at point into plain text by placing a space after the prefix."
   (interactive)
   (skroad--with-zone
     (save-mark-and-excursion
