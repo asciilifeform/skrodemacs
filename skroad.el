@@ -74,10 +74,10 @@
   "Face for use with atomic selections."
   :group 'skroad-faces)
 
-(defface skroad--indirect-retitler-face
+(defface skroad--indirect-renamer-face
   '((t :inherit skroad--text-face
        :foreground "white" :background "ForestGreen"))
-  "Face for use with indirect (via link) retitler."
+  "Face for use with indirect (via link) renamer."
   :group 'skroad-faces)
 
 (defface skroad--title-face
@@ -87,10 +87,10 @@
   "Face for skroad node titles."
   :group 'skroad-faces)
 
-(defface skroad--direct-retitler-face
+(defface skroad--direct-renamer-face
   '((t :inherit skroad--title-face
        :foreground "white" :background "ForestGreen"))
-  "Face for use with direct (via node title line) retitler."
+  "Face for use with direct (via node title line) renamer."
   :group 'skroad-faces)
 
 (defface skroad--dead-link-face
@@ -736,11 +736,10 @@ call the action with ARGS."
   )
 
 (defun skroad--cmd-rename-remote-node ()
-  "Activate the retitler for the current zone."
+  "Activate the renamer for the current zone."
   (interactive)
   (skroad--with-zone
-    (skroad--retitler-activate
-     'skroad-indirect-retitler start end)))
+    (skroad--renamer-activate 'skroad-indirect-renamer start end)))
 
 (skroad--define-text-type
  'skroad-live
@@ -814,44 +813,44 @@ call the action with ARGS."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar-local skroad--hider nil "Text hider overlay.")
-(defvar-local skroad--retitler nil "Node retitler overlay.")
-(defvar-local skroad--retitler-changes nil "Change group for retitler.")
+(defvar-local skroad--renamer nil "Node renamer overlay.")
+(defvar-local skroad--renamer-changes nil "Change group for renamer.")
 
-(defun skroad--retitler-activate (retitler-type start end)
-  "Activate the retitler in the current zone."
+(defun skroad--renamer-activate (renamer-type start end)
+  "Activate the renamer in the current zone."
   (message "Rename node: press <return> to rename, or leave field to cancel.")
   (skroad--deactivate-mark)
   (setq-local cursor-type t)
-  (setq skroad--retitler-changes (prepare-change-group))
-  (activate-change-group skroad--retitler-changes)
+  (setq skroad--renamer-changes (prepare-change-group))
+  (activate-change-group skroad--renamer-changes)
   (setq skroad--hider (make-overlay start end (current-buffer)))
   (overlay-put skroad--hider 'invisible t)
   (goto-char end)
   (insert (concat " " (skroad--atomic-at start) " "))
-  (setq-local skroad--retitler (make-overlay end (point) (current-buffer)))
-  (overlay-put skroad--retitler 'category retitler-type)
+  (setq-local skroad--renamer (make-overlay end (point) (current-buffer)))
+  (overlay-put skroad--renamer 'category renamer-type)
   (goto-char end))
 
-(defun skroad--retitler-deactivate ()
-  "Deactivate the retitler if it is currently active."
-  (when (skroad--overlay-active-p skroad--retitler)
-    (delete-overlay skroad--retitler)
+(defun skroad--renamer-deactivate ()
+  "Deactivate the renamer if it is currently active."
+  (when (skroad--overlay-active-p skroad--renamer)
+    (delete-overlay skroad--renamer)
     (skroad--deactivate-mark)
-    (undo-amalgamate-change-group skroad--retitler-changes)
-    (cancel-change-group skroad--retitler-changes)
+    (undo-amalgamate-change-group skroad--renamer-changes)
+    (cancel-change-group skroad--renamer-changes)
     (goto-char (overlay-start skroad--hider))
     (delete-overlay skroad--hider)))
 
-(defun skroad--retitler-cmd-accept-changes ()
+(defun skroad--renamer-cmd-accept-changes ()
   "Accept a proposed renaming."
   (interactive)
   (let ((renamed (field-string-no-properties)))
-    (skroad--retitler-deactivate)
+    (skroad--renamer-deactivate)
     (message (format "renamed: '%s'" renamed))))
 
 (skroad--define-text-type
- 'skroad-retitler-overlay
- :doc "Base mixin for retitler overlays."
+ 'skroad-renamer-overlay
+ :doc "Base mixin for renamer overlays."
  :mixin t
  :rear-advance t
  :id 'type-name
@@ -859,24 +858,24 @@ call the action with ARGS."
  :keymap (define-keymap
            "<remap> <end-of-line>"
            #'(lambda () (interactive) (goto-char (1- (field-end))))
-           "RET" #'skroad--retitler-cmd-accept-changes)
+           "RET" #'skroad--renamer-cmd-accept-changes)
  :on-leave '(lambda (pos-from auto)
               (message "Rename node: changes discarded.")
-              (skroad--retitler-deactivate))
+              (skroad--renamer-deactivate))
  )
 
 (skroad--define-text-type
- 'skroad-indirect-retitler
- :doc "Retitler for editing a node's title while standing on a link to the node."
- :use 'skroad-retitler-overlay
- :face 'skroad--indirect-retitler-face
+ 'skroad-indirect-renamer
+ :doc "Renamer for editing a node's title while standing on a link to the node."
+ :use 'skroad-renamer-overlay
+ :face 'skroad--indirect-renamer-face
  :before-string " " :after-string " ")
 
 (skroad--define-text-type
- 'skroad-direct-retitler
- :doc "Retitler for editing a node's title directly."
- :use 'skroad-retitler-overlay
- :face 'skroad--direct-retitler-face
+ 'skroad-direct-renamer
+ :doc "Renamer for editing a node's title directly."
+ :use 'skroad-renamer-overlay
+ :face 'skroad--direct-renamer-face
  :before-string "" :after-string " \n")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -924,10 +923,10 @@ call the action with ARGS."
 ;;  )
 
 (defun skroad--cmd-change-node-title ()
-  "Activate the retitler for the current node's title."
+  "Activate the renamer for the current node's title."
   (interactive)
-  (skroad--retitler-activate
-   'skroad-direct-retitler (point-min) (skroad--body-start)))
+  (skroad--renamer-activate
+   'skroad-direct-renamer (point-min) (skroad--body-start)))
 
 (skroad--define-text-type
  'skroad-node-title
