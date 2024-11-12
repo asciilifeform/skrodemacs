@@ -76,15 +76,11 @@
 
 (defun skroad--get-start-of-line (pos)
   "Get the position of the start of the line on which POS resides."
-  (save-mark-and-excursion
-    (goto-char pos)
-    (line-beginning-position)))
+  (save-mark-and-excursion (goto-char pos) (line-beginning-position)))
 
 (defun skroad--get-end-of-line (pos)
   "Get the position of the end of the line on which POS resides."
-  (save-mark-and-excursion
-    (goto-char pos)
-    (line-end-position)))
+  (save-mark-and-excursion (goto-char pos) (line-end-position)))
 
 (defmacro skroad--with-whole-lines (start end &rest body)
   "Get expanded region defined by START and END that spans whole lines."
@@ -99,8 +95,7 @@
 
 (defun skroad--overlay-active-p (overlay)
   "Determine whether OVERLAY is currently active."
-  (and (overlayp overlay)
-       (eq (current-buffer) (overlay-buffer overlay))))
+  (and (overlayp overlay) (eq (current-buffer) (overlay-buffer overlay))))
 
 (defmacro skroad--silence-modifications (function)
   "Prevent FUNCTION from triggering modification hooks while in this mode."
@@ -174,7 +169,7 @@
 
 (skroad--define-text-type
  'skroad--text-delimited
- :doc "Base mixin for delimited text types. Define delimiters before mixing."
+ :doc "Base mixin for delimited text types. Define delimiters before using."
  :mixin t
  :require 'payload-regex
  :defaults '((start-delim "") (end-delim "") (match-number 1))
