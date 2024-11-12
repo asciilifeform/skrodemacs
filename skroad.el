@@ -152,7 +152,8 @@
                          (set-keymap-parent val parent-keymap))
                        val))
                     ((symbolp val) ;; symbols
-                     (if (or (boundp val) (fboundp val) (facep val))
+                     (if (or (boundp val) (fboundp val)
+                             (facep val) (symbol-plist val))
                          val (eval val env))) ;; if globally-bound, self-eval
                     (t (byte-compile (eval val env)))))) ;; compile form
                  ;; Property from :use, so don't re-eval it, just store it:
@@ -483,21 +484,13 @@ call the action with ARGS."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun skroad--prop-at (prop &optional pos)
+  "Determine the value of PROP, if any, at position POS (or point.)"
+  (get-char-property (or pos (point)) prop))
+
 (defun skroad--atomic-at (&optional pos)
   "Get the payload of the atomic found at the given POS or point, nil if none."
-  (get-text-property (or pos (point)) 'data))
-
-(defun skroad--type-at (&optional pos)
-  "Determine text type, if any, at position POS (or point.)"
-  (get-char-property (or pos (point)) 'category))
-
-(defun skroad--kbd-doc-at (&optional pos)
-  "Determine key doc, if any, at position POS (or point.)"
-  (get-char-property (or pos (point)) 'kbd-doc))
-
-(defun skroad--zone-at (&optional pos)
-  "Return the zone ID at POS (or point)."
-  (get-char-property (or pos (point)) 'id))
+  (skroad--prop-at 'data pos))
 
 (defun skroad--zone-start (&optional pos)
   "Return the position at which the zone at POS starts."
@@ -636,7 +629,7 @@ call the action with ARGS."
  :on-enter '(lambda (pos-from auto)
               (skroad--selector-activate)
               (goto-char (skroad--zone-start))
-              (let ((kbd-doc (skroad--kbd-doc-at)))
+              (let ((kbd-doc (skroad--prop-at 'kbd-doc)))
                 (when kbd-doc (message kbd-doc))))
  :on-leave '(lambda (pos-from auto) (skroad--selector-deactivate))
  :on-move '(lambda (pos-from auto)
@@ -661,11 +654,80 @@ call the action with ARGS."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defvar-local skroad--hider nil "Text hider overlay.")
+(defvar-local skroad--renamer nil "Node renamer overlay.")
+(defvar-local skroad--renamer-changes nil "Change group for renamer.")
+
+(defun skroad--renamer-activate (renamer-type start end)
+  "Activate the renamer in the current zone."
+  (message "Rename node: press <return> to rename, or leave field to cancel.")
+  (skroad--deactivate-mark)
+  (setq-local cursor-type t)
+  (setq skroad--renamer-changes (prepare-change-group))
+  (activate-change-group skroad--renamer-changes)
+  (setq skroad--hider (make-overlay start end (current-buffer)))
+  (overlay-put skroad--hider 'invisible t)
+  (goto-char end)
+  (insert (concat " " (skroad--atomic-at start) " "))
+  (setq-local skroad--renamer (make-overlay end (point) (current-buffer)))
+  (overlay-put skroad--renamer 'category renamer-type)
+  (goto-char end))
+
+(defun skroad--renamer-deactivate ()
+  "Deactivate the renamer if it is currently active."
+  (when (skroad--overlay-active-p skroad--renamer)
+    (delete-overlay skroad--renamer)
+    (skroad--deactivate-mark)
+    (undo-amalgamate-change-group skroad--renamer-changes)
+    (cancel-change-group skroad--renamer-changes)
+    (goto-char (overlay-start skroad--hider))
+    (delete-overlay skroad--hider)))
+
+(defun skroad--renamer-cmd-accept-changes ()
+  "Accept a proposed renaming."
+  (interactive)
+  (let ((renamed (field-string-no-properties)))
+    (skroad--renamer-deactivate)
+    (message (format "renamed: '%s'" renamed))))
+
+(skroad--define-text-type
+ 'skroad-renamer-overlay
+ :doc "Base mixin for renamer overlays."
+ :mixin t
+ :rear-advance t
+ :id 'type-name
+ :field 'id
+ :keymap (define-keymap
+           "<remap> <end-of-line>"
+           #'(lambda () (interactive) (goto-char (1- (field-end))))
+           "RET" #'skroad--renamer-cmd-accept-changes)
+ :on-leave '(lambda (pos-from auto)
+              (message "Rename node: changes discarded.")
+              (skroad--renamer-deactivate))
+ )
+
+(defun skroad--cmd-atomics-rename ()
+  "Activate the renamer for the current zone and type."
+  (interactive)
+  (skroad--with-zone
+    (skroad--renamer-activate
+     (skroad--prop-at 'renamer-overlay-type) start end)))
+
+(skroad--define-text-type
+ 'skroad-allow-renamer
+ :doc "Mixin for allowing the use of the rename command with an atomic type."
+ :mixin t
+ :require 'renamer-overlay-type
+ :keymap (define-keymap
+           "r" #'skroad--cmd-atomics-rename))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun skroad--do-link-action (pos)
   "Run action of link at POS, if one was defined, and no region is active."
   (unless (use-region-p)
     (skroad--type-action
-     (skroad--type-at pos) 'on-activate (skroad--atomic-at pos))))
+     (skroad--prop-at 'category pos) 'on-activate (skroad--atomic-at pos))))
 
 (defun skroad--cmd-left-click-link (click)
   "Perform the action attribute of the link that got the CLICK."
@@ -735,11 +797,12 @@ call the action with ARGS."
   (message (format "Link destroy: type=%s payload='%s'" text-type payload))
   )
 
-(defun skroad--cmd-rename-remote-node ()
-  "Activate the renamer for the current zone."
-  (interactive)
-  (skroad--with-zone
-    (skroad--renamer-activate 'skroad-indirect-renamer start end)))
+(skroad--define-text-type
+ 'skroad-indirect-renamer
+ :doc "Renamer for editing a node's title while standing on a link to the node."
+ :use 'skroad-renamer-overlay
+ :face 'skroad--indirect-renamer-face
+ :before-string " " :after-string " ")
 
 (skroad--define-text-type
  'skroad-live
@@ -752,13 +815,12 @@ call the action with ARGS."
  :on-activate #'skroad--browse-skroad-link
  :start-delim "[[" :end-delim "]]"
  :keymap (define-keymap
-           "l" #'skroad--live-link-to-dead
-           "r" #'skroad--cmd-rename-remote-node
-           )
+           "l" #'skroad--live-link-to-dead)
+ :renamer-overlay-type 'skroad-indirect-renamer
+ :use 'skroad-allow-renamer
  :use 'skroad--text-delimited-non-title
  :use 'skroad--text-render-delimited-zoned
- :use 'skroad--text-indexed
- )
+ :use 'skroad--text-indexed)
 
 (defun skroad--dead-link-to-live ()
   "Transform all dead links with payload LINK to live links."
@@ -780,8 +842,7 @@ call the action with ARGS."
            "l" #'skroad--dead-link-to-live)
  :use 'skroad--text-delimited-non-title
  :use 'skroad--text-render-delimited-zoned
- :use 'skroad--text-indexed
- )
+ :use 'skroad--text-indexed)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -809,74 +870,6 @@ call the action with ARGS."
  :use 'skroad--text-render-delimited-zoned
  :use 'skroad--text-indexed
  )
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defvar-local skroad--hider nil "Text hider overlay.")
-(defvar-local skroad--renamer nil "Node renamer overlay.")
-(defvar-local skroad--renamer-changes nil "Change group for renamer.")
-
-(defun skroad--renamer-activate (renamer-type start end)
-  "Activate the renamer in the current zone."
-  (message "Rename node: press <return> to rename, or leave field to cancel.")
-  (skroad--deactivate-mark)
-  (setq-local cursor-type t)
-  (setq skroad--renamer-changes (prepare-change-group))
-  (activate-change-group skroad--renamer-changes)
-  (setq skroad--hider (make-overlay start end (current-buffer)))
-  (overlay-put skroad--hider 'invisible t)
-  (goto-char end)
-  (insert (concat " " (skroad--atomic-at start) " "))
-  (setq-local skroad--renamer (make-overlay end (point) (current-buffer)))
-  (overlay-put skroad--renamer 'category renamer-type)
-  (goto-char end))
-
-(defun skroad--renamer-deactivate ()
-  "Deactivate the renamer if it is currently active."
-  (when (skroad--overlay-active-p skroad--renamer)
-    (delete-overlay skroad--renamer)
-    (skroad--deactivate-mark)
-    (undo-amalgamate-change-group skroad--renamer-changes)
-    (cancel-change-group skroad--renamer-changes)
-    (goto-char (overlay-start skroad--hider))
-    (delete-overlay skroad--hider)))
-
-(defun skroad--renamer-cmd-accept-changes ()
-  "Accept a proposed renaming."
-  (interactive)
-  (let ((renamed (field-string-no-properties)))
-    (skroad--renamer-deactivate)
-    (message (format "renamed: '%s'" renamed))))
-
-(skroad--define-text-type
- 'skroad-renamer-overlay
- :doc "Base mixin for renamer overlays."
- :mixin t
- :rear-advance t
- :id 'type-name
- :field 'id
- :keymap (define-keymap
-           "<remap> <end-of-line>"
-           #'(lambda () (interactive) (goto-char (1- (field-end))))
-           "RET" #'skroad--renamer-cmd-accept-changes)
- :on-leave '(lambda (pos-from auto)
-              (message "Rename node: changes discarded.")
-              (skroad--renamer-deactivate))
- )
-
-(skroad--define-text-type
- 'skroad-indirect-renamer
- :doc "Renamer for editing a node's title while standing on a link to the node."
- :use 'skroad-renamer-overlay
- :face 'skroad--indirect-renamer-face
- :before-string " " :after-string " ")
-
-(skroad--define-text-type
- 'skroad-direct-renamer
- :doc "Renamer for editing a node's title directly."
- :use 'skroad-renamer-overlay
- :face 'skroad--direct-renamer-face
- :before-string "" :after-string " \n")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -922,11 +915,12 @@ call the action with ARGS."
 ;;  :use 'skroad--text-indexed
 ;;  )
 
-(defun skroad--cmd-change-node-title ()
-  "Activate the renamer for the current node's title."
-  (interactive)
-  (skroad--renamer-activate
-   'skroad-direct-renamer (point-min) (skroad--body-start)))
+(skroad--define-text-type
+ 'skroad-direct-renamer
+ :doc "Renamer for editing a node's title directly."
+ :use 'skroad-renamer-overlay
+ :face 'skroad--direct-renamer-face
+ :before-string "" :after-string " \n")
 
 (skroad--define-text-type
  'skroad-node-title
@@ -936,7 +930,6 @@ call the action with ARGS."
  :order 500
  :keymap
  (define-keymap
-   "r" #'skroad--cmd-change-node-title
    "<tab>" #'skroad--cmd-atomics-jump-to-next-link
    "RET" #'ignore
    "SPC" #'ignore
@@ -948,6 +941,8 @@ call the action with ARGS."
    )
  :face 'skroad--title-face
  :read-only "Title must be changed via rename command!"
+ :renamer-overlay-type 'skroad-direct-renamer
+ :use 'skroad-allow-renamer
  :find-any-forward
  '(lambda (limit) (when (bobp) (goto-char (skroad--body-start)) t))
  :render
@@ -968,7 +963,7 @@ call the action with ARGS."
 
 (defun skroad--point-state ()
   "Return a snapshot of the current point, zone, and type."
-  (list (point) (skroad--zone-at) (skroad--type-at)))
+  (list (point) (skroad--prop-at 'id) (skroad--prop-at 'category)))
 
 (defun skroad--motion (prev &optional auto)
   "To be called whenever the zone under the point may have changed."
