@@ -150,7 +150,7 @@
                      (let ((parent-keymap (alist-get 'keymap env)))
                        (when parent-keymap ;; stack on any existing keymap
                          (set-keymap-parent val parent-keymap))
-                       val))
+                       (copy-keymap val)))
                     ((symbolp val) ;; symbols
                      (if (or (boundp val) (fboundp val)
                              (facep val) (symbol-plist val))
