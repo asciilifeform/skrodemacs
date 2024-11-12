@@ -46,6 +46,10 @@
          (end-expanded (skroad--get-end-of-line ,end)))
      ,@body))
 
+(defun skroad--prop-at (prop &optional pos)
+  "Determine value of PROP, if any, including overlays, at POS (or point.)"
+  (get-char-property (or pos (point)) prop))
+
 (defun skroad--overlay-active-p (overlay)
   "Determine whether OVERLAY is currently active."
   (and (overlayp overlay)
@@ -108,13 +112,6 @@
   :group 'skroad-faces)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun skroad--type-fn (text-type name &rest args)
-  "Evaluate function NAME, which must be defined for TEXT-TYPE, with ARGS."
-  (let ((fn (get text-type name)))
-    (unless fn
-      (error "%s is not defined for type %s !" fn text-type))
-    (apply fn text-type args)))
 
 (defun skroad--define-text-type (name &rest properties)
   "Define a new skroad text type NAME with given PROPERTIES."
@@ -222,12 +219,6 @@
                           (funcall find-any-backward (point-min))))
              (match-beginning 0)))
          (point))))
- ;; :payload-range
- ;; '(lambda (start)
- ;;    (save-mark-and-excursion
- ;;      (goto-char start)
- ;;      (funcall find-any-forward (point-max))
- ;;      (list (match-beginning match-number) (match-end match-number))))
  :for-all-in-region-forward
  '(lambda (start end f)
     (save-mark-and-excursion
@@ -330,10 +321,19 @@
     (set-text-properties
      (match-beginning 0) (match-end 0)
      (list 'category type-name
-           'id (gensym)
+           'zone (gensym)
            'face face
            'data (match-string-no-properties match-number))))
  :use 'skroad--text-rendered)
+
+(defun skroad--zone-start (&optional pos)
+  "Return the position at which the zone at POS starts."
+  (or (previous-single-property-change (1+ (or pos (point))) 'zone)
+      (point-min)))
+
+(defun skroad--zone-end (&optional pos)
+  "Return the position at which the zone at POS ends."
+  (or (next-single-property-change (or pos (point)) 'zone) (point-max)))
 
 (skroad--define-text-type
  'skroad--text-render-delimited-decorative
@@ -487,21 +487,9 @@ call the action with ARGS."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--prop-at (prop &optional pos)
-  "Determine the value of PROP, if any, at position POS (or point.)"
-  (get-char-property (or pos (point)) prop))
-
 (defun skroad--atomic-at (&optional pos)
   "Get the payload of the atomic found at the given POS or point, nil if none."
   (skroad--prop-at 'data pos))
-
-(defun skroad--zone-start (&optional pos)
-  "Return the position at which the zone at POS starts."
-  (or (previous-single-property-change (1+ (or pos (point))) 'id) (point-min)))
-
-(defun skroad--zone-end (&optional pos)
-  "Return the position at which the zone at POS ends."
-  (or (next-single-property-change (or pos (point)) 'id) (point-max)))
 
 (defmacro skroad--with-zone (&rest body)
   "Evaluate BODY with start and end bound to boundaries of zone at point."
@@ -696,14 +684,14 @@ call the action with ARGS."
 ;;   (and (skroad--overlay-active-p skroad--renamer)
 ;;        (save-mark-and-excursion
 ;;          (goto-char (overlay-start skroad--renamer))
-         
-         
-         ;; (skroad--prop-at 'find-find-any-forward
-         ;;                  (overlay-start skroad--renamer))
+
+
+;; (skroad--prop-at 'find-find-any-forward
+;;                  (overlay-start skroad--renamer))
 
 ;; (defun skroad--renamer-validate-if-active ()
 ;;   (when (skroad--overlay-active-p skroad--renamer)
-    
+
 ;;     )
 ;;   )
 
@@ -719,8 +707,8 @@ call the action with ARGS."
  :doc "Base mixin for renamer overlays."
  :mixin t
  :rear-advance t
- :id 'type-name
- :field 'id
+ :zone 'type-name
+ :field 'zone
  :keymap (define-keymap
            "<remap> <end-of-line>"
            #'(lambda () (interactive) (goto-char (1- (field-end))))
@@ -929,7 +917,7 @@ call the action with ARGS."
 ;;     (set-text-properties
 ;;      (point-min) (skroad--body-start)
 ;;      (list 'category type-name
-;;            'id type-name ;; there can only be one
+;;            'zone type-name ;; there can only be one
 ;;            'face face
 ;;            'data (skroad--get-title))))
 ;;  :use 'skroad--text-rendered
@@ -972,7 +960,7 @@ call the action with ARGS."
     (set-text-properties
      (point-min) (skroad--body-start)
      (list 'category type-name
-           'id type-name ;; there can only be one
+           'zone type-name ;; there can only be one
            'face face
            'data (skroad--get-title))))
  :use 'skroad--text-rendered)
@@ -984,7 +972,7 @@ call the action with ARGS."
 
 (defun skroad--point-state ()
   "Return a snapshot of the current point, zone, and type."
-  (list (point) (skroad--prop-at 'id) (skroad--prop-at 'category)))
+  (list (point) (skroad--prop-at 'zone) (skroad--prop-at 'category)))
 
 (defun skroad--motion (prev &optional auto)
   "To be called whenever the zone under the point may have changed."
