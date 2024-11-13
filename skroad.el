@@ -1091,7 +1091,7 @@ call the action with ARGS."
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
   (add-hook 'window-scroll-functions 'skroad--scroll-hook nil t)
   
-  ;; Overlay for when a link is under the point. Initially inactive:
+  ;; Overlay for when an atomic is under the point. Initially inactive:
   (setq-local skroad--selector (make-overlay (point-min) (point-min)))
   (skroad--selector-deactivate)
 
@@ -1102,7 +1102,7 @@ call the action with ARGS."
   ;; Keymap:
   (use-local-map skroad--mode-keymap)
 
-  ;; Handle word boundaries correctly (links are treated as unitary words) :
+  ;; Handle word boundaries correctly (atomics are treated as unitary words) :
   (setq-local find-word-boundary-function-table
               skroad--find-word-boundary-function-table)
 
