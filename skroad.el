@@ -482,10 +482,6 @@ call the action with ARGS."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--atomic-at (&optional pos)
-  "Get the payload of the atomic found at the given POS or point, nil if none."
-  (skroad--prop-at 'data pos))
-
 (defmacro skroad--with-zone (&rest body)
   "Evaluate BODY with start and end bound to boundaries of zone at point."
   (declare (indent defun))
@@ -498,7 +494,7 @@ call the action with ARGS."
   (let ((p (point)))
     (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
           ((> p (skroad--body-start))
-           (if (skroad--atomic-at (1- p))
+           (if (skroad--prop-at 'zone (1- p))
                (delete-region (skroad--zone-start (1- p)) p)
              (delete-char -1))))))
 
@@ -647,7 +643,7 @@ call the action with ARGS."
   (setq skroad--hider (make-overlay start end (current-buffer)))
   (overlay-put skroad--hider 'invisible t)
   (goto-char end)
-  (insert (concat " " (skroad--atomic-at start) " "))
+  (insert (concat " " (skroad--prop-at 'data start) " "))
   (setq-local skroad--renamer (make-overlay end (point) (current-buffer)))
   (overlay-put skroad--renamer 'category renamer-type)
   (goto-char end))
@@ -727,7 +723,7 @@ call the action with ARGS."
   "Run action of link at POS, if one was defined, and no region is active."
   (unless (use-region-p)
     (skroad--type-action
-     (skroad--prop-at 'category pos) 'on-activate (skroad--atomic-at pos))))
+     (skroad--prop-at 'category pos) 'on-activate (skroad--prop-at 'data pos))))
 
 (defun skroad--cmd-left-click-link (click)
   "Perform the action attribute of the link that got the CLICK."
@@ -755,7 +751,7 @@ call the action with ARGS."
   "Delinkify the link under the point to plain text by removing delimiters."
   (interactive)
   (skroad--with-zone
-    (let ((text (skroad--atomic-at)))
+    (let ((text (skroad--prop-at 'data)))
       (save-mark-and-excursion
         (goto-char start)
         (delete-region start end)
@@ -765,7 +761,7 @@ call the action with ARGS."
 (defun skroad--link-mouseover (window buf position)
   "User is mousing over a link in WINDOW, BUF, at POSITION."
   (with-current-buffer buf
-    (skroad--atomic-at position)))
+    (skroad--prop-at 'data position)))
 
 (skroad--define-text-type
  'skroad-node-link
@@ -1030,7 +1026,7 @@ call the action with ARGS."
 (defun skroad--find-word-boundary (pos limit)
   "Function for use in `find-word-boundary-function-table'."
   (save-mark-and-excursion
-    (let ((atomic (skroad--atomic-at pos))
+    (let ((atomic (skroad--prop-at 'zone pos))
           (fwd (<= pos limit)))
       (cond ((and atomic fwd) (goto-char (skroad--zone-end pos)))
             (atomic (goto-char (skroad--zone-start pos)))
