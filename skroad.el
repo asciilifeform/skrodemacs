@@ -524,7 +524,7 @@ call the action with ARGS."
     "<remap> <delete-backward-char>" #'skroad--cmd-backspace
     "<tab>" #'skroad--cmd-jump-to-next-link
     "C-<tab>" #'skroad--cmd-jump-to-prev-link)
-  "Keymap for skroad mode.")
+  "Top-level keymap for the skroad major mode.")
 
 ;;; Text Types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -542,7 +542,7 @@ call the action with ARGS."
     (insert " ")))
 
 (defvar-local skroad--alt-mark nil
-  "Opposite end of a link in which the mark had been set.")
+  "The opposite end of an atomic zone in which the regular mark had been set.")
 
 (defun skroad--deactivate-mark ()
   "Deactivate the mark and clear the alt-mark."
@@ -614,12 +614,12 @@ call the action with ARGS."
  :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
  :on-enter '(lambda (pos-from auto)
               (skroad--selector-activate)
-              (goto-char (skroad--zone-start))
+              (goto-char (skroad--zone-start)) ;; point can only sit on start
               (let ((kbd-doc (skroad--prop-at 'kbd-doc)))
                 (when kbd-doc (message kbd-doc))))
  :on-leave '(lambda (pos-from auto) (skroad--selector-deactivate))
  :on-move '(lambda (pos-from auto)
-             (goto-char
+             (goto-char ;; if went forward, jump to the end; else, to the start.
               (if (> (point) pos-from)
                   (skroad--zone-end) (skroad--zone-start))))
  :keymap
