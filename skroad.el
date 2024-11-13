@@ -236,6 +236,11 @@ call the action with ARGS."
  '(lambda (s new-type)
     (funcall replace-all s (funcall (get new-type 'make-text) s))))
 
+(defun skroad--transform-at (new-type)
+  "Transform the text item at point (including all duplicates) to NEW-TYPE."
+  (funcall
+   (skroad--prop-at 'replace-with-type) (skroad--prop-at 'data) new-type))
+
 (defun skroad--finder-regex-forward (r)
   "Generate a forward finder for regex R."
   (lambda (limit) (re-search-forward r limit t)))
@@ -745,11 +750,6 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :payload-regex skroad--node-title-regex
  :keymap (define-keymap
            "t" #'skroad--link-to-plain-text))
-
-(defun skroad--transform-at (new-type)
-  "Transform the text item at point (including all duplicates) to NEW-TYPE."
-  (funcall
-   (skroad--prop-at 'replace-with-type) (skroad--prop-at 'data) new-type))
 
 (defun skroad--browse-skroad-link (data)
   (message (format "Live link pushed: '%s'" data)))
