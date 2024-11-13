@@ -492,13 +492,6 @@ call the action with ARGS."
   `(let ((start (skroad--zone-start)) (end (skroad--zone-end)))
      ,@body))
 
-;; TODO: abolish
-(defmacro skroad--with-link-at-point (&rest body)
-  "Evaluate BODY with link bound to the link under the point."
-  `(let ((link (skroad--atomic-at (point))))
-     (when link
-       ,@body)))
-
 (defun skroad--cmd-backspace ()
   "If prev point contains a link, delete the link. Otherwise backspace."
   (interactive)
@@ -786,8 +779,8 @@ call the action with ARGS."
 (defun skroad--live-link-to-dead ()
   "Transform all live links with payload LINK to dead links."
   (interactive)
-  (skroad--with-link-at-point
-   (funcall (get 'skroad-live 'replace-with-type) link 'skroad-dead)))
+  (funcall (get 'skroad-live 'replace-with-type)
+           (skroad--prop-at 'data) 'skroad-dead))
 
 (defun skroad--browse-skroad-link (data)
   (message (format "Live link pushed: '%s'" data)))
@@ -832,8 +825,8 @@ call the action with ARGS."
 (defun skroad--dead-link-to-live ()
   "Transform all dead links with payload LINK to live links."
   (interactive)
-  (skroad--with-link-at-point
-   (funcall (get 'skroad-dead 'replace-with-type) link 'skroad-live)))
+  (funcall (get 'skroad-dead 'replace-with-type)
+           (skroad--prop-at 'data) 'skroad-live))
 
 (skroad--define-text-type
  'skroad-dead
