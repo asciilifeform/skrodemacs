@@ -721,7 +721,6 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :doc "Fundamental type from which all skroad links are derived."
  :use 'skroad-atomic
  :face 'link
- :mouse-face 'highlight
  :keymap (define-keymap
            "<down-mouse-1>" #'skroad--cmd-left-click-link
            "RET" #'skroad--cmd-enter-link))
@@ -782,6 +781,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :on-create #'skroad--link-create
  :on-destroy #'skroad--link-destroy
  :on-activate #'skroad--browse-skroad-link
+ :mouse-face 'highlight
  :start-delim "[[" :end-delim "]]"
  :keymap (define-keymap
            "l" #'(lambda () (interactive) (skroad--transform-at 'skroad-dead)))
@@ -821,6 +821,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :doc "URL."
  :kbd-doc "<return> go|<t> textify|<del> delete|<spc> prepend space"
  :use 'skroad-link
+ :mouse-face 'highlight
  :help-echo "External link."
  :payload-regex
  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\r\f\t\s]+\\)"
