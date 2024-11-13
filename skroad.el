@@ -466,32 +466,6 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (skroad--index-scan-region
      skroad--changes start-expanded end-expanded 1)))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; (index final
-;;   (let ((env))
-;;     (skroad--do-plist p v (symbol-plist name) (push (cons p v) env))
-;;     (dolist (f (reverse functions))
-;;       (let* ((f-name (car f))
-;;              (f-def (cadr f))
-;;              (fn (read
-;;                   (format "skroad--type-%s-%s"
-;;                           (symbol-name name) (symbol-name f-name))))
-;;              ;; (compiled
-;;              ;;  (eval
-;;              ;;   `(byte-compile (lambda ,(car f-def) ,@(cdr f-def))) env))
-;;              (compiled
-;;               (eval
-;;                `(lambda ,(car f-def) ,@(cdr f-def)) env))
-;;              )
-;;         (message (format "fn=%s body=%s" f-name compiled))
-;;         ;; (message (format "fn=%s body=%s" f-name f-def))
-;;         (defalias fn compiled)
-;;         (push (cons f-name compiled) env)
-;;         (put name f-name fn)))
-;;     (message (format "env=%s done" env))
-;;     )))
-
 ;; Top-level keymap for the major mode. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--cmd-backspace ()
