@@ -489,7 +489,7 @@ call the action with ARGS."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--cmd-backspace ()
-  "If prev point contains a link, delete the link. Otherwise backspace."
+  "If prev point is in an atomic, delete it. Otherwise normal backspace."
   (interactive)
   (let ((p (point)))
     (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
@@ -499,12 +499,12 @@ call the action with ARGS."
              (delete-char -1))))))
 
 (defun skroad--cmd-jump-to-next-link ()
-  "Jump to the next link following point; cycle to first after the last."
+  "Jump to the next live link following point; cycle to first if no more."
   (interactive)
   (funcall (get 'skroad-live 'jump-next-from) (point)))
 
 (defun skroad--cmd-jump-to-prev-link ()
-  "Jump to the previous link preceding point; cycle to last after the first."
+  "Jump to the previous live link preceding point; cycle to last if no more."
   (interactive)
   (funcall (get 'skroad-live 'jump-prev-from) (point)))
 
