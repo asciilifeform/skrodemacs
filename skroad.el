@@ -159,6 +159,12 @@
       (funcall eat-props (append '(:use skroad--default-type) properties))))
   name)
 
+(defun skroad--type-action (text-type action-name &rest args)
+  "If ACTION-NAME is not nil, and TEXT-TYPE has a defined action of that name,
+call the action with ARGS."
+  (when action-name (let ((action (get text-type action-name)))
+                      (when action (apply action args)))))
+
 (skroad--define-text-type
  'skroad--default-type
  :doc "Default text type from which all other types (except mixins) inherit."
@@ -305,6 +311,10 @@
     (dolist (type types)
       (push (funcall (get type 'font-lock-rule)) rules))
     (font-lock-add-keywords nil rules t)))
+
+(defconst skroad--font-lock-properties
+  '(category face id data)
+  "Let font lock know what props we use in renderers, so it will clean them.")
 
 (skroad--define-text-type
  'skroad--text-render-delimited-zoned
@@ -478,15 +488,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 ;;     (message (format "env=%s done" env))
 ;;     )))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun skroad--type-action (text-type action-name &rest args)
-  "If ACTION-NAME is not nil, and TEXT-TYPE has a defined action of that name,
-call the action with ARGS."
-  (when action-name (let ((action (get text-type action-name)))
-                      (when action (apply action args)))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Top-level keymap for the major mode. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--cmd-backspace ()
   "If prev point is in an atomic, delete it. Otherwise normal backspace."
@@ -515,13 +517,7 @@ call the action with ARGS."
     "C-<tab>" #'skroad--cmd-jump-to-prev-link)
   "Top-level keymap for the skroad major mode.")
 
-;;; Text Types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defconst skroad--text-properties
-  '(category face id data)
-  "Properties added by font-lock that must be removed when unfontifying.")
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Atomic Text Type. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--cmd-atomics-prepend-space ()
   "Insert a space immediately behind the atomic currently under the point."
@@ -1047,7 +1043,7 @@ call the action with ARGS."
   (message (format "yank! c=%s" category))
   (skroad--with-whole-lines start end
     (remove-list-of-text-properties
-     start-expanded end-expanded skroad--text-properties)
+     start-expanded end-expanded skroad--font-lock-properties)
     (font-lock-ensure start-expanded end-expanded))
   (skroad--deactivate-mark))
 
@@ -1068,7 +1064,7 @@ call the action with ARGS."
   (skroad--silence-modifications 'add-face-text-property)
   
   ;; Zap properties during unfontification:
-  (setq-local font-lock-extra-managed-props skroad--text-properties)
+  (setq-local font-lock-extra-managed-props skroad--font-lock-properties)
   
   ;; Zap properties and refontify during yank.
   (setq-local yank-handled-properties '((id . skroad--yank-handler)))
