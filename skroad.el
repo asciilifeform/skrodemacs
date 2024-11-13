@@ -1011,7 +1011,7 @@ call the action with ARGS."
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
   (when (or (buffer-modified-p) (eq last-command 'undo))
-    (save-mark-and-excursion
+    (save-mark-and-excursion ;; refontify current line if it may have changed
       (font-lock-ensure (beginning-of-line) (end-of-line))))
   (skroad--motion skroad--pre-command-snapshot)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
