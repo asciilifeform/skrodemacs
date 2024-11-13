@@ -106,7 +106,7 @@
                        (apply orig-fun args))
                    (apply orig-fun args)))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Skroad text type mechanism and basic types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--define-text-type (name &rest properties)
   "Define a new skroad text type NAME with given PROPERTIES."
@@ -289,6 +289,8 @@ call the action with ARGS."
  :finder-regex-backward #'skroad--finder-regex-backward-non-title
  :use 'skroad--text-findable)
 
+;; Font lock rendered text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defvar skroad--rendered-text-types nil "Text types for use with font-lock.")
 
 (skroad--define-text-type
@@ -311,6 +313,8 @@ call the action with ARGS."
     (dolist (type types)
       (push (funcall (get type 'font-lock-rule)) rules))
     (font-lock-add-keywords nil rules t)))
+
+;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defconst skroad--font-lock-properties
   '(category face id data)
@@ -346,6 +350,8 @@ call the action with ARGS."
   `(let ((start (skroad--zone-start)) (end (skroad--zone-end)))
      ,@body))
 
+;; Decorative text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (skroad--define-text-type
  'skroad--text-render-delimited-decorative
  :doc "Mixin for decorative delimited text types rendered by font-lock."
@@ -356,8 +362,6 @@ call the action with ARGS."
  '(lambda () (add-face-text-property (match-beginning 0) (match-end 0) face))
  :order 1000 ;; Render these last, so they can amend all other rendered faces
  :use 'skroad--text-rendered)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (skroad--define-text-type
  'skroad-decorative-italic
@@ -382,7 +386,7 @@ call the action with ARGS."
  :payload-regex "^##\s*\\([^\n\r\f\t\s]+[^\n\r\f\t]*\\)"
  :use 'skroad--text-render-delimited-decorative)
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--indexed-text-types nil "Text types that are indexed.")
 
@@ -623,7 +627,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
    )
  )
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Interactive renamer. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar-local skroad--hider nil "Text hider overlay.")
 (defvar-local skroad--renamer nil "Node renamer overlay.")
@@ -713,7 +717,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :keymap (define-keymap
            "r" #'skroad--cmd-atomics-rename))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Link types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--do-link-action (pos)
   "Run action of link at POS, if one was defined, and no region is active."
@@ -836,8 +840,6 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :use 'skroad--text-render-delimited-zoned
  :use 'skroad--text-indexed)
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (defun skroad--comment-url ()
   "Turn the URL at point into plain text by placing a space after the prefix."
   (interactive)
@@ -863,7 +865,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :use 'skroad--text-indexed
  )
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--get-title ()
   "Get the current node title from the buffer."
@@ -945,7 +947,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
            'data (skroad--get-title))))
  :use 'skroad--text-rendered)
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Cursor motion, mark, and floating title handling. ;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar-local skroad--pre-command-snapshot (list (point-min) nil nil)
   "Point, zone at point, and type at point prior to a command.")
@@ -1017,7 +1019,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
       ;; Let the debugger run
       ((debug error) (signal (car err) (cdr err))))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Misc. major mode setup. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--find-word-boundary (pos limit)
   "Function for use in `find-word-boundary-function-table'."
