@@ -330,6 +330,12 @@
   "Return the position at which the zone at POS ends."
   (or (next-single-property-change (or pos (point)) 'zone) (point-max)))
 
+(defmacro skroad--with-zone (&rest body)
+  "Evaluate BODY with start and end bound to boundaries of zone at point."
+  (declare (indent defun))
+  `(let ((start (skroad--zone-start)) (end (skroad--zone-end)))
+     ,@body))
+
 (skroad--define-text-type
  'skroad--text-render-delimited-decorative
  :doc "Mixin for decorative delimited text types rendered by font-lock."
@@ -481,12 +487,6 @@ call the action with ARGS."
                       (when action (apply action args)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defmacro skroad--with-zone (&rest body)
-  "Evaluate BODY with start and end bound to boundaries of zone at point."
-  (declare (indent defun))
-  `(let ((start (skroad--zone-start)) (end (skroad--zone-end)))
-     ,@body))
 
 (defun skroad--cmd-backspace ()
   "If prev point contains a link, delete the link. Otherwise backspace."
