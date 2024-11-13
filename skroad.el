@@ -746,11 +746,10 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :keymap (define-keymap
            "t" #'skroad--link-to-plain-text))
 
-(defun skroad--live-link-to-dead ()
-  "Transform all live links with payload LINK to dead links."
-  (interactive)
-  (funcall (get 'skroad-live 'replace-with-type)
-           (skroad--prop-at 'data) 'skroad-dead))
+(defun skroad--transform-at (new-type)
+  "Transform the text item at point (including all duplicates) to NEW-TYPE."
+  (funcall
+   (skroad--prop-at 'replace-with-type) (skroad--prop-at 'data) new-type))
 
 (defun skroad--browse-skroad-link (data)
   (message (format "Live link pushed: '%s'" data)))
@@ -785,18 +784,12 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :on-activate #'skroad--browse-skroad-link
  :start-delim "[[" :end-delim "]]"
  :keymap (define-keymap
-           "l" #'skroad--live-link-to-dead)
+           "l" #'(lambda () (interactive) (skroad--transform-at 'skroad-dead)))
  :renamer-overlay-type 'skroad-indirect-renamer
  :use 'skroad-allow-renamer
  :use 'skroad--text-delimited-non-title
  :use 'skroad--text-render-delimited-zoned
  :use 'skroad--text-indexed)
-
-(defun skroad--dead-link-to-live ()
-  "Transform all dead links with payload LINK to live links."
-  (interactive)
-  (funcall (get 'skroad-dead 'replace-with-type)
-           (skroad--prop-at 'data) 'skroad-live))
 
 (skroad--define-text-type
  'skroad-dead
@@ -809,7 +802,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :start-delim "[-[" :end-delim "]-]"
  :face 'skroad--dead-link-face
  :keymap (define-keymap
-           "l" #'skroad--dead-link-to-live)
+           "l" #'(lambda () (interactive) (skroad--transform-at 'skroad-live)))
  :use 'skroad--text-delimited-non-title
  :use 'skroad--text-render-delimited-zoned
  :use 'skroad--text-indexed)
