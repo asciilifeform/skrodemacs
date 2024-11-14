@@ -896,7 +896,6 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
    "RET" #'ignore "SPC" #'ignore
    "<deletechar>" #'ignore "<backspace>" #'ignore
    "<remap> <set-mark-command>" #'ignore
-   "<remap> <self-insert-command>" #'ignore
    "<remap> <yank>" #'ignore
    "<remap> <kill-region>" #'ignore
    )
