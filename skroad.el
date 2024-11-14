@@ -596,6 +596,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
    "SPC" #'skroad--cmd-atomics-prepend-space
    "<remap> <set-mark-command>" #'skroad--cmd-atomics-set-mark
    "<remap> <self-insert-command>" #'ignore
+   "<remap> <quoted-insert>" #'ignore
    "<deletechar>" #'skroad--cmd-atomics-delete-region
    "<backspace>" #'skroad--cmd-atomics-delete-region
    "<drag-mouse-1>" #'ignore "<drag-mouse-2>" #'ignore "<drag-mouse-3>" #'ignore
