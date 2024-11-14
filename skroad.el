@@ -878,6 +878,14 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 ;;  :use 'skroad--text-indexed
 ;;  )
 
+(defun skroad--cmd-title-kill-ring-save ()
+  "Save the current node's title, transformed to a live link, to the kill ring."
+  (interactive)
+  (let ((title (skroad--get-title)))
+    (with-temp-buffer
+      (insert (funcall (get 'skroad-live 'make-text) title))
+      (copy-region-as-kill (point-min) (point-max)))))
+
 (skroad--define-text-type
  'skroad-direct-renamer
  :doc "Renamer for editing a node's title directly."
@@ -898,6 +906,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
    "<remap> <set-mark-command>" #'ignore
    "<remap> <yank>" #'ignore
    "<remap> <kill-region>" #'ignore
+   "<remap> <kill-ring-save>" #'skroad--cmd-title-kill-ring-save
    )
  :face 'skroad--title-face
  :read-only "Title must be changed via rename command!"
