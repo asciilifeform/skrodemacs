@@ -231,8 +231,7 @@ call the action with ARGS."
     (save-mark-and-excursion
       (goto-char (point-min))
       (while (funcall find-string-forward (point-max) s)
-        (replace-match s-new)
-        (font-lock-ensure (match-beginning 0) (match-end 0)))))
+        (replace-match s-new))))
  :replace-with-type
  '(lambda (s new-type)
     (funcall replace-all s (funcall (get new-type 'make-text) s))))
@@ -966,6 +965,8 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
+  (save-mark-and-excursion
+    (font-lock-ensure (line-beginning-position) (line-end-position)))
   (skroad--motion skroad--pre-command-snapshot)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
   (skroad--update-local-index) ;; TODO: do it in save hook?
