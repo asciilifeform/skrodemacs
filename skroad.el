@@ -156,7 +156,8 @@
                       (funcall save-pv prop val))))))))
       (funcall save-pv 'type-name name) ;; Save the type name to symbol and env
       ;; Add properties, starting with the default ones:
-      (funcall eat-props (append '(:use skroad--default-type) properties))))
+      (funcall eat-props
+               (append '(:use skroad--text-mixin-default-type) properties))))
   name)
 
 (defun skroad--type-action (text-type action-name &rest args)
@@ -166,7 +167,7 @@ call the action with ARGS."
                       (when action (apply action args)))))
 
 (skroad--define-text-type
- 'skroad--default-type
+ 'skroad--text-mixin-default-type
  :doc "Default text type from which all other types (except mixins) inherit."
  :mixin t
  :order 100 ;; lower number will get rendered first
@@ -174,7 +175,7 @@ call the action with ARGS."
  :rear-nonsticky t)
 
 (skroad--define-text-type
- 'skroad--text-delimited
+ 'skroad--text-mixin-delimited
  :doc "Base mixin for delimited text types. Define delimiters before using."
  :mixin t
  :require 'payload-regex
@@ -188,7 +189,7 @@ call the action with ARGS."
  :regex-any '(funcall make-regex payload-regex))
 
 (skroad--define-text-type
- 'skroad--text-findable
+ 'skroad--text-mixin-findable
  :doc "Mixin for findable text types. (Internal use only.)"
  :mixin t
  :require '(make-regex regex-any finder-regex-forward make-text)
@@ -250,13 +251,13 @@ call the action with ARGS."
   (lambda (limit) (re-search-forward r limit t)))
 
 (skroad--define-text-type
- 'skroad--text-delimited-anywhere
+ 'skroad--text-mixin-delimited-anywhere
  :doc "Mixin for delimited text types found anywhere in the buffer."
  :mixin t
- :use 'skroad--text-delimited
+ :use 'skroad--text-mixin-delimited
  :finder-regex-forward #'skroad--finder-regex-forward
  :finder-regex-backward #'skroad--finder-regex-backward
- :use 'skroad--text-findable)
+ :use 'skroad--text-mixin-findable)
 
 ;; TODO: invalidate cache when changing title
 (defvar-local skroad--body-start-memo nil)
@@ -286,20 +287,20 @@ call the action with ARGS."
       (when (> (point) lim) (re-search-backward r lim t)))))
 
 (skroad--define-text-type
- 'skroad--text-delimited-non-title
+ 'skroad--text-mixin-delimited-non-title
  :doc "Mixin for delimited text types excluded from the node title."
  :mixin t
- :use 'skroad--text-delimited
+ :use 'skroad--text-mixin-delimited
  :finder-regex-forward #'skroad--finder-regex-forward-non-title
  :finder-regex-backward #'skroad--finder-regex-backward-non-title
- :use 'skroad--text-findable)
+ :use 'skroad--text-mixin-findable)
 
 ;; Font lock rendered text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--rendered-text-types nil "Text types for use with font-lock.")
 
 (skroad--define-text-type
- 'skroad--text-rendered
+ 'skroad--text-mixin-rendered
  :doc "Finalization mixin for all text types rendered by font-lock."
  :mixin t
  :require '(find-any-forward render)
@@ -326,7 +327,7 @@ call the action with ARGS."
   "Let font lock know what props we use in renderers, so it will clean them.")
 
 (skroad--define-text-type
- 'skroad--text-render-delimited-zoned
+ 'skroad--text-mixin-render-delimited-zoned
  :doc "Mixin for zoned delimited text types rendered by font-lock."
  :mixin t
  :require 'face
@@ -338,7 +339,7 @@ call the action with ARGS."
            'zone (gensym)
            'face face
            'data (match-string-no-properties match-number))))
- :use 'skroad--text-rendered)
+ :use 'skroad--text-mixin-rendered)
 
 (defun skroad--zone-start (&optional pos)
   "Return the position at which the zone at POS starts."
@@ -358,15 +359,15 @@ call the action with ARGS."
 ;; Decorative text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (skroad--define-text-type
- 'skroad--text-render-delimited-decorative
+ 'skroad--text-mixin-render-delimited-decorative
  :doc "Mixin for decorative delimited text types rendered by font-lock."
  :mixin t
- :use 'skroad--text-delimited-anywhere
+ :use 'skroad--text-mixin-delimited-anywhere
  :require 'face
  :render
  '(lambda () (add-face-text-property (match-beginning 0) (match-end 0) face))
  :order 1000 ;; Render these last, so they can amend all other rendered faces
- :use 'skroad--text-rendered)
+ :use 'skroad--text-mixin-rendered)
 
 (skroad--define-text-type
  'skroad-decorative-italic
@@ -374,7 +375,7 @@ call the action with ARGS."
  :face 'italic
  :start-delim "__" :end-delim "__"
  :payload-regex "\\([^_]+\\)"
- :use 'skroad--text-render-delimited-decorative)
+ :use 'skroad--text-mixin-render-delimited-decorative)
 
 (skroad--define-text-type
  'skroad-decorative-bold
@@ -382,21 +383,21 @@ call the action with ARGS."
  :face 'bold
  :start-delim "**" :end-delim "**"
  :payload-regex "\\([^*]+\\)"
- :use 'skroad--text-render-delimited-decorative)
+ :use 'skroad--text-mixin-render-delimited-decorative)
 
 (skroad--define-text-type
  'skroad-decorative-heading
  :doc "Heading text."
  :face 'skroad--heading-face
  :payload-regex "^##\s*\\([^\n\r\f\t\s]+[^\n\r\f\t]*\\)"
- :use 'skroad--text-render-delimited-decorative)
+ :use 'skroad--text-mixin-render-delimited-decorative)
 
 ;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--indexed-text-types nil "Text types that are indexed.")
 
 (skroad--define-text-type
- 'skroad--text-indexed
+ 'skroad--text-mixin-indexed
  :doc "Finalization mixin for indexed text types."
  :mixin t
  :require 'for-all-in-region-forward
@@ -492,12 +493,12 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defun skroad--top-cmd-jump-to-next-link ()
   "Jump to the next live link following point; cycle to first if no more."
   (interactive)
-  (funcall (get 'skroad-live 'jump-next-from) (point)))
+  (funcall (get 'skroad--text-link-node-live 'jump-next-from) (point)))
 
 (defun skroad--top-cmd-jump-to-prev-link ()
   "Jump to the previous live link preceding point; cycle to last if no more."
   (interactive)
-  (funcall (get 'skroad-live 'jump-prev-from) (point)))
+  (funcall (get 'skroad--text-link-node-live 'jump-prev-from) (point)))
 
 (defvar skroad--mode-keymap
   (define-keymap
@@ -581,10 +582,11 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defun skroad--atomics-cmd-jump-to-next-link ()
   "Jump to the next link following this atomic; cycle to first after the last."
   (interactive)
-  (funcall (get 'skroad-live 'jump-next-from) (skroad--zone-end)))
+  (funcall
+   (get 'skroad--text-link-node-live 'jump-next-from) (skroad--zone-end)))
 
 (skroad--define-text-type
- 'skroad-atomic
+ 'skroad--text-atomic
  :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
  :on-enter '(lambda (pos-from auto)
               (skroad--selector-activate)
@@ -673,7 +675,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (message (format "renamed: '%s'" renamed))))
 
 (skroad--define-text-type
- 'skroad-renamer-overlay
+ 'skroad--text-mixin-renamer-overlay
  :doc "Base mixin for renamer overlays."
  :mixin t
  :rear-advance t
@@ -696,7 +698,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
      (skroad--prop-at 'renamer-overlay-type) start end)))
 
 (skroad--define-text-type
- 'skroad--text-renameable
+ 'skroad--text-mixin-renameable
  :doc "Mixin for allowing the use of the rename command with an atomic type."
  :mixin t
  :require 'renamer-overlay-type
@@ -724,9 +726,9 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (skroad--do-link-action (point)))
 
 (skroad--define-text-type
- 'skroad-link
+ 'skroad--text-link
  :doc "Fundamental type from which all skroad links are derived."
- :use 'skroad-atomic
+ :use 'skroad--text-atomic
  :face 'link
  :keymap (define-keymap
            "<down-mouse-1>" #'skroad--link-cmd-left-click
@@ -749,9 +751,9 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (skroad--prop-at 'data position)))
 
 (skroad--define-text-type
- 'skroad-node-link
+ 'skroad--text-link-node
  :doc "Fundamental type for skroad node links (live or dead)."
- :use 'skroad-link
+ :use 'skroad--text-link
  :help-echo 'skroad--link-mouseover
  :payload-regex skroad--node-title-regex
  :keymap (define-keymap
@@ -775,15 +777,15 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (skroad--define-text-type
  'skroad-indirect-renamer
  :doc "Renamer for editing a node's title while standing on a link to the node."
- :use 'skroad-renamer-overlay
+ :use 'skroad--text-mixin-renamer-overlay
  :face 'skroad--indirect-renamer-face
  :before-string " " :after-string " ")
 
 (skroad--define-text-type
- 'skroad-live
+ 'skroad--text-link-node-live
  :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
  :kbd-doc "<return> go|<r> rename|<l> deaden|<t> textify|<del> delete|<spc> prepend space"
- :use 'skroad-node-link
+ :use 'skroad--text-link-node
  :on-init #'skroad--link-init
  :on-create #'skroad--link-create
  :on-destroy #'skroad--link-destroy
@@ -791,28 +793,30 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :mouse-face 'highlight
  :start-delim "[[" :end-delim "]]"
  :keymap (define-keymap
-           "l" #'(lambda () (interactive) (skroad--transform-at 'skroad-dead)))
+           "l" #'(lambda () (interactive)
+                   (skroad--transform-at 'skroad--text-link-node-dead)))
  :renamer-overlay-type 'skroad-indirect-renamer
- :use 'skroad--text-renameable
- :use 'skroad--text-delimited-non-title
- :use 'skroad--text-render-delimited-zoned
- :use 'skroad--text-indexed)
+ :use 'skroad--text-mixin-renameable
+ :use 'skroad--text-mixin-delimited-non-title
+ :use 'skroad--text-mixin-render-delimited-zoned
+ :use 'skroad--text-mixin-indexed)
 
 (skroad--define-text-type
- 'skroad-dead
+ 'skroad--text-link-node-dead
  :doc "Dead (i.e. revivable placeholder) link to a skroad node."
  :kbd-doc "<l> liven|<t> textify|<del> delete|<spc> prepend space"
- :use 'skroad-node-link
+ :use 'skroad--text-link-node
  :on-init #'skroad--link-init
  :on-create #'skroad--link-create
  :on-destroy #'skroad--link-destroy
  :start-delim "[-[" :end-delim "]-]"
  :face 'skroad--dead-link-face
  :keymap (define-keymap
-           "l" #'(lambda () (interactive) (skroad--transform-at 'skroad-live)))
- :use 'skroad--text-delimited-non-title
- :use 'skroad--text-render-delimited-zoned
- :use 'skroad--text-indexed)
+           "l" #'(lambda () (interactive)
+                   (skroad--transform-at 'skroad--text-link-node-live)))
+ :use 'skroad--text-mixin-delimited-non-title
+ :use 'skroad--text-mixin-render-delimited-zoned
+ :use 'skroad--text-mixin-indexed)
 
 (defun skroad--url-cmd-comment ()
   "Turn the URL at point into plain text by placing a space after the prefix."
@@ -824,10 +828,10 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
       (insert " "))))
 
 (skroad--define-text-type
- 'skroad-url-link
+ 'skroad-text-url-link
  :doc "URL."
  :kbd-doc "<return> go|<t> textify|<del> delete|<spc> prepend space"
- :use 'skroad-link
+ :use 'skroad--text-link
  :mouse-face 'highlight
  :help-echo "External link."
  :payload-regex
@@ -835,9 +839,9 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :on-activate #'browse-url
  :keymap (define-keymap
            "t" #'skroad--url-cmd-comment)
- :use 'skroad--text-delimited-non-title
- :use 'skroad--text-render-delimited-zoned
- :use 'skroad--text-indexed
+ :use 'skroad--text-mixin-delimited-non-title
+ :use 'skroad--text-mixin-render-delimited-zoned
+ :use 'skroad--text-mixin-indexed
  )
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -851,13 +855,13 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (interactive)
   (let ((title (skroad--get-title)))
     (with-temp-buffer
-      (insert (funcall (get 'skroad-live 'make-text) title))
+      (insert (funcall (get 'skroad--text-link-node-live 'make-text) title))
       (copy-region-as-kill (point-min) (point-max)))))
 
 (skroad--define-text-type
  'skroad-direct-renamer
  :doc "Renamer for editing a node's title directly."
- :use 'skroad-renamer-overlay
+ :use 'skroad--text-mixin-renamer-overlay
  :face 'skroad--direct-renamer-face
  :before-string "" :after-string " \n")
 
@@ -865,7 +869,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  'skroad-node-title
  :doc "Node title."
  :kbd-doc "<r> rename"
- :use 'skroad-atomic
+ :use 'skroad--text-atomic
  :order 500
  :keymap
  (define-keymap
@@ -879,7 +883,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :face 'skroad--title-face
  :read-only "Title must be changed via rename command!"
  :renamer-overlay-type 'skroad-direct-renamer
- :use 'skroad--text-renameable
+ :use 'skroad--text-mixin-renameable
  :find-any-forward
  '(lambda (limit) (when (bobp) (goto-char (skroad--body-start)) t))
  :render
@@ -890,7 +894,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
            'zone type-name ;; there can only be one
            'face face
            'data (skroad--get-title))))
- :use 'skroad--text-rendered)
+ :use 'skroad--text-mixin-rendered)
 
 ;; Cursor motion, mark, and floating title handling. ;;;;;;;;;;;;;;;;;;;;;;;;;
 
