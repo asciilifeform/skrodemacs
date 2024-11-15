@@ -423,19 +423,20 @@ it to finalize all pending changes when no further ones are expected."
   "Update INDEX by applying all PENDING changes, and run text type actions when
 appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 `on-create` for created entries; `on-destroy` runs for destroyed ones."
-  (maphash
-   #'(lambda (key delta) ;; key and count delta in pending changes table
-       (let* ((prior (or (gethash key index) 0)) ;; copies in index prior
-              (create (zerop prior)) ;; t if index did not contain this item
-              (count (+ prior delta)) ;; copies of item in index + delta
-              (destroy (zerop count)) ;; t if change will destroy all copies
-              (action ;; text type action to invoke, if any. nil if none.
-               (cond (create (if init-scan 'on-init 'on-create))
-                     (destroy (remhash key index) 'on-destroy))))
-         (unless destroy (puthash key count index)) ;; update index if remains
-         (let ((text-type (car key)) (payload (cdr key))) ;; args for action
-           (skroad--type-action text-type action text-type payload))))
-   pending)
+  (let ((create-action (if init-scan 'on-init 'on-create)))
+    (maphash
+     #'(lambda (key delta) ;; key and count delta in pending changes table
+         (let* ((prior (or (gethash key index) 0)) ;; copies in index prior
+                (create (zerop prior)) ;; t if index did not contain this item
+                (count (+ prior delta)) ;; copies of item in index + delta
+                (destroy (zerop count)) ;; t if change will destroy all copies
+                (action ;; text type action to invoke, if any. nil if none.
+                 (cond (create create-action)
+                       (destroy (remhash key index) 'on-destroy))))
+           (unless destroy (puthash key count index)) ;; update index if remains
+           (let ((text-type (car key)) (payload (cdr key))) ;; args for action
+             (skroad--type-action text-type action text-type payload))))
+     pending))
   t)
 
 (defvar-local skroad--index nil "Text type index for current buffer.")
