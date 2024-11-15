@@ -446,9 +446,12 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   "Create the buffer-local indices and populate them from current buffer."
   (unless (null skroad--index)
     (error "Text type index already exists for this buffer!"))
-  (setq skroad--index (make-hash-table :test 'equal))
+  (setq skroad--index (make-hash-table
+                       :test 'equal
+                       :size (line-number-at-pos (point-max) t)))
   ;; Populate while dispatching `on-init`s
-  (let ((init-populate (make-hash-table :test 'equal)))
+  (let ((init-populate
+         (make-hash-table :test 'equal :size (hash-table-count skroad--index))))
     (skroad--index-scan-region init-populate (point-min) (point-max) 1)
     (skroad--index-update skroad--index init-populate t)))
 
