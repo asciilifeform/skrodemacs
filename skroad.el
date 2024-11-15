@@ -260,17 +260,17 @@ call the action with ARGS."
  :use 'skroad--text-mixin-findable)
 
 ;; TODO: invalidate cache when changing title
-(defvar-local skroad--body-start-memo nil)
+(defvar-local skroad--buf-body-start-memo nil)
 
 (defun skroad--body-start ()
   "Return the first position in the buffer outside of the node title."
-  (unless skroad--body-start-memo
-    (setq-local skroad--body-start-memo
+  (unless skroad--buf-body-start-memo
+    (setq-local skroad--buf-body-start-memo
                 (save-mark-and-excursion
                   (goto-char (point-min))
                   (goto-char (line-beginning-position 2))
                   (point))))
-  skroad--body-start-memo)
+  skroad--buf-body-start-memo)
 
 (defun skroad--finder-regex-forward-non-title (r)
   "Generate a forward finder for regex R which excludes the title."
@@ -516,13 +516,13 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (goto-char (skroad--zone-start))
     (insert " ")))
 
-(defvar-local skroad--alt-mark nil
+(defvar-local skroad--buf-alt-mark nil
   "The opposite end of an atomic zone in which the regular mark had been set.")
 
 (defun skroad--deactivate-mark ()
   "Deactivate the mark and clear the alt-mark."
   (deactivate-mark)
-  (setq-local skroad--alt-mark nil))
+  (setq-local skroad--buf-alt-mark nil))
 
 (defmacro skroad--define-atomics-region-cmd (wrap-command)
   "Wrap COMMAND to use region if exists, or use the atomic at point as region."
@@ -539,7 +539,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (skroad--define-atomics-region-cmd kill-region)
 (skroad--define-atomics-region-cmd kill-ring-save)
 
-(defvar-local skroad--selector nil
+(defvar-local skroad--buf-selector nil
   "Selector overlay active when an atomic is under the point.")
 
 (defconst skroad--selector-properties
@@ -548,25 +548,25 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defun skroad--selector-show ()
   "Reveal the selector overlay when it may have been hidden."
-  (when (skroad--overlay-active-p skroad--selector)
-    (overlay-put skroad--selector 'face 'skroad--selector-face)))
+  (when (skroad--overlay-active-p skroad--buf-selector)
+    (overlay-put skroad--buf-selector 'face 'skroad--selector-face)))
 
 (defun skroad--selector-hide ()
   "Hide (but not destroy) the selector overlay."
-  (when (skroad--overlay-active-p skroad--selector)
-    (overlay-put skroad--selector 'face nil)))
+  (when (skroad--overlay-active-p skroad--buf-selector)
+    (overlay-put skroad--buf-selector 'face nil)))
 
 (defun skroad--selector-activate ()
   "Activate (if inactive) or move the selector to the current zone."
   (skroad--with-zone
-    (move-overlay skroad--selector start end (current-buffer)))
+    (move-overlay skroad--buf-selector start end (current-buffer)))
   (setq-local cursor-type nil)
   (setq-local show-paren-mode nil))
 
 (defun skroad--selector-deactivate ()
   "Deactivate the selector; it can be reactivated again."
-  (when (skroad--overlay-active-p skroad--selector)
-    (delete-overlay skroad--selector))
+  (when (skroad--overlay-active-p skroad--buf-selector)
+    (delete-overlay skroad--buf-selector))
   (setq-local cursor-type t)
   (setq-local show-paren-mode t))
 
@@ -575,7 +575,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (interactive)
   (save-excursion
     (skroad--with-zone
-      (setq-local skroad--alt-mark start)
+      (setq-local skroad--buf-alt-mark start)
       (goto-char end)
       (call-interactively 'set-mark-command))))
 
@@ -617,52 +617,52 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 ;; Interactive renamer. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar-local skroad--hider nil "Text hider overlay.")
-(defvar-local skroad--renamer nil "Node renamer overlay.")
-(defvar-local skroad--renamer-changes nil "Change group for renamer.")
+(defvar-local skroad--buf-hider nil "Text hider overlay.")
+(defvar-local skroad--buf-renamer nil "Node renamer overlay.")
+(defvar-local skroad--buf-renamer-changes nil "Change group for renamer.")
 
 (defun skroad--renamer-activate (renamer-type start end)
   "Activate the renamer in the current zone."
   (message "Rename node: press <return> to rename, or leave field to cancel.")
   (skroad--deactivate-mark)
   (setq-local cursor-type t)
-  (setq skroad--renamer-changes (prepare-change-group))
-  (activate-change-group skroad--renamer-changes)
-  (setq skroad--hider (make-overlay start end (current-buffer)))
-  (overlay-put skroad--hider 'invisible t)
+  (setq skroad--buf-renamer-changes (prepare-change-group))
+  (activate-change-group skroad--buf-renamer-changes)
+  (setq skroad--buf-hider (make-overlay start end (current-buffer)))
+  (overlay-put skroad--buf-hider 'invisible t)
   (goto-char end)
   (insert (concat " " (skroad--prop-at 'data start) " "))
-  (setq-local skroad--renamer (make-overlay end (point) (current-buffer)))
-  (overlay-put skroad--renamer 'category renamer-type)
+  (setq-local skroad--buf-renamer (make-overlay end (point) (current-buffer)))
+  (overlay-put skroad--buf-renamer 'category renamer-type)
   (goto-char end))
 
 (defun skroad--renamer-text ()
   "Return the current text in the renamer, or nil if the latter is inactive."
-  (when (skroad--overlay-active-p skroad--renamer)
+  (when (skroad--overlay-active-p skroad--buf-renamer)
     (string-trim (field-string-no-properties
-                  (overlay-start skroad--renamer)))))
+                  (overlay-start skroad--buf-renamer)))))
 
 (defun skroad--renamer-deactivate ()
   "Deactivate the renamer if it is currently active."
-  (when (skroad--overlay-active-p skroad--renamer)
-    (delete-overlay skroad--renamer)
+  (when (skroad--overlay-active-p skroad--buf-renamer)
+    (delete-overlay skroad--buf-renamer)
     (skroad--deactivate-mark)
-    (undo-amalgamate-change-group skroad--renamer-changes)
-    (cancel-change-group skroad--renamer-changes)
-    (goto-char (overlay-start skroad--hider))
-    (delete-overlay skroad--hider)))
+    (undo-amalgamate-change-group skroad--buf-renamer-changes)
+    (cancel-change-group skroad--buf-renamer-changes)
+    (goto-char (overlay-start skroad--buf-hider))
+    (delete-overlay skroad--buf-hider)))
 
 ;; (defun skroad--renamer-valid ()
-;;   (and (skroad--overlay-active-p skroad--renamer)
+;;   (and (skroad--overlay-active-p skroad--buf-renamer)
 ;;        (save-mark-and-excursion
-;;          (goto-char (overlay-start skroad--renamer))
+;;          (goto-char (overlay-start skroad--buf-renamer))
 
 
 ;; (skroad--prop-at 'find-find-any-forward
-;;                  (overlay-start skroad--renamer))
+;;                  (overlay-start skroad--buf-renamer))
 
 ;; (defun skroad--renamer-validate-if-active ()
-;;   (when (skroad--overlay-active-p skroad--renamer)
+;;   (when (skroad--overlay-active-p skroad--buf-renamer)
 
 ;;     )
 ;;   )
@@ -898,7 +898,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 ;; Cursor motion, mark, and floating title handling. ;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar-local skroad--pre-command-snapshot (list (point-min) nil nil)
+(defvar-local skroad--buf-pre-command-point-state (list (point-min) nil nil)
   "Point, zone at point, and type at point prior to a command.")
 
 (defun skroad--point-state ()
@@ -921,8 +921,9 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
             (skroad--type-action old-type 'on-move old-p auto)
             t))
         ;; If done moving point, and we went over alt-mark to mark, jump it:
-        (when (and mark-active skroad--alt-mark (eq p (point)) (eq p (mark)))
-          (if (< skroad--alt-mark p) (forward-char) (backward-char)))
+        (when (and mark-active skroad--buf-alt-mark
+                   (eq p (point)) (eq p (mark)))
+          (if (< skroad--buf-alt-mark p) (forward-char) (backward-char)))
         (skroad--motion current t))) ;; Handle possible auto zone change
     t))
 
@@ -931,24 +932,24 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (cond
    (mark-active
     (skroad--selector-hide)
-    (let ((m (mark)) (am skroad--alt-mark) (p (point)))
+    (let ((m (mark)) (am skroad--buf-alt-mark) (p (point)))
       (when (and am (> (abs (- p am)) (abs (- p m))))
         (set-mark am)
-        (setq-local skroad--alt-mark m))))
+        (setq-local skroad--buf-alt-mark m))))
    (t
     (skroad--selector-show)
-    (setq-local skroad--alt-mark nil))))
+    (setq-local skroad--buf-alt-mark nil))))
 
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
   (setq-local mouse-highlight nil)
-  (setq-local skroad--pre-command-snapshot (skroad--point-state)))
+  (setq-local skroad--buf-pre-command-point-state (skroad--point-state)))
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
   (save-mark-and-excursion
     (font-lock-ensure (line-beginning-position) (line-end-position)))
-  (skroad--motion skroad--pre-command-snapshot)
+  (skroad--motion skroad--buf-pre-command-point-state)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
   (skroad--update-local-index) ;; TODO: do it in save hook?
   (unless mark-active (setq-local mouse-highlight t)))
@@ -1037,12 +1038,12 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (add-hook 'window-scroll-functions 'skroad--scroll-hook nil t)
   
   ;; Overlay for when an atomic is under the point. Initially inactive:
-  (setq-local skroad--selector (make-overlay (point-min) (point-min)))
+  (setq-local skroad--buf-selector (make-overlay (point-min) (point-min)))
   (skroad--selector-deactivate)
 
   ;; Properties for selector overlay
   (dolist (p skroad--selector-properties)
-    (overlay-put skroad--selector (car p) (cadr p)))
+    (overlay-put skroad--buf-selector (car p) (cadr p)))
 
   ;; Keymap:
   (use-local-map skroad--mode-keymap)
