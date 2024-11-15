@@ -439,45 +439,47 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
      pending))
   t)
 
-(defvar-local skroad--index nil "Text type index for current buffer.")
-(defvar-local skroad--changes nil "Pending index changes for current buffer.")
+(defvar-local skroad--buf-index nil "Text type index for current buffer.")
+(defvar-local skroad--buf-changes nil
+  "Pending index changes for current buffer.")
 
 (defun skroad--init-local-index ()
   "Create the buffer-local indices and populate them from current buffer."
-  (unless (null skroad--index)
+  (unless (null skroad--buf-index)
     (error "Text type index already exists for this buffer!"))
-  (setq-local skroad--index (make-hash-table
+  (setq-local skroad--buf-index (make-hash-table
                              :test 'equal
                              :size (line-number-at-pos (point-max) t)))
   ;; Populate while dispatching `on-init`s
   (let ((init-populate
-         (make-hash-table :test 'equal :size (hash-table-count skroad--index))))
+         (make-hash-table :test 'equal
+                          :size (hash-table-count skroad--buf-index))))
     (skroad--index-scan-region init-populate (point-min) (point-max) 1)
-    (skroad--index-update skroad--index init-populate t)))
+    (skroad--index-update skroad--buf-index init-populate t)))
 
 (defun skroad--update-local-index ()
   "Apply all pending changes queued for the buffer-local text type index."
-  (when skroad--changes
-    (skroad--index-update skroad--index skroad--changes)
-    (setq skroad--changes nil)))
+  (when skroad--buf-changes
+    (skroad--index-update skroad--buf-index skroad--buf-changes)
+    (setq skroad--buf-changes nil)))
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in a skroad buffer in region START...END."
-  (when (null skroad--changes)
-    (setq skroad--changes (make-hash-table :test 'equal)))
+  (when (null skroad--buf-changes)
+    (setq skroad--buf-changes (make-hash-table :test 'equal)))
   (skroad--with-whole-lines start end
     (skroad--index-scan-region
-     skroad--changes start-expanded end-expanded -1)))
+     skroad--buf-changes start-expanded end-expanded -1)))
 
 (defun skroad--after-change-function (start end length)
   "Triggers following a change in a skroad buffer in region START...END."
   (skroad--with-whole-lines start end
     (skroad--index-scan-region
-     skroad--changes start-expanded end-expanded 1)))
+     skroad--buf-changes start-expanded end-expanded 1)))
 
 ;; Top-level keymap for the major mode. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--cmd-backspace ()
+(defun skroad--top-cmd-backspace ()
   "If prev point is in an atomic, delete it. Otherwise normal backspace."
   (interactive)
   (let ((p (point)))
@@ -487,26 +489,26 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
                (delete-region (skroad--zone-start (1- p)) p)
              (delete-char -1))))))
 
-(defun skroad--cmd-jump-to-next-link ()
+(defun skroad--top-cmd-jump-to-next-link ()
   "Jump to the next live link following point; cycle to first if no more."
   (interactive)
   (funcall (get 'skroad-live 'jump-next-from) (point)))
 
-(defun skroad--cmd-jump-to-prev-link ()
+(defun skroad--top-cmd-jump-to-prev-link ()
   "Jump to the previous live link preceding point; cycle to last if no more."
   (interactive)
   (funcall (get 'skroad-live 'jump-prev-from) (point)))
 
 (defvar skroad--mode-keymap
   (define-keymap
-    "<remap> <delete-backward-char>" #'skroad--cmd-backspace
-    "<tab>" #'skroad--cmd-jump-to-next-link
-    "C-<tab>" #'skroad--cmd-jump-to-prev-link)
+    "<remap> <delete-backward-char>" #'skroad--top-cmd-backspace
+    "<tab>" #'skroad--top-cmd-jump-to-next-link
+    "C-<tab>" #'skroad--top-cmd-jump-to-prev-link)
   "Top-level keymap for the skroad major mode.")
 
 ;;; Atomic Text Type. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--cmd-atomics-prepend-space ()
+(defun skroad--atomics-cmd-prepend-space ()
   "Insert a space immediately behind the atomic currently under the point."
   (interactive)
   (save-mark-and-excursion
@@ -523,7 +525,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defmacro skroad--define-atomics-region-cmd (wrap-command)
   "Wrap COMMAND to use region if exists, or use the atomic at point as region."
-  `(defun ,(read (concat "skroad--cmd-atomics-"
+  `(defun ,(read (concat "skroad--atomics-cmd-"
                          (symbol-name wrap-command))) ()
      (interactive)
      (if (use-region-p)
@@ -567,7 +569,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (setq-local cursor-type t)
   (setq-local show-paren-mode t))
 
-(defun skroad--cmd-atomics-set-mark ()
+(defun skroad--atomics-cmd-set-mark ()
   "Set the mark inside an atomic."
   (interactive)
   (save-excursion
@@ -576,7 +578,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
       (goto-char end)
       (call-interactively 'set-mark-command))))
 
-(defun skroad--cmd-atomics-jump-to-next-link ()
+(defun skroad--atomics-cmd-jump-to-next-link ()
   "Jump to the next link following this atomic; cycle to first after the last."
   (interactive)
   (funcall (get 'skroad-live 'jump-next-from) (skroad--zone-end)))
@@ -596,18 +598,18 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
                   (skroad--zone-end) (skroad--zone-start))))
  :keymap
  (define-keymap
-   "<tab>" #'skroad--cmd-atomics-jump-to-next-link
-   "SPC" #'skroad--cmd-atomics-prepend-space
-   "<remap> <set-mark-command>" #'skroad--cmd-atomics-set-mark
+   "<tab>" #'skroad--atomics-cmd-jump-to-next-link
+   "SPC" #'skroad--atomics-cmd-prepend-space
+   "<remap> <set-mark-command>" #'skroad--atomics-cmd-set-mark
    "<remap> <self-insert-command>" #'ignore
    "<remap> <quoted-insert>" #'ignore
-   "<deletechar>" #'skroad--cmd-atomics-delete-region
-   "<backspace>" #'skroad--cmd-atomics-delete-region
+   "<deletechar>" #'skroad--atomics-cmd-delete-region
+   "<backspace>" #'skroad--atomics-cmd-delete-region
    "<drag-mouse-1>" #'ignore "<drag-mouse-2>" #'ignore "<drag-mouse-3>" #'ignore
    "<down-mouse-1>" #'ignore "<down-mouse-2>" #'ignore "<down-mouse-3>" #'ignore
    "<mouse-1>" #'ignore "<mouse-2>" #'ignore "<mouse-3>" #'ignore
-   "<remap> <kill-region>" #'skroad--cmd-atomics-kill-region
-   "<remap> <kill-ring-save>" #'skroad--cmd-atomics-kill-ring-save
+   "<remap> <kill-region>" #'skroad--atomics-cmd-kill-region
+   "<remap> <kill-ring-save>" #'skroad--atomics-cmd-kill-ring-save
    )
  )
 
@@ -686,7 +688,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
               (skroad--renamer-deactivate))
  )
 
-(defun skroad--cmd-atomics-rename ()
+(defun skroad--renamer-cmd-rename ()
   "Activate the renamer for the current zone and type."
   (interactive)
   (skroad--with-zone
@@ -699,7 +701,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :mixin t
  :require 'renamer-overlay-type
  :keymap (define-keymap
-           "r" #'skroad--cmd-atomics-rename))
+           "r" #'skroad--renamer-cmd-rename))
 
 ;; Link types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -709,14 +711,14 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (skroad--type-action
      (skroad--prop-at 'category pos) 'on-activate (skroad--prop-at 'data pos))))
 
-(defun skroad--cmd-left-click-link (click)
+(defun skroad--link-cmd-left-click (click)
   "Perform the action attribute of the link that got the CLICK."
   (interactive "e")
   (let ((estart (event-start click)))
     (select-window (posn-window estart))
     (skroad--do-link-action (posn-point estart))))
 
-(defun skroad--cmd-enter-link ()
+(defun skroad--link-cmd-activate ()
   "Perform the action attribute of the link at point."
   (interactive)
   (skroad--do-link-action (point)))
@@ -727,8 +729,8 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :use 'skroad-atomic
  :face 'link
  :keymap (define-keymap
-           "<down-mouse-1>" #'skroad--cmd-left-click-link
-           "RET" #'skroad--cmd-enter-link))
+           "<down-mouse-1>" #'skroad--link-cmd-left-click
+           "RET" #'skroad--link-cmd-activate))
 
 (defun skroad--link-to-plain-text ()
   "Delinkify the link under the point to plain text by removing delimiters."
@@ -844,7 +846,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   "Get the current node title from the buffer."
   (buffer-substring-no-properties (point-min) (skroad--get-end-of-line 1)))
 
-(defun skroad--cmd-title-kill-ring-save ()
+(defun skroad--title-cmd-kill-ring-save ()
   "Save the current node's title, transformed to a live link, to the kill ring."
   (interactive)
   (let ((title (skroad--get-title)))
@@ -872,7 +874,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
    "<remap> <set-mark-command>" #'ignore
    "<remap> <yank>" #'ignore
    "<remap> <kill-region>" #'ignore
-   "<remap> <kill-ring-save>" #'skroad--cmd-title-kill-ring-save
+   "<remap> <kill-ring-save>" #'skroad--title-cmd-kill-ring-save
    )
  :face 'skroad--title-face
  :read-only "Title must be changed via rename command!"
