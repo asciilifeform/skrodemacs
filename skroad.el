@@ -282,8 +282,8 @@ call the action with ARGS."
 (defun skroad--finder-regex-backward-non-title (r)
   "Generate a backward finder for regex R which excludes the title."
   (lambda (limit)
-    (let ((lim (if (skroad--in-title-p limit) (skroad--body-start) limit)))
-      (unless (skroad--in-title-p) (re-search-backward r lim t)))))
+    (let ((lim (max (skroad--body-start) (or limit (point-min)))))
+      (when (> (point) lim) (re-search-backward r lim t)))))
 
 (skroad--define-text-type
  'skroad--text-delimited-non-title
