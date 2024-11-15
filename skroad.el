@@ -814,7 +814,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :use 'skroad--text-render-delimited-zoned
  :use 'skroad--text-indexed)
 
-(defun skroad--comment-url ()
+(defun skroad--url-cmd-comment ()
   "Turn the URL at point into plain text by placing a space after the prefix."
   (interactive)
   (skroad--with-zone
@@ -834,7 +834,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\r\f\t\s]+\\)"
  :on-activate #'browse-url
  :keymap (define-keymap
-           "t" #'skroad--comment-url)
+           "t" #'skroad--url-cmd-comment)
  :use 'skroad--text-delimited-non-title
  :use 'skroad--text-render-delimited-zoned
  :use 'skroad--text-indexed
