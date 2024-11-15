@@ -258,12 +258,6 @@ call the action with ARGS."
  :finder-regex-backward #'skroad--finder-regex-backward
  :use 'skroad--text-findable)
 
-(defun skroad--in-title-p (&optional pos)
-  "Return t if POS (default: point) is in the node title; otherwise nil."
-  (save-mark-and-excursion
-    (when pos (goto-char pos))
-    (eq (line-beginning-position) (point-min))))
-
 (defun skroad--body-start ()
   "Return the first position in the buffer outside of the node title."
   (save-mark-and-excursion
@@ -274,7 +268,7 @@ call the action with ARGS."
 (defun skroad--finder-regex-forward-non-title (r)
   "Generate a forward finder for regex R which excludes the title."
   (lambda (limit)
-    (when (skroad--in-title-p) (goto-char (skroad--body-start)))
+    (goto-char (max (point) (skroad--body-start)))
     (let ((lim (if (< (point) (or limit (point-max)))
                    limit (line-end-position))))
       (re-search-forward r lim t))))
