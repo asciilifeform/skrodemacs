@@ -258,12 +258,18 @@ call the action with ARGS."
  :finder-regex-backward #'skroad--finder-regex-backward
  :use 'skroad--text-findable)
 
+;; TODO: invalidate cache when changing title
+(defvar-local skroad--body-start-memo nil)
+
 (defun skroad--body-start ()
   "Return the first position in the buffer outside of the node title."
-  (save-mark-and-excursion
-    (goto-char (point-min))
-    (goto-char (line-beginning-position 2))
-    (point)))
+  (unless skroad--body-start-memo
+    (setq-local skroad--body-start-memo
+                (save-mark-and-excursion
+                  (goto-char (point-min))
+                  (goto-char (line-beginning-position 2))
+                  (point))))
+  skroad--body-start-memo)
 
 (defun skroad--finder-regex-forward-non-title (r)
   "Generate a forward finder for regex R which excludes the title."
@@ -1019,10 +1025,20 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (font-lock-ensure start-expanded end-expanded))
   (skroad--deactivate-mark))
 
+(defmacro measure-time (&rest body)
+  "Measure the time it takes to evaluate BODY."
+  `(let ((time (current-time)))
+     ,@body
+     (message "%.06f" (float-time (time-since time)))))
+
 (defun skroad--open-node ()
   "Open a skroad node."
   (skroad--init-font-lock)
-  (skroad--init-local-index)
+  ;; (skroad--init-local-index)
+
+  (measure-time
+   (skroad--init-local-index))
+  
   (face-remap-set-base 'header-line 'skroad--title-face)
   )
 
