@@ -696,7 +696,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
      (skroad--prop-at 'renamer-overlay-type) start end)))
 
 (skroad--define-text-type
- 'skroad-allow-renamer
+ 'skroad--text-renameable
  :doc "Mixin for allowing the use of the rename command with an atomic type."
  :mixin t
  :require 'renamer-overlay-type
@@ -793,7 +793,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :keymap (define-keymap
            "l" #'(lambda () (interactive) (skroad--transform-at 'skroad-dead)))
  :renamer-overlay-type 'skroad-indirect-renamer
- :use 'skroad-allow-renamer
+ :use 'skroad--text-renameable
  :use 'skroad--text-delimited-non-title
  :use 'skroad--text-render-delimited-zoned
  :use 'skroad--text-indexed)
@@ -879,7 +879,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :face 'skroad--title-face
  :read-only "Title must be changed via rename command!"
  :renamer-overlay-type 'skroad-direct-renamer
- :use 'skroad-allow-renamer
+ :use 'skroad--text-renameable
  :find-any-forward
  '(lambda (limit) (when (bobp) (goto-char (skroad--body-start)) t))
  :render
