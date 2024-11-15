@@ -734,7 +734,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
            "<down-mouse-1>" #'skroad--cmd-link-left-click
            "RET" #'skroad--cmd-link-activate))
 
-(defun skroad--link-to-plain-text ()
+(defun skroad--cmd-link-comment ()
   "Delinkify the link under the point to plain text by removing delimiters."
   (interactive)
   (skroad--with-zone
@@ -757,7 +757,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :help-echo 'skroad--link-mouseover
  :payload-regex skroad--node-title-regex
  :keymap (define-keymap
-           "t" #'skroad--link-to-plain-text))
+           "t" #'skroad--cmd-link-comment))
 
 (defun skroad--browse-skroad-link (data)
   (message (format "Live link pushed: '%s'" data)))
