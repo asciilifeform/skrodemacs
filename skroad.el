@@ -844,44 +844,6 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   "Get the current node title from the buffer."
   (buffer-substring-no-properties (point-min) (skroad--get-end-of-line 1)))
 
-;; (skroad--define-text-type
-;;  'skroad-node-title
-;;  :doc "Node title."
-;;  :order 500
-;;  :face 'skroad--title-face
-;;  :keymap (define-keymap
-;;            "RET" #'ignore)
-;;  :on-init #'skroad--title-init
-;;  :on-create #'skroad--title-create
-;;  :on-destroy #'skroad--title-destroy
-;;  :on-enter
-;;  '(lambda (pos-from auto)
-;;     (message (format "title enter from=%s auto=%s" pos-from auto))
-;;     (when (and mark-active (not auto)) ;; If region is active, don't enter
-;;       (goto-char (skroad--body-start)))) ;; ...stop right under it.
-;;  :on-leave
-;;  '(lambda (pos-from auto)
-;;     (message (format "title leave from=%s auto=%s" pos-from auto))
-;;     (when (and mark-active (not auto)) ;; If region is active, don't leave
-;;       (goto-char pos-from) ;; ...jump to its end.
-;;       (goto-char (line-end-position))))
-;;  :find-any-forward
-;;  '(lambda (limit) (when (bobp) (goto-char (skroad--body-start)) t))
-;;  :render
-;;  '(lambda ()
-;;     (set-text-properties
-;;      (point-min) (skroad--body-start)
-;;      (list 'category type-name
-;;            'zone type-name ;; there can only be one
-;;            'face face
-;;            'data (skroad--get-title))))
-;;  :use 'skroad--text-rendered
-;;  :for-all-in-region-forward
-;;  '(lambda (start end f)
-;;     (when (eq start (point-min)) (funcall f (skroad--get-title))))
-;;  :use 'skroad--text-indexed
-;;  )
-
 (defun skroad--cmd-title-kill-ring-save ()
   "Save the current node's title, transformed to a live link, to the kill ring."
   (interactive)
