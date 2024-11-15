@@ -546,7 +546,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   `((face skroad--selector-face) (evaporate t))
   "Text properties of the selector.")
 
-(defun skroad--selector-show ()
+(defun skroad--selector-unhide ()
   "Reveal the selector overlay when it may have been hidden."
   (when (skroad--overlay-active-p skroad--buf-selector)
     (overlay-put skroad--buf-selector 'face 'skroad--selector-face)))
@@ -556,7 +556,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (when (skroad--overlay-active-p skroad--buf-selector)
     (overlay-put skroad--buf-selector 'face nil)))
 
-(defun skroad--selector-activate ()
+(defun skroad--selector-activate-at ()
   "Activate (if inactive) or move the selector to the current zone."
   (skroad--with-zone
     (move-overlay skroad--buf-selector start end (current-buffer)))
@@ -589,7 +589,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  'skroad--text-atomic
  :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
  :on-enter '(lambda (pos-from auto)
-              (skroad--selector-activate)
+              (skroad--selector-activate-at)
               (goto-char (skroad--zone-start)) ;; point can only sit on start
               (let ((kbd-doc (skroad--prop-at 'kbd-doc)))
                 (when kbd-doc (message kbd-doc))))
@@ -937,7 +937,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
         (set-mark am)
         (setq-local skroad--buf-alt-mark m))))
    (t
-    (skroad--selector-show)
+    (skroad--selector-unhide)
     (setq-local skroad--buf-alt-mark nil))))
 
 (defun skroad--pre-command-hook ()
