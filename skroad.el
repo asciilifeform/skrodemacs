@@ -370,7 +370,7 @@ call the action with ARGS."
  :use 'skroad--text-mixin-rendered)
 
 (skroad--define-text-type
- 'skroad-decorative-italic
+ 'skroad--text-decorative-italic
  :doc "Italicized text."
  :face 'italic
  :start-delim "__" :end-delim "__"
@@ -378,7 +378,7 @@ call the action with ARGS."
  :use 'skroad--text-mixin-render-delimited-decorative)
 
 (skroad--define-text-type
- 'skroad-decorative-bold
+ 'skroad--text-decorative-bold
  :doc "Bold text."
  :face 'bold
  :start-delim "**" :end-delim "**"
@@ -386,7 +386,7 @@ call the action with ARGS."
  :use 'skroad--text-mixin-render-delimited-decorative)
 
 (skroad--define-text-type
- 'skroad-decorative-heading
+ 'skroad--text-decorative-heading
  :doc "Heading text."
  :face 'skroad--heading-face
  :payload-regex "^##\s*\\([^\n\r\f\t\s]+[^\n\r\f\t]*\\)"
