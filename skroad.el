@@ -775,7 +775,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   )
 
 (skroad--define-text-type
- 'skroad-indirect-renamer
+ 'skroad--text-renamer-indirect
  :doc "Renamer for editing a node's title while standing on a link to the node."
  :use 'skroad--text-mixin-renamer-overlay
  :face 'skroad--indirect-renamer-face
@@ -795,7 +795,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :keymap (define-keymap
            "l" #'(lambda () (interactive)
                    (skroad--transform-at 'skroad--text-link-node-dead)))
- :renamer-overlay-type 'skroad-indirect-renamer
+ :renamer-overlay-type 'skroad--text-renamer-indirect
  :use 'skroad--text-mixin-renameable
  :use 'skroad--text-mixin-delimited-non-title
  :use 'skroad--text-mixin-render-delimited-zoned
@@ -859,14 +859,14 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
       (copy-region-as-kill (point-min) (point-max)))))
 
 (skroad--define-text-type
- 'skroad-direct-renamer
+ 'skroad--text-renamer-direct
  :doc "Renamer for editing a node's title directly."
  :use 'skroad--text-mixin-renamer-overlay
  :face 'skroad--direct-renamer-face
  :before-string "" :after-string " \n")
 
 (skroad--define-text-type
- 'skroad-node-title
+ 'skroad--text-node-title
  :doc "Node title."
  :kbd-doc "<r> rename"
  :use 'skroad--text-atomic
@@ -882,7 +882,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
    )
  :face 'skroad--title-face
  :read-only "Title must be changed via rename command!"
- :renamer-overlay-type 'skroad-direct-renamer
+ :renamer-overlay-type 'skroad--text-renamer-direct
  :use 'skroad--text-mixin-renameable
  :find-any-forward
  '(lambda (limit) (when (bobp) (goto-char (skroad--body-start)) t))
