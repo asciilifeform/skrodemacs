@@ -297,7 +297,7 @@ call the action with ARGS."
 
 ;; Font lock rendered text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar skroad--rendered-text-types nil "Text types for use with font-lock.")
+(defvar skroad--text-types-rendered nil "Text types for use with font-lock.")
 
 (skroad--define-text-type
  'skroad--text-mixin-rendered
@@ -309,12 +309,12 @@ call the action with ARGS."
     (when (funcall find-any-forward limit)
       (with-silent-modifications (funcall render) t)))
  :font-lock-rule '(lambda () (list render-next '(0 nil append)))
- :register 'skroad--rendered-text-types)
+ :register 'skroad--text-types-rendered)
 
 (defun skroad--init-font-lock ()
   "Initialize font-lock rules for a skroad mode buffer."
   (let ((rules nil)
-        (types (sort skroad--rendered-text-types
+        (types (sort skroad--text-types-rendered
                      #'(lambda (a b) (> (get a 'order) (get b 'order))))))
     (dolist (type types)
       (push (funcall (get type 'font-lock-rule)) rules))
@@ -394,7 +394,7 @@ call the action with ARGS."
 
 ;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar skroad--indexed-text-types nil "Text types that are indexed.")
+(defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
 (skroad--define-text-type
  'skroad--text-mixin-indexed
@@ -411,13 +411,13 @@ call the action with ARGS."
            (if (zerop count) ;; if both added and removed since last update.
                (remhash key changes) ;; ...discard item from changes table.
              (puthash key count changes)))))) ;; otherwise, update.
- :register 'skroad--indexed-text-types)
+ :register 'skroad--text-types-indexed)
 
 (defun skroad--index-scan-region (changes start end delta)
   "Apply DELTA (must be 1 or -1) to each indexed item found in START..END,
 updating the hash table CHANGES, and `skroad--index-update` must be called on
 it to finalize all pending changes when no further ones are expected."
-  (dolist (text-type skroad--indexed-text-types) ;; walk all indexed types
+  (dolist (text-type skroad--text-types-indexed) ;; walk all indexed types
     (funcall (get text-type 'index-scan-region) changes start end delta)))
 
 (defun skroad--index-update (index pending &optional init-scan)
