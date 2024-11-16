@@ -515,17 +515,14 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defun skroad--cmd-atomic-prepend-space ()
   "Insert a space immediately behind the atomic currently under the point."
   (interactive)
-  (save-mark-and-excursion
-    (goto-char (skroad--zone-start))
-    (insert " ")))
+  (save-mark-and-excursion (goto-char (skroad--zone-start)) (insert " ")))
 
 (defvar-local skroad--buf-alt-mark nil
   "The opposite end of an atomic zone in which the regular mark had been set.")
 
 (defun skroad--deactivate-mark ()
   "Deactivate the mark and clear the alt-mark."
-  (deactivate-mark)
-  (setq-local skroad--buf-alt-mark nil))
+  (deactivate-mark) (setq-local skroad--buf-alt-mark nil))
 
 (defmacro skroad--define-atomics-region-cmd (wrap-command)
   "Wrap COMMAND to use region if exists, or use the atomic at point as region."
