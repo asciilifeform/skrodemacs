@@ -558,7 +558,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (when (skroad--overlay-active-p skroad--buf-selector)
     (overlay-put skroad--buf-selector 'face nil)))
 
-(defun skroad--selector-activate-at ()
+(defun skroad--selector-activate-here ()
   "Activate (if inactive) or move the selector to the current zone."
   (skroad--with-zone
     (move-overlay skroad--buf-selector start end (current-buffer)))
@@ -591,7 +591,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  'skroad--text-atomic
  :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
  :on-enter '(lambda (pos-from auto)
-              (skroad--selector-activate-at)
+              (skroad--selector-activate-here)
               (goto-char (skroad--zone-start)) ;; point can only sit on start
               (let ((kbd-doc (skroad--prop-at 'kbd-doc)))
                 (when kbd-doc (message kbd-doc))))
@@ -692,7 +692,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
               (skroad--renamer-deactivate))
  )
 
-(defun skroad--cmd-renamer-rename ()
+(defun skroad--cmd-renamer-activate-here ()
   "Activate the renamer for the current zone and type."
   (interactive)
   (skroad--with-zone
@@ -705,7 +705,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :mixin t
  :require 'renamer-overlay-type
  :keymap (define-keymap
-           "r" #'skroad--cmd-renamer-rename))
+           "r" #'skroad--cmd-renamer-activate-here))
 
 ;; Link types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
