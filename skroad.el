@@ -315,12 +315,13 @@ call the action with ARGS."
 
 (defun skroad--init-font-lock ()
   "Initialize font-lock rules for a skroad mode buffer."
-  (let ((rules nil)
-        (types (sort skroad--text-types-rendered
-                     #'(lambda (a b) (> (get a 'order) (get b 'order))))))
-    (dolist (type types)
-      (push (funcall (get type 'font-lock-rule)) rules))
-    (font-lock-add-keywords nil rules t)))
+  (let ((font-lock-rules nil)
+        (rendered-types
+         (sort skroad--text-types-rendered
+               #'(lambda (a b) (> (get a 'order) (get b 'order))))))
+    (dolist (type rendered-types)
+      (push (funcall (get type 'font-lock-rule)) font-lock-rules))
+    (font-lock-add-keywords nil font-lock-rules t)))
 
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
