@@ -195,12 +195,12 @@ call the action with ARGS."
  :require '(make-regex regex-any finder-regex-forward make-text)
  :find-any-forward '(funcall finder-regex-forward regex-any)
  :find-any-backward '(funcall finder-regex-backward regex-any)
- :find-string-forward
- '(lambda (limit s)
-    (funcall (funcall finder-regex-forward (funcall make-regex s)) limit))
- :find-string-backward
- '(lambda (limit s)
-    (funcall (funcall finder-regex-backward (funcall make-regex s)) limit))
+ :find-payload-forward
+ '(lambda (limit p)
+    (funcall (funcall finder-regex-forward (funcall make-regex p)) limit))
+ :find-payload-backward
+ '(lambda (limit p)
+    (funcall (funcall finder-regex-backward (funcall make-regex p)) limit))
  :jump-next-from
  '(lambda (pos)
     (goto-char
@@ -227,20 +227,22 @@ call the action with ARGS."
       (goto-char start)
       (while (funcall find-any-forward end)
         (funcall f (match-string-no-properties match-number)))))
- :replace-all
- '(lambda (s s-new)
+ :replace-payload-all
+ '(lambda (payload payload-new)
     (save-mark-and-excursion
       (goto-char (point-min))
-      (while (funcall find-string-forward (point-max) s)
-        (replace-match s-new))))
- :replace-with-type
- '(lambda (s new-type)
-    (funcall replace-all s (funcall (get new-type 'make-text) s))))
+      (while (funcall find-payload-forward (point-max) payload)
+        (replace-match payload-new))))
+ :payload-change-type
+ '(lambda (payload new-type)
+    (funcall replace-payload-all payload
+             (funcall (get new-type 'make-text) payload))))
 
 (defun skroad--transform-at (new-type)
   "Transform the text item at point (including all duplicates) to NEW-TYPE."
   (funcall
-   (skroad--prop-at 'replace-with-type) (skroad--prop-at 'data) new-type))
+   (skroad--prop-at 'payload-change-type)
+   (skroad--prop-at 'data) new-type))
 
 (defun skroad--finder-regex-forward (r)
   "Generate a forward finder for regex R."
@@ -260,22 +262,22 @@ call the action with ARGS."
  :use 'skroad--text-mixin-findable)
 
 ;; TODO: invalidate cache when changing title
-(defvar-local skroad--buf-body-start-memo nil)
+(defvar-local skroad--buf-node-body-start-cached nil)
 
-(defun skroad--body-start ()
+(defun skroad--node-body-start ()
   "Return the first position in the buffer outside of the node title."
-  (unless skroad--buf-body-start-memo
-    (setq-local skroad--buf-body-start-memo
+  (unless skroad--buf-node-body-start-cached
+    (setq-local skroad--buf-node-body-start-cached
                 (save-mark-and-excursion
                   (goto-char (point-min))
                   (goto-char (line-beginning-position 2))
                   (point))))
-  skroad--buf-body-start-memo)
+  skroad--buf-node-body-start-cached)
 
 (defun skroad--finder-regex-forward-non-title (r)
   "Generate a forward finder for regex R which excludes the title."
   (lambda (limit)
-    (goto-char (max (point) (skroad--body-start)))
+    (goto-char (max (point) (skroad--node-body-start)))
     (let ((lim (if (< (point) (or limit (point-max)))
                    limit (line-end-position))))
       (re-search-forward r lim t))))
@@ -283,7 +285,7 @@ call the action with ARGS."
 (defun skroad--finder-regex-backward-non-title (r)
   "Generate a backward finder for regex R which excludes the title."
   (lambda (limit)
-    (let ((lim (max (skroad--body-start) (or limit (point-min)))))
+    (let ((lim (max (skroad--node-body-start) (or limit (point-min)))))
       (when (> (point) lim) (re-search-backward r lim t)))))
 
 (skroad--define-text-type
@@ -485,7 +487,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (interactive)
   (let ((p (point)))
     (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
-          ((> p (skroad--body-start))
+          ((> p (skroad--node-body-start))
            (if (skroad--prop-at 'zone (1- p))
                (delete-region (skroad--zone-start (1- p)) p)
              (delete-char -1))))))
@@ -885,11 +887,11 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :renamer-overlay-type 'skroad--text-renamer-direct
  :use 'skroad--text-mixin-renameable
  :find-any-forward
- '(lambda (limit) (when (bobp) (goto-char (skroad--body-start)) t))
+ '(lambda (limit) (when (bobp) (goto-char (skroad--node-body-start)) t))
  :render
  '(lambda ()
     (set-text-properties
-     (point-min) (skroad--body-start)
+     (point-min) (skroad--node-body-start)
      (list 'category type-name
            'zone type-name ;; there can only be one
            'face face
