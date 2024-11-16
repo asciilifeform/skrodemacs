@@ -353,7 +353,7 @@ call the action with ARGS."
   "Return the position at which the zone at POS ends."
   (or (next-single-property-change (or pos (point)) 'zone) (point-max)))
 
-(defmacro skroad--with-zone (&rest body)
+(defmacro skroad--with-current-zone (&rest body)
   "Evaluate BODY with start and end bound to boundaries of zone at point."
   (declare (indent defun))
   `(let ((start (skroad--zone-start)) (end (skroad--zone-end)))
@@ -534,8 +534,8 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
      (interactive)
      (if (use-region-p)
          (call-interactively ',wrap-command)
-       (skroad--with-zone
-         (funcall #',wrap-command start end)))
+       (skroad--with-current-zone
+        (funcall #',wrap-command start end)))
      (skroad--deactivate-mark)))
 
 (skroad--define-atomics-region-cmd delete-region)
@@ -561,8 +561,8 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defun skroad--selector-activate-here ()
   "Activate (if inactive) or move the selector to the current zone."
-  (skroad--with-zone
-    (move-overlay skroad--buf-selector start end (current-buffer)))
+  (skroad--with-current-zone
+   (move-overlay skroad--buf-selector start end (current-buffer)))
   (setq-local cursor-type nil)
   (setq-local show-paren-mode nil))
 
@@ -577,10 +577,10 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   "Set the mark inside an atomic."
   (interactive)
   (save-excursion
-    (skroad--with-zone
-      (setq-local skroad--buf-alt-mark start)
-      (goto-char end)
-      (call-interactively 'set-mark-command))))
+    (skroad--with-current-zone
+     (setq-local skroad--buf-alt-mark start)
+     (goto-char end)
+     (call-interactively 'set-mark-command))))
 
 (defun skroad--cmd-atomic-jump-to-next-link ()
   "Jump to the next link following this atomic; cycle to first after the last."
@@ -696,9 +696,9 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defun skroad--cmd-renamer-activate-here ()
   "Activate the renamer for the current zone and type."
   (interactive)
-  (skroad--with-zone
-    (skroad--renamer-activate
-     (skroad--prop-at 'renamer-overlay-type) start end)))
+  (skroad--with-current-zone
+   (skroad--renamer-activate
+    (skroad--prop-at 'renamer-overlay-type) start end)))
 
 (skroad--define-text-type
  'skroad--text-mixin-renameable
@@ -740,12 +740,12 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defun skroad--cmd-link-comment ()
   "Delinkify the link under the point to plain text by removing delimiters."
   (interactive)
-  (skroad--with-zone
-    (let ((text (skroad--prop-at 'data)))
-      (save-mark-and-excursion
-        (goto-char start)
-        (delete-region start end)
-        (insert text)))))
+  (skroad--with-current-zone
+   (let ((text (skroad--prop-at 'data)))
+     (save-mark-and-excursion
+       (goto-char start)
+       (delete-region start end)
+       (insert text)))))
 
 ;; TODO: preview linked node
 (defun skroad--link-mouseover (window buf position)
@@ -824,11 +824,11 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defun skroad--cmd-url-comment ()
   "Turn the URL at point into plain text by placing a space after the prefix."
   (interactive)
-  (skroad--with-zone
-    (save-mark-and-excursion
-      (goto-char start)
-      (search-forward "//" end)
-      (insert " "))))
+  (skroad--with-current-zone
+   (save-mark-and-excursion
+     (goto-char start)
+     (search-forward "//" end)
+     (insert " "))))
 
 (skroad--define-text-type
  'skroad-text-url-link
