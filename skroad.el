@@ -731,6 +731,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :zone 'type-name
  :field 'zone
  :keymap (define-keymap
+           "<remap> <delete-backward-char>" #'backward-delete-char-untabify
            "<remap> <end-of-line>"
            #'(lambda () (interactive) (goto-char (1- (field-end))))
            "RET" #'skroad--cmd-renamer-accept-changes)
