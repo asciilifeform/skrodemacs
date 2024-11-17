@@ -330,7 +330,7 @@ call the action with ARGS."
 (defvar skroad--font-lock-keywords nil "Font lock keywords for skroad mode.")
 
 (defun skroad--init-font-lock ()
-  "Initialize font lock fontification in a skroad mode buffer."
+  "Initialize font lock fontification in a skroad buffer."
   (unless skroad--font-lock-keywords
     (setq skroad--font-lock-keywords (skroad--make-font-lock-keywords)))
   (setq-local font-lock-defaults '(skroad--font-lock-keywords t)
@@ -341,7 +341,7 @@ call the action with ARGS."
 (defun skroad--font-lock-dont-unfontify-region (&rest args) ())
 
 (defun skroad--suspend-font-lock ()
-  "Temporarily disable font lock fontification in a skroad mode buffer."
+  "Temporarily disable font lock fontification in a skroad buffer."
   (setq-local
    skroad--font-lock-unfontify-region font-lock-unfontify-region-function
    font-lock-unfontify-region-function #'skroad--font-lock-dont-unfontify-region
@@ -349,7 +349,7 @@ call the action with ARGS."
   (font-lock-refresh-defaults))
 
 (defun skroad--resume-font-lock ()
-  "Resume font lock fontification in a skroad mode buffer."
+  "Resume font lock fontification in a skroad buffer."
   (setq-local
    font-lock-defaults '(skroad--font-lock-keywords t)
    font-lock-unfontify-region-function skroad--font-lock-unfontify-region)
