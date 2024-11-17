@@ -313,21 +313,55 @@ call the action with ARGS."
  :font-lock-rule '(lambda () (list render-next '(0 nil append)))
  :register 'skroad--text-types-rendered)
 
-(defun skroad--init-font-lock ()
-  "Initialize font-lock rules for a skroad mode buffer."
-  (let ((font-lock-rules nil)
+(defconst skroad--font-lock-properties
+  '(category face id data)
+  "Let font lock know what props we use in renderers, so it will clean them.")
+
+(defun skroad--make-font-lock-keywords ()
+  "Generate font-lock keywords for skroad mode."
+  (let ((keywords nil)
         (rendered-types
          (sort skroad--text-types-rendered
                #'(lambda (a b) (> (get a 'order) (get b 'order))))))
     (dolist (type rendered-types)
-      (push (funcall (get type 'font-lock-rule)) font-lock-rules))
-    (font-lock-add-keywords nil font-lock-rules t)))
+      (push (funcall (get type 'font-lock-rule)) keywords))
+    keywords))
+
+(defvar skroad--font-lock-keywords nil "Font lock keywords for skroad mode.")
+
+(defun skroad--enable-font-lock ()
+  "Enable font lock fontification for a skroad mode buffer."
+  (unless skroad--font-lock-keywords
+    (setq skroad--font-lock-keywords (skroad--make-font-lock-keywords)))
+  (setq-local font-lock-defaults '(skroad--font-lock-keywords t))
+  (setq-local font-lock-extra-managed-props skroad--font-lock-properties)
+  (font-lock-refresh-defaults))
+
+(defvar-local skroad--font-lock-unfontify-region nil)
+(defun skroad--font-lock-dont-unfontify-region (&rest args) ())
+
+(defun skroad--suspend-font-lock ()
+  "Temporarily disable font lock fontification in a skroad mode buffer."
+  (setq-local skroad--font-lock-unfontify-region
+              font-lock-unfontify-region-function)
+  (setq-local font-lock-unfontify-region-function
+              #'skroad--font-lock-dont-unfontify-region)
+  (setq-local font-lock-defaults '(nil t))
+  (font-lock-refresh-defaults))
+
+(defun skroad--resume-font-lock ()
+  "Resume font lock fontification in a skroad mode buffer."
+  (setq-local font-lock-defaults '(skroad--font-lock-keywords t))
+  (setq-local font-lock-unfontify-region-function
+              skroad--font-lock-unfontify-region)
+  (font-lock-refresh-defaults))
+
+(defun skroad--refontify-current-line ()
+  "Refresh fontification of the current line in a skroad buffer."
+  (save-mark-and-excursion
+    (font-lock-ensure (line-beginning-position) (line-end-position))))
 
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defconst skroad--font-lock-properties
-  '(category face id data)
-  "Let font lock know what props we use in renderers, so it will clean them.")
 
 (skroad--define-text-type
  'skroad--text-mixin-render-delimited-zoned
@@ -398,6 +432,16 @@ call the action with ARGS."
 ;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
+(defvar skroad--text-types-indexed-suspended nil "Backup of the indexed list.")
+
+(defun skroad--suspend-indexing ()
+  "Temporarily suspend indexing in a skroad buffer."
+  (setq skroad--text-types-indexed-suspended skroad--text-types-indexed)
+  (setq skroad--text-types-indexed nil))
+
+(defun skroad--resume-indexing ()
+  "Resume indexing in a skroad buffer."
+  (setq skroad--text-types-indexed skroad--text-types-indexed-suspended))
 
 (skroad--define-text-type
  'skroad--text-mixin-indexed
@@ -624,6 +668,8 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defun skroad--renamer-activate (renamer-type start end)
   "Activate the renamer in the current zone."
   (message "Rename node: press <return> to rename, or leave field to cancel.")
+  (skroad--suspend-font-lock)
+  (skroad--suspend-indexing)
   (skroad--deactivate-mark)
   (setq-local cursor-type t)
   (setq skroad--buf-renamer-changes (prepare-change-group))
@@ -650,7 +696,10 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (undo-amalgamate-change-group skroad--buf-renamer-changes)
     (cancel-change-group skroad--buf-renamer-changes)
     (goto-char (overlay-start skroad--buf-hider))
-    (delete-overlay skroad--buf-hider)))
+    (delete-overlay skroad--buf-hider)
+    (skroad--resume-font-lock)
+    (skroad--refontify-current-line)
+    (skroad--resume-indexing)))
 
 ;; (defun skroad--renamer-valid ()
 ;;   (and (skroad--overlay-active-p skroad--buf-renamer)
@@ -947,8 +996,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
-  (save-mark-and-excursion
-    (font-lock-ensure (line-beginning-position) (line-end-position)))
+  (skroad--refontify-current-line)
   (skroad--motion skroad--buf-pre-command-point-state)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
   (skroad--update-local-index) ;; TODO: do it in save hook?
@@ -1011,7 +1059,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (measure-time
    (skroad--init-local-index))
   
-  (skroad--init-font-lock)  
+  (skroad--enable-font-lock)
   (face-remap-set-base 'header-line 'skroad--title-face)
   )
 
@@ -1023,9 +1071,6 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (skroad--silence-modifications 'remove-list-of-text-properties)
   (skroad--silence-modifications 'set-text-properties)
   (skroad--silence-modifications 'add-face-text-property)
-  
-  ;; Zap properties during unfontification:
-  (setq-local font-lock-extra-managed-props skroad--font-lock-properties)
   
   ;; Zap properties and refontify during yank.
   (setq-local yank-handled-properties '((id . skroad--yank-handler)))
