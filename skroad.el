@@ -431,16 +431,6 @@ call the action with ARGS."
 ;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
-(defvar skroad--text-types-indexed-suspended nil "Backup of the indexed list.")
-
-(defun skroad--suspend-indexing ()
-  "Temporarily suspend indexing in a skroad buffer."
-  (setq skroad--text-types-indexed-suspended skroad--text-types-indexed
-        skroad--text-types-indexed nil))
-
-(defun skroad--resume-indexing ()
-  "Resume indexing in a skroad buffer."
-  (setq skroad--text-types-indexed skroad--text-types-indexed-suspended))
 
 (skroad--define-text-type
  'skroad--text-mixin-indexed
@@ -487,8 +477,8 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   t)
 
 (defvar-local skroad--buf-index nil "Text type index for current buffer.")
-(defvar-local skroad--buf-changes nil
-  "Pending index changes for current buffer.")
+(defvar-local skroad--buf-changes nil "Pending index changes in the buffer.")
+(defvar-local skroad--index-update-enable t "Toggle for index updates.")
 
 (defun skroad--init-local-index ()
   "Create the buffer-local indices and populate them from current buffer."
@@ -506,7 +496,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defun skroad--update-local-index ()
   "Apply all pending changes queued for the buffer-local text type index."
-  (when skroad--buf-changes
+  (when (and skroad--index-update-enable skroad--buf-changes)
     (skroad--index-update skroad--buf-index skroad--buf-changes)
     (setq skroad--buf-changes nil)))
 
@@ -666,7 +656,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   "Activate the renamer in the current zone."
   (message "Rename node: press <return> to rename, or leave field to cancel.")
   (skroad--suspend-font-lock)
-  (skroad--suspend-indexing)
+  (setq-local skroad--index-update-enable nil)
   (skroad--deactivate-mark)
   (setq-local cursor-type t)
   (setq skroad--buf-renamer-changes (prepare-change-group))
@@ -696,7 +686,8 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (delete-overlay skroad--buf-hider)
     (skroad--resume-font-lock)
     (skroad--refontify-current-line)
-    (skroad--resume-indexing)))
+    (setq-local skroad--index-update-enable t)
+    ))
 
 ;; (defun skroad--renamer-valid ()
 ;;   (and (skroad--overlay-active-p skroad--buf-renamer)
