@@ -319,13 +319,9 @@ call the action with ARGS."
 
 (defun skroad--make-font-lock-keywords ()
   "Generate font-lock keywords for skroad mode."
-  (let ((keywords nil)
-        (rendered-types
+  (mapcar #'(lambda (type) (funcall (get type 'font-lock-rule)))
          (sort skroad--text-types-rendered
-               #'(lambda (a b) (> (get a 'order) (get b 'order))))))
-    (dolist (type rendered-types)
-      (push (funcall (get type 'font-lock-rule)) keywords))
-    keywords))
+               #'(lambda (a b) (<= (get a 'order) (get b 'order))))))
 
 (defvar skroad--font-lock-keywords nil "Font lock keywords for skroad mode.")
 
