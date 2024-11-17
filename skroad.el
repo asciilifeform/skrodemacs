@@ -329,8 +329,8 @@ call the action with ARGS."
 
 (defvar skroad--font-lock-keywords nil "Font lock keywords for skroad mode.")
 
-(defun skroad--enable-font-lock ()
-  "Enable font lock fontification for a skroad mode buffer."
+(defun skroad--init-font-lock ()
+  "Initialize font lock fontification in a skroad mode buffer."
   (unless skroad--font-lock-keywords
     (setq skroad--font-lock-keywords (skroad--make-font-lock-keywords)))
   (setq-local font-lock-defaults '(skroad--font-lock-keywords t))
@@ -1060,7 +1060,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (measure-time
    (skroad--init-local-index))
   
-  (skroad--enable-font-lock)
+  (skroad--init-font-lock)
   (face-remap-set-base 'header-line 'skroad--title-face)
   )
 
