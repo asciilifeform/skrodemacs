@@ -333,8 +333,8 @@ call the action with ARGS."
   "Initialize font lock fontification in a skroad mode buffer."
   (unless skroad--font-lock-keywords
     (setq skroad--font-lock-keywords (skroad--make-font-lock-keywords)))
-  (setq-local font-lock-defaults '(skroad--font-lock-keywords t))
-  (setq-local font-lock-extra-managed-props skroad--font-lock-properties)
+  (setq-local font-lock-defaults '(skroad--font-lock-keywords t)
+              font-lock-extra-managed-props skroad--font-lock-properties)
   (font-lock-refresh-defaults))
 
 (defvar-local skroad--font-lock-unfontify-region nil)
@@ -342,18 +342,17 @@ call the action with ARGS."
 
 (defun skroad--suspend-font-lock ()
   "Temporarily disable font lock fontification in a skroad mode buffer."
-  (setq-local skroad--font-lock-unfontify-region
-              font-lock-unfontify-region-function)
-  (setq-local font-lock-unfontify-region-function
-              #'skroad--font-lock-dont-unfontify-region)
-  (setq-local font-lock-defaults '(nil t))
+  (setq-local
+   skroad--font-lock-unfontify-region font-lock-unfontify-region-function
+   font-lock-unfontify-region-function #'skroad--font-lock-dont-unfontify-region
+   font-lock-defaults '(nil t))
   (font-lock-refresh-defaults))
 
 (defun skroad--resume-font-lock ()
   "Resume font lock fontification in a skroad mode buffer."
-  (setq-local font-lock-defaults '(skroad--font-lock-keywords t))
-  (setq-local font-lock-unfontify-region-function
-              skroad--font-lock-unfontify-region)
+  (setq-local
+   font-lock-defaults '(skroad--font-lock-keywords t)
+   font-lock-unfontify-region-function skroad--font-lock-unfontify-region)
   (font-lock-refresh-defaults))
 
 (defun skroad--refontify-current-line ()
@@ -436,8 +435,8 @@ call the action with ARGS."
 
 (defun skroad--suspend-indexing ()
   "Temporarily suspend indexing in a skroad buffer."
-  (setq skroad--text-types-indexed-suspended skroad--text-types-indexed)
-  (setq skroad--text-types-indexed nil))
+  (setq skroad--text-types-indexed-suspended skroad--text-types-indexed
+        skroad--text-types-indexed nil))
 
 (defun skroad--resume-indexing ()
   "Resume indexing in a skroad buffer."
@@ -604,15 +603,13 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   "Activate (if inactive) or move the selector to the current zone."
   (skroad--with-current-zone
    (move-overlay skroad--buf-selector start end (current-buffer)))
-  (setq-local cursor-type nil)
-  (setq-local show-paren-mode nil))
+  (setq-local cursor-type nil show-paren-mode nil))
 
 (defun skroad--selector-deactivate ()
   "Deactivate the selector; it can be reactivated again."
   (when (skroad--overlay-active-p skroad--buf-selector)
     (delete-overlay skroad--buf-selector))
-  (setq-local cursor-type t)
-  (setq-local show-paren-mode t))
+  (setq-local cursor-type t show-paren-mode t))
 
 (defun skroad--cmd-atomic-set-mark ()
   "Set the mark inside an atomic."
@@ -992,8 +989,8 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
-  (setq-local mouse-highlight nil)
-  (setq-local skroad--buf-pre-command-point-state (skroad--point-state)))
+  (setq-local mouse-highlight nil
+              skroad--buf-pre-command-point-state (skroad--point-state)))
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
