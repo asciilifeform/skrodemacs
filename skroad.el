@@ -335,13 +335,13 @@ call the action with ARGS."
   (font-lock-refresh-defaults))
 
 (defvar-local skroad--font-lock-unfontify-region nil)
-(defun skroad--font-lock-dont-unfontify-region (&rest args) ())
+(defun skroad--do-nothing (&rest args) ())
 
 (defun skroad--suspend-font-lock ()
   "Suspend font lock rendering in a skroad buffer, but don't depropertize text."
   (setq-local
    skroad--font-lock-unfontify-region font-lock-unfontify-region-function
-   font-lock-unfontify-region-function #'skroad--font-lock-dont-unfontify-region
+   font-lock-unfontify-region-function #'skroad--do-nothing
    font-lock-defaults '(nil t))
   (font-lock-refresh-defaults))
 
