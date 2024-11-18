@@ -522,7 +522,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (let ((p (point)))
     (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
           ((> p (skroad--node-body-start))
-           (if (skroad--prop-at 'zone (1- p))
+           (if (skroad--prop-at 'data (1- p))
                (delete-region (skroad--zone-start (1- p)) p)
              (delete-char -1))))))
 
@@ -719,7 +719,6 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :zone 'type-name
  :field 'zone
  :keymap (define-keymap
-           "<remap> <delete-backward-char>" #'backward-delete-char-untabify
            "<remap> <end-of-line>"
            #'(lambda () (interactive) (goto-char (1- (field-end))))
            "RET" #'skroad--cmd-renamer-accept-changes)
@@ -1010,7 +1009,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defun skroad--find-word-boundary (pos limit)
   "Function for use in `find-word-boundary-function-table'."
   (save-mark-and-excursion
-    (let ((atomic (skroad--prop-at 'zone pos))
+    (let ((atomic (skroad--prop-at 'data pos))
           (fwd (<= pos limit)))
       (cond ((and atomic fwd) (goto-char (skroad--zone-end pos)))
             (atomic (goto-char (skroad--zone-start pos)))
