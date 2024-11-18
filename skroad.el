@@ -500,6 +500,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (skroad--index-scan-region init-populate (point-min) (point-max) 1)
     (skroad--index-update skroad--buf-index init-populate t)))
 
+;; TODO: if it's big enough, we'll want to do this in chunks
 (defun skroad--populate-local-index ()
   "Init local index asynchronously, so that node appears to load immediately."
   (setq-local buffer-read-only t)
