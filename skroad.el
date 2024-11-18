@@ -58,6 +58,12 @@
 
 ;;; Utility functions. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defmacro measure-time (&rest body)
+  "Measure the time it takes to evaluate BODY."
+  `(let ((time (current-time)))
+     ,@body
+     (message "%.06f" (float-time (time-since time)))))
+
 (defun skroad--nop (&rest args)
   "Placeholder function, simply eats its ARGS and does absolutely nothing."
   ())
@@ -494,6 +500,12 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (skroad--index-scan-region init-populate (point-min) (point-max) 1)
     (skroad--index-update skroad--buf-index init-populate t)))
 
+(defun skroad--populate-local-index ()
+  "Init local index asynchronously, so that node appears to load immediately."
+  (setq-local buffer-read-only t)
+  (run-with-idle-timer 0.1 nil #'skroad--init-local-index)
+  (setq-local buffer-read-only nil))
+
 (defun skroad--update-local-index ()
   "Apply all pending changes queued for the buffer-local text type index."
   (when (and skroad--index-update-enable skroad--buf-changes)
@@ -739,8 +751,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :doc "Mixin for allowing the use of the rename command with an atomic type."
  :mixin t
  :require 'renamer-overlay-type
- :keymap (define-keymap
-           "r" #'skroad--cmd-renamer-activate-here))
+ :keymap (define-keymap "r" #'skroad--cmd-renamer-activate-here))
 
 ;; Link types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -793,8 +804,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :use 'skroad--text-link
  :help-echo 'skroad--link-mouseover
  :payload-regex skroad--node-title-regex
- :keymap (define-keymap
-           "t" #'skroad--cmd-link-comment))
+ :keymap (define-keymap "t" #'skroad--cmd-link-comment))
 
 (defun skroad--browse-skroad-link (data)
   (message (format "Live link pushed: '%s'" data)))
@@ -874,8 +884,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :payload-regex
  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\r\f\t\s]+\\)"
  :on-activate #'browse-url
- :keymap (define-keymap
-           "t" #'skroad--cmd-url-comment)
+ :keymap (define-keymap "t" #'skroad--cmd-url-comment)
  :use 'skroad--text-mixin-delimited-non-title
  :use 'skroad--text-mixin-render-delimited-zoned
  :use 'skroad--text-mixin-indexed
@@ -1034,18 +1043,13 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (font-lock-ensure start-expanded end-expanded))
   (skroad--deactivate-mark))
 
-(defmacro measure-time (&rest body)
-  "Measure the time it takes to evaluate BODY."
-  `(let ((time (current-time)))
-     ,@body
-     (message "%.06f" (float-time (time-since time)))))
-
 (defun skroad--open-node ()
   "Open a skroad node."
   ;; (skroad--init-local-index)
 
-  (measure-time
-   (skroad--init-local-index))
+  ;; (measure-time
+  ;;  (skroad--init-local-index))
+  (skroad--populate-local-index)
   
   (skroad--init-font-lock)
   (face-remap-set-base 'header-line 'skroad--title-face)
