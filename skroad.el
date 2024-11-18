@@ -504,7 +504,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defun skroad--populate-local-index ()
   "Init local index asynchronously, so that node appears to load immediately."
   (setq-local buffer-read-only t)
-  (run-with-idle-timer 0.1 nil #'skroad--init-local-index)
+  (run-with-idle-timer 0.01 nil #'skroad--init-local-index)
   (setq-local buffer-read-only nil))
 
 (defun skroad--update-local-index ()
