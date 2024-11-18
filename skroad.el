@@ -338,7 +338,7 @@ call the action with ARGS."
 (defun skroad--font-lock-dont-unfontify-region (&rest args) ())
 
 (defun skroad--suspend-font-lock ()
-  "Temporarily disable font lock fontification in a skroad buffer."
+  "Suspend font lock rendering in a skroad buffer, but don't depropertize text."
   (setq-local
    skroad--font-lock-unfontify-region font-lock-unfontify-region-function
    font-lock-unfontify-region-function #'skroad--font-lock-dont-unfontify-region
