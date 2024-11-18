@@ -317,18 +317,19 @@ call the action with ARGS."
   '(category face id data)
   "Let font lock know what props we use in renderers, so it will clean them.")
 
-(defun skroad--make-font-lock-keywords ()
-  "Generate font-lock keywords for skroad mode."
-  (mapcar #'(lambda (type) (funcall (get type 'font-lock-rule)))
-         (sort skroad--text-types-rendered
-               #'(lambda (a b) (<= (get a 'order) (get b 'order))))))
-
 (defvar skroad--font-lock-keywords nil "Font lock keywords for skroad mode.")
+
+(defun skroad--generate-font-lock-keywords ()
+  "Generate font-lock keywords for skroad mode."
+  (unless skroad--font-lock-keywords
+    (setq skroad--font-lock-keywords
+          (mapcar #'(lambda (type) (funcall (get type 'font-lock-rule)))
+                  (sort skroad--text-types-rendered
+                        #'(lambda (a b) (<= (get a 'order) (get b 'order))))))))
 
 (defun skroad--init-font-lock ()
   "Initialize font lock fontification in a skroad buffer."
-  (unless skroad--font-lock-keywords
-    (setq skroad--font-lock-keywords (skroad--make-font-lock-keywords)))
+  (skroad--generate-font-lock-keywords)
   (setq-local font-lock-defaults '(skroad--font-lock-keywords t)
               font-lock-extra-managed-props skroad--font-lock-properties)
   (font-lock-refresh-defaults))
