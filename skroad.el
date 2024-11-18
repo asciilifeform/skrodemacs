@@ -502,7 +502,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 ;; TODO: if it's big enough, we'll want to do this in chunks
 (defun skroad--populate-local-index ()
-  "Init local index asynchronously, so that node appears to load immediately."
+  "Init local index asynchronously, so that node is displayed immediately."
   (setq-local buffer-read-only t)
   (run-with-idle-timer 0.01 nil #'skroad--init-local-index)
   (setq-local buffer-read-only nil))
@@ -1046,13 +1046,8 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defun skroad--open-node ()
   "Open a skroad node."
-  ;; (skroad--init-local-index)
-
-  ;; (measure-time
-  ;;  (skroad--init-local-index))
-  (skroad--populate-local-index)
-  
   (skroad--init-font-lock)
+  (skroad--populate-local-index)
   (face-remap-set-base 'header-line 'skroad--title-face)
   )
 
