@@ -58,6 +58,10 @@
 
 ;;; Utility functions. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun skroad--do-nothing (&rest args)
+  "Placeholder function, simply eats its ARGS and does absolutely nothing."
+  ())
+
 (defun skroad--keyword-to-symbol (exp)
   "If EXP is a keyword, convert it to a symbol. If not, return it as-is."
   (unless (keywordp exp)
@@ -335,7 +339,6 @@ call the action with ARGS."
   (font-lock-refresh-defaults))
 
 (defvar-local skroad--font-lock-unfontify-region nil)
-(defun skroad--do-nothing (&rest args) ())
 
 (defun skroad--suspend-font-lock ()
   "Suspend font lock rendering in a skroad buffer, but don't depropertize text."
