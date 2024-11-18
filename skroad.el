@@ -1046,9 +1046,9 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defun skroad--open-node ()
   "Open a skroad node."
+  (face-remap-set-base 'header-line 'skroad--title-face)
   (skroad--init-font-lock)
   (skroad--populate-local-index)
-  (face-remap-set-base 'header-line 'skroad--title-face)
   )
 
 (define-derived-mode skroad-mode text-mode "Skroad"
