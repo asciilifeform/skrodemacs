@@ -372,6 +372,7 @@ call the action with ARGS."
  'skroad--text-mixin-render-delimited-zoned
  :doc "Mixin for zoned delimited text types rendered by font-lock."
  :mixin t
+ :exclude-delims-from-titles t
  :require 'face
  :render
  '(lambda ()
@@ -665,16 +666,36 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defvar-local skroad--buf-renamer nil "Node renamer overlay.")
 (defvar-local skroad--buf-renamer-changes nil "Change group for renamer.")
 
+;; (defvar skroad--title-prohibited-regex-cached nil)
+
+;; (defun skroad--title-prohibited-regex ()
+;;   (unless skroad--title-prohibited-regex-cached
+;;     (setq skroad--title-prohibited-regex-cached
+
+
+;;\n\r\f\t
+
+;; (let ((delims))
+;;   (dolist (type skroad--text-types-rendered)
+;;     (when (get type 'exclude-delims-from-titles)
+;;       (let ((l-delim (get type 'start-delim)) (r-delim (get type 'end-delim)))
+;;         (when (not (string-empty-p l-delim)) (push l-delim delims))
+;;         (when (not (string-empty-p r-delim)) (push r-delim delims))
+;;         )))
+;;   (regexp-opt delims)
+;;   )
+
+
 (defun skroad--renamer-activate (renamer-type start end)
   "Activate the renamer in the current zone."
   (message "Rename node: press <return> to rename, or leave field to cancel.")
   (skroad--suspend-font-lock)
-  (setq-local skroad--index-update-enable nil)
   (skroad--deactivate-mark)
-  (setq-local cursor-type t)
-  (setq skroad--buf-renamer-changes (prepare-change-group))
+  (setq-local skroad--index-update-enable nil
+              cursor-type t
+              skroad--buf-renamer-changes (prepare-change-group))
   (activate-change-group skroad--buf-renamer-changes)
-  (setq skroad--buf-hider (make-overlay start end (current-buffer)))
+  (setq-local skroad--buf-hider (make-overlay start end (current-buffer)))
   (overlay-put skroad--buf-hider 'invisible t)
   (goto-char end)
   (insert (concat " " (skroad--prop-at 'data start) " "))
