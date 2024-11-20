@@ -663,6 +663,16 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 ;; Interactive renamer. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar-local skroad--buf-hider nil "Text hider overlay.")
+
+(defun skroad--hide-text (start end)
+  "Temporarily hide text in current buffer from START to END positions."
+  (setq-local skroad--buf-hider (make-overlay start end (current-buffer)))
+  (overlay-put skroad--buf-hider 'invisible t))
+
+(defun skroad--unhide-text ()
+  "Unhide text that has been hidden with `skroad--hide-text`."
+  (delete-overlay skroad--buf-hider))
+
 (defvar-local skroad--buf-renamer nil "Node renamer overlay.")
 (defvar-local skroad--buf-renamer-changes nil "Change group for renamer.")
 
@@ -695,8 +705,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
               cursor-type t
               skroad--buf-renamer-changes (prepare-change-group))
   (activate-change-group skroad--buf-renamer-changes)
-  (setq-local skroad--buf-hider (make-overlay start end (current-buffer)))
-  (overlay-put skroad--buf-hider 'invisible t)
+  (skroad--hide-text start end)
   (goto-char end)
   (insert (concat " " (skroad--prop-at 'data start) " "))
   (setq-local skroad--buf-renamer (make-overlay end (point) (current-buffer)))
@@ -717,7 +726,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (undo-amalgamate-change-group skroad--buf-renamer-changes)
     (cancel-change-group skroad--buf-renamer-changes)
     (goto-char (overlay-start skroad--buf-hider))
-    (delete-overlay skroad--buf-hider)
+    (skroad--unhide-text)
     (skroad--resume-font-lock)
     (skroad--refontify-current-line)
     (setq-local skroad--index-update-enable t)
