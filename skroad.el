@@ -6,12 +6,12 @@
 
 ;;; Knobs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar skroad--debug nil)
+(defvar skroad--debug t)
 
 (unless skroad--debug
   (setq byte-compile-warnings nil))
 
-(defvar skroad--node-title-regex "\\([^][\n\r\f\t\s]+[^][\n\r\f\t]*?\\)"
+(defconst skroad--node-title-regex "\\([^][\n\r\f\t\s]+[^][\n\r\f\t]*?\\)"
   "Regex for valid skroad node titles.")
 
 (defvar skroad--floating-title-enable t
@@ -70,8 +70,7 @@
 
 (defun skroad--keyword-to-symbol (exp)
   "If EXP is a keyword, convert it to a symbol. If not, return it as-is."
-  (unless (keywordp exp)
-    (error "%s is not a keyword!" exp))
+  (unless (keywordp exp) (error "%s is not a keyword!" exp))
   (read (substring (symbol-name exp) 1)))
 
 (defmacro skroad--do-plist (key val plist &rest body)
@@ -670,30 +669,34 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (overlay-put skroad--buf-hider 'invisible t))
 
 (defun skroad--unhide-text ()
-  "Unhide text that has been hidden with `skroad--hide-text`."
+  "Unhide all text that has been hidden with `skroad--hide-text`."
   (delete-overlay skroad--buf-hider))
 
 (defvar-local skroad--buf-renamer nil "Node renamer overlay.")
 (defvar-local skroad--buf-renamer-changes nil "Change group for renamer.")
 
-;; (defvar skroad--title-prohibited-regex-cached nil)
+(defconst skroad--strings-prohibited-in-titles '("\n" "\r" "\f" "\t" "~"))
 
-;; (defun skroad--title-prohibited-regex ()
-;;   (unless skroad--title-prohibited-regex-cached
-;;     (setq skroad--title-prohibited-regex-cached
+(defvar skroad--title-prohibited-regex-cached nil)
+
+(defun skroad--title-prohibited-regex ()
+  "Return a regex matching all strings prohibited in skroad node titles."
+  (unless skroad--title-prohibited-regex-cached
+    (setq skroad--title-prohibited-regex-cached
+          (let ((prohib-strings skroad--strings-prohibited-in-titles))
+            (dolist (type skroad--text-types-rendered)
+              (when (get type 'exclude-delims-from-titles)
+                (let ((start-delim (get type 'start-delim))
+                      (end-delim (get type 'end-delim)))
+                  (when (not (string-empty-p start-delim))
+                    (push start-delim prohib-strings))
+                  (when (not (string-empty-p end-delim))
+                    (push end-delim prohib-strings)))))
+            (regexp-opt prohib-strings))))
+  skroad--title-prohibited-regex-cached)
 
 
-;;\n\r\f\t
-
-;; (let ((delims))
-;;   (dolist (type skroad--text-types-rendered)
-;;     (when (get type 'exclude-delims-from-titles)
-;;       (let ((l-delim (get type 'start-delim)) (r-delim (get type 'end-delim)))
-;;         (when (not (string-empty-p l-delim)) (push l-delim delims))
-;;         (when (not (string-empty-p r-delim)) (push r-delim delims))
-;;         )))
-;;   (regexp-opt delims)
-;;   )
+;; (skroad--title-prohibited-regex)
 
 
 (defun skroad--renamer-activate (renamer-type start end)
@@ -998,8 +1001,8 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
             (skroad--type-action old-type 'on-move old-p auto)
             t))
         ;; If done moving point, and we went over alt-mark to mark, jump it:
-        (when (and mark-active skroad--buf-alt-mark
-                   (eq p (point)) (eq p (mark)))
+        (when
+            (and mark-active skroad--buf-alt-mark (eq p (point)) (eq p (mark)))
           (if (< skroad--buf-alt-mark p) (forward-char) (backward-char)))
         (skroad--motion current t))) ;; Handle possible auto zone change
     t))
