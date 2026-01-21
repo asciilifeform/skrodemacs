@@ -1124,3 +1124,5 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   )
 
 (provide 'skroad)
+
+;;; skroad.el ends here
