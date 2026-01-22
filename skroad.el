@@ -250,8 +250,7 @@ call the action with ARGS."
 (defun skroad--transform-at (new-type)
   "Transform the text item at point (including all duplicates) to NEW-TYPE."
   (funcall
-   (skroad--prop-at 'payload-change-type)
-   (skroad--prop-at 'data) new-type))
+   (skroad--prop-at 'payload-change-type) (skroad--prop-at 'data) new-type))
 
 (defun skroad--finder-regex-forward (r)
   "Generate a forward finder for regex R."
@@ -754,7 +753,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defun skroad--cmd-renamer-accept-changes ()
   "Accept a proposed renaming."
   (interactive)
-  (let ((renamed (field-string-no-properties)))
+  (let ((renamed (skroad--renamer-text)))
     (skroad--renamer-deactivate)
     (message (format "renamed: '%s'" renamed))))
 
@@ -949,7 +948,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (skroad--define-text-type
  'skroad--text-node-title
  :doc "Node title."
- :kbd-doc "<r> rename"
+ :kbd-doc "<r> rename this node"
  :use 'skroad--text-atomic
  :order 500
  :keymap
