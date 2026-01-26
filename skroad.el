@@ -769,8 +769,10 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
            #'(lambda () (interactive) (goto-char (1- (field-end))))
            "<backspace>"
            #'(lambda () (interactive)
-               (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
-                     ((> (point) (field-beginning)) (delete-char -1))))
+               (cond ((use-region-p)
+                      (delete-region (region-beginning) (region-end)))
+                     ((> (point) (field-beginning))
+                      (delete-char -1))))
            "RET" #'skroad--cmd-renamer-accept-changes)
  :on-leave '(lambda (pos-from auto)
               (message "Rename node: changes discarded.")
