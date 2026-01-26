@@ -767,6 +767,10 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :keymap (define-keymap
            "<remap> <end-of-line>"
            #'(lambda () (interactive) (goto-char (1- (field-end))))
+           "<backspace>"
+           #'(lambda () (interactive)
+               (unless (eq (point) (field-beginning))
+                 (delete-char -1)))
            "RET" #'skroad--cmd-renamer-accept-changes)
  :on-leave '(lambda (pos-from auto)
               (message "Rename node: changes discarded.")
