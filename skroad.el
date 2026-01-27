@@ -677,10 +677,26 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   "Unhide all text that has been hidden with `skroad--hide-text`."
   (delete-overlay skroad--buf-hider))
 
+;; Temporary change mechanism. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defvar-local skroad--temporary-changes nil "Temporary change group.")
+
+(defun skroad--start-undoable ()
+  "Start a temporary change set."
+  (assert (null skroad--temporary-changes))
+  (setq-local skroad--temporary-changes (prepare-change-group))
+  (activate-change-group skroad--temporary-changes))
+
+(defun skroad--end-undoable ()
+  "End a temporary change set."
+  (assert skroad--temporary-changes)
+  (undo-amalgamate-change-group skroad--temporary-changes)
+  (cancel-change-group skroad--temporary-changes)
+  (setq-local skroad--temporary-changes nil))
+
 ;; Interactive renamer. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar-local skroad--buf-renamer nil "Node renamer overlay.")
-(defvar-local skroad--buf-renamer-changes nil "Change group for renamer.")
 (defvar-local skroad--buf-renamer-original nil "Original name.")
 (defvar-local skroad--buf-renamer-valid nil "Whether proposed rename is valid.")
 
@@ -710,12 +726,11 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (message "Rename node: press <return> to rename, or leave field to cancel.")
     (skroad--suspend-font-lock)
     (skroad--deactivate-mark)
+    (skroad--start-undoable)
     (setq-local skroad--index-update-enable nil
                 cursor-type t
-                skroad--buf-renamer-changes (prepare-change-group)
                 skroad--buf-renamer-original
                 (string-trim (skroad--prop-at 'data start)))
-    (activate-change-group skroad--buf-renamer-changes)
     (skroad--hide-text start end)
     (goto-char end)
     (insert (concat " " skroad--buf-renamer-original " "))
@@ -730,15 +745,13 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (when (skroad--overlay-active-p skroad--buf-renamer)
     (delete-overlay skroad--buf-renamer)
     (skroad--deactivate-mark)
-    (undo-amalgamate-change-group skroad--buf-renamer-changes)
-    (cancel-change-group skroad--buf-renamer-changes)
+    (skroad--end-undoable)
     (goto-char (overlay-start skroad--buf-hider))
     (skroad--unhide-text)
     (skroad--resume-font-lock)
     (skroad--refontify-current-line)
     (setq-local skroad--index-update-enable t
                 skroad--buf-renamer-original nil
-                skroad--buf-renamer-changes nil
                 skroad--buf-renamer-valid nil)))
 
 (defun skroad--renamer-text ()
