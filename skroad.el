@@ -679,20 +679,20 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 ;; Temporary change mechanism. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar-local skroad--temporary-changes nil "Temporary change group.")
+(defvar-local skroad--buf-temporary-changes nil "Temporary change group.")
 
 (defun skroad--start-temporary ()
   "Start a temporary change set."
-  (assert (null skroad--temporary-changes))
-  (setq-local skroad--temporary-changes (prepare-change-group))
-  (activate-change-group skroad--temporary-changes))
+  (assert (null skroad--buf-temporary-changes))
+  (setq-local skroad--buf-temporary-changes (prepare-change-group))
+  (activate-change-group skroad--buf-temporary-changes))
 
 (defun skroad--end-temporary ()
   "End a temporary change set."
-  (assert skroad--temporary-changes)
-  (undo-amalgamate-change-group skroad--temporary-changes)
-  (cancel-change-group skroad--temporary-changes)
-  (setq-local skroad--temporary-changes nil))
+  (assert skroad--buf-temporary-changes)
+  (undo-amalgamate-change-group skroad--buf-temporary-changes)
+  (cancel-change-group skroad--buf-temporary-changes)
+  (setq-local skroad--buf-temporary-changes nil))
 
 ;; Interactive renamer. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
