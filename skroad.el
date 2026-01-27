@@ -712,18 +712,34 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (skroad--deactivate-mark)
     (setq-local skroad--index-update-enable nil
                 cursor-type t
-                skroad--buf-renamer-changes (prepare-change-group))
+                skroad--buf-renamer-changes (prepare-change-group)
+                skroad--buf-renamer-original
+                (string-trim (skroad--prop-at 'data start)))
     (activate-change-group skroad--buf-renamer-changes)
     (skroad--hide-text start end)
     (goto-char end)
-    (setq-local skroad--buf-renamer-original
-                (string-trim (skroad--prop-at 'data start)))
     (insert (concat " " skroad--buf-renamer-original " "))
     (setq-local skroad--buf-renamer
                 (make-overlay end (point) (current-buffer)))
     (overlay-put skroad--buf-renamer 'category renamer-type)
     (set-buffer-modified-p nil)
     (goto-char end)))
+
+(defun skroad--renamer-deactivate ()
+  "Deactivate the renamer if it is currently active."
+  (when (skroad--overlay-active-p skroad--buf-renamer)
+    (delete-overlay skroad--buf-renamer)
+    (skroad--deactivate-mark)
+    (undo-amalgamate-change-group skroad--buf-renamer-changes)
+    (cancel-change-group skroad--buf-renamer-changes)
+    (goto-char (overlay-start skroad--buf-hider))
+    (skroad--unhide-text)
+    (skroad--resume-font-lock)
+    (skroad--refontify-current-line)
+    (setq-local skroad--index-update-enable t
+                skroad--buf-renamer-original nil
+                skroad--buf-renamer-changes nil
+                skroad--buf-renamer-valid nil)))
 
 (defun skroad--renamer-text ()
   "Return the current text in the renamer."
@@ -754,22 +770,6 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
    (when (skroad--overlay-active-p skroad--buf-renamer)
      (if (string-match (skroad--title-prohibited-regex) (skroad--renamer-text))
          (skroad--renamer-mark-invalid) (skroad--renamer-mark-valid)))))
-
-(defun skroad--renamer-deactivate ()
-  "Deactivate the renamer if it is currently active."
-  (when (skroad--overlay-active-p skroad--buf-renamer)
-    (delete-overlay skroad--buf-renamer)
-    (skroad--deactivate-mark)
-    (undo-amalgamate-change-group skroad--buf-renamer-changes)
-    (cancel-change-group skroad--buf-renamer-changes)
-    (goto-char (overlay-start skroad--buf-hider))
-    (skroad--unhide-text)
-    (skroad--resume-font-lock)
-    (skroad--refontify-current-line)
-    (setq-local skroad--index-update-enable t
-                skroad--buf-renamer-original nil
-                skroad--buf-renamer-changes nil
-                skroad--buf-renamer-valid nil)))
 
 (defun skroad--cmd-renamer-accept-changes ()
   "Accept a proposed renaming."
@@ -809,7 +809,8 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (interactive)
   (skroad--with-current-zone
    (skroad--renamer-activate
-    (skroad--prop-at 'renamer-overlay-type) start end)))
+    (skroad--prop-at 'renamer-overlay-type) start end)
+   (skroad--renamer-validate-if-active)))
 
 (skroad--define-text-type
  'skroad--text-mixin-renameable
