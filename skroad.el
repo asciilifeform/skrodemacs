@@ -14,6 +14,8 @@
 (defconst skroad--node-title-regex "\\([^][\n\r\f\t\s]+[^][\n\r\f\t]*?\\)"
   "Regex for valid skroad node titles.")
 
+;; (string-match skroad--node-title-regex " this should not be valid~\n")
+
 (defvar skroad--floating-title-enable t
   "Display floating title at the top of the window if title is not in view.")
 
@@ -44,6 +46,9 @@
        :foreground "white" :background "ForestGreen"))
   "Face for use with direct (via node title line) renamer."
   :group 'skroad-faces)
+
+(defconst skroad--renamer-invalid-background "red"
+  "Background colour during invalid renamer state.")
 
 (defface skroad--dead-link-face
   '((t :inherit link :foreground "red"))
@@ -659,7 +664,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
    )
  )
 
-;; Interactive renamer. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Text hider. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar-local skroad--buf-hider nil "Text hider overlay.")
 
@@ -672,8 +677,12 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   "Unhide all text that has been hidden with `skroad--hide-text`."
   (delete-overlay skroad--buf-hider))
 
+;; Interactive renamer. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defvar-local skroad--buf-renamer nil "Node renamer overlay.")
 (defvar-local skroad--buf-renamer-changes nil "Change group for renamer.")
+(defvar-local skroad--buf-renamer-original nil "Original name.")
+(defvar-local skroad--buf-renamer-valid nil "Whether proposed rename is valid.")
 
 (defconst skroad--strings-prohibited-in-titles '("\n" "\r" "\f" "\t" "~"))
 
@@ -688,38 +697,63 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
               (when (get type 'exclude-delims-from-titles)
                 (let ((start-delim (get type 'start-delim))
                       (end-delim (get type 'end-delim)))
-                  (when (not (string-empty-p start-delim))
+                  (unless (string-empty-p start-delim)
                     (push start-delim prohib-strings))
-                  (when (not (string-empty-p end-delim))
+                  (unless (string-empty-p end-delim)
                     (push end-delim prohib-strings)))))
             (regexp-opt prohib-strings))))
   skroad--title-prohibited-regex-cached)
 
-
-;; (skroad--title-prohibited-regex)
-
-
 (defun skroad--renamer-activate (renamer-type start end)
-  "Activate the renamer in the current zone."
-  (message "Rename node: press <return> to rename, or leave field to cancel.")
-  (skroad--suspend-font-lock)
-  (skroad--deactivate-mark)
-  (setq-local skroad--index-update-enable nil
-              cursor-type t
-              skroad--buf-renamer-changes (prepare-change-group))
-  (activate-change-group skroad--buf-renamer-changes)
-  (skroad--hide-text start end)
-  (goto-char end)
-  (insert (concat " " (skroad--prop-at 'data start) " "))
-  (setq-local skroad--buf-renamer (make-overlay end (point) (current-buffer)))
-  (overlay-put skroad--buf-renamer 'category renamer-type)
-  (goto-char end))
+  "Activate the renamer in the current zone, unless already active."
+  (unless (skroad--overlay-active-p skroad--buf-renamer)
+    (message "Rename node: press <return> to rename, or leave field to cancel.")
+    (skroad--suspend-font-lock)
+    (skroad--deactivate-mark)
+    (setq-local skroad--index-update-enable nil
+                cursor-type t
+                skroad--buf-renamer-changes (prepare-change-group))
+    (activate-change-group skroad--buf-renamer-changes)
+    (skroad--hide-text start end)
+    (goto-char end)
+    (setq-local skroad--buf-renamer-original
+                (string-trim (skroad--prop-at 'data start)))
+    (insert (concat " " skroad--buf-renamer-original " "))
+    (setq-local skroad--buf-renamer
+                (make-overlay end (point) (current-buffer)))
+    (overlay-put skroad--buf-renamer 'category renamer-type)
+    (set-buffer-modified-p nil)
+    (goto-char end)))
 
 (defun skroad--renamer-text ()
-  "Return the current text in the renamer, or nil if the latter is inactive."
-  (when (skroad--overlay-active-p skroad--buf-renamer)
-    (string-trim (field-string-no-properties
-                  (overlay-start skroad--buf-renamer)))))
+  "Return the current text in the renamer."
+  (string-trim (field-string-no-properties
+                (overlay-start skroad--buf-renamer))))
+
+(defun skroad--renamer-get-default-face ()
+  "Get the default face of the current renamer."
+  (get (overlay-get skroad--buf-renamer 'category) 'face))
+
+(defun skroad--renamer-mark-valid ()
+  "Mark the current renamer valid."
+  (overlay-put skroad--buf-renamer 'face (skroad--renamer-get-default-face))
+  t)
+
+(defun skroad--renamer-mark-invalid ()
+  "Mark the current renamer invalid."
+  (overlay-put
+   skroad--buf-renamer 'face
+   `(:inherit ,(skroad--renamer-get-default-face)
+              :background ,skroad--renamer-invalid-background))
+  nil)
+
+(defun skroad--renamer-validate-if-active ()
+  "If a renamer is active, validate the proposed text."
+  (setq-local
+   skroad--buf-renamer-valid
+   (when (skroad--overlay-active-p skroad--buf-renamer)
+     (if (string-match (skroad--title-prohibited-regex) (skroad--renamer-text))
+         (skroad--renamer-mark-invalid) (skroad--renamer-mark-valid)))))
 
 (defun skroad--renamer-deactivate ()
   "Deactivate the renamer if it is currently active."
@@ -732,30 +766,18 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (skroad--unhide-text)
     (skroad--resume-font-lock)
     (skroad--refontify-current-line)
-    (setq-local skroad--index-update-enable t)
-    ))
-
-;; (defun skroad--renamer-valid ()
-;;   (and (skroad--overlay-active-p skroad--buf-renamer)
-;;        (save-mark-and-excursion
-;;          (goto-char (overlay-start skroad--buf-renamer))
-
-
-;; (skroad--prop-at 'find-find-any-forward
-;;                  (overlay-start skroad--buf-renamer))
-
-;; (defun skroad--renamer-validate-if-active ()
-;;   (when (skroad--overlay-active-p skroad--buf-renamer)
-
-;;     )
-;;   )
+    (setq-local skroad--index-update-enable t
+                skroad--buf-renamer-original nil
+                skroad--buf-renamer-changes nil
+                skroad--buf-renamer-valid nil)))
 
 (defun skroad--cmd-renamer-accept-changes ()
   "Accept a proposed renaming."
   (interactive)
-  (let ((renamed (skroad--renamer-text)))
-    (skroad--renamer-deactivate)
-    (message (format "renamed: '%s'" renamed))))
+  (when skroad--buf-renamer-valid
+    (message (format "renamed: '%s' -> '%s'"
+                     skroad--buf-renamer-original (skroad--renamer-text)))
+    (skroad--renamer-deactivate)))
 
 (skroad--define-text-type
  'skroad--text-mixin-renamer-overlay
@@ -773,7 +795,10 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
                       (delete-region (region-beginning) (region-end)))
                      ((> (point) (field-beginning))
                       (delete-char -1))))
-           "RET" #'skroad--cmd-renamer-accept-changes)
+           "RET" #'skroad--cmd-renamer-accept-changes
+           "<remap> <keyboard-quit>"
+           #'(lambda () (interactive) (skroad--renamer-deactivate))
+           )
  :on-leave '(lambda (pos-from auto)
               (message "Rename node: changes discarded.")
               (skroad--renamer-deactivate))
@@ -1037,7 +1062,13 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (skroad--motion skroad--buf-pre-command-point-state)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
   (skroad--update-local-index) ;; TODO: do it in save hook?
+  (when (buffer-modified-p)
+    (skroad--renamer-validate-if-active))
   (unless mark-active (setq-local mouse-highlight t)))
+
+(defun skroad--before-save-hook ()
+  "Triggers prior to a skroad buffer save."
+  (skroad--renamer-deactivate))
 
 (defun skroad--scroll-hook (window start)
   "Triggers when a buffer scrolls."
@@ -1107,6 +1138,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (add-hook 'after-change-functions 'skroad--after-change-function nil t)
   (add-hook 'pre-command-hook 'skroad--pre-command-hook nil t)
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
+  (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
   (add-hook 'window-scroll-functions 'skroad--scroll-hook nil t)
   
   ;; Overlay for when an atomic is under the point. Initially inactive:
