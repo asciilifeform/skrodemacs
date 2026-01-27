@@ -681,13 +681,13 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defvar-local skroad--temporary-changes nil "Temporary change group.")
 
-(defun skroad--start-undoable ()
+(defun skroad--start-temporary ()
   "Start a temporary change set."
   (assert (null skroad--temporary-changes))
   (setq-local skroad--temporary-changes (prepare-change-group))
   (activate-change-group skroad--temporary-changes))
 
-(defun skroad--end-undoable ()
+(defun skroad--end-temporary ()
   "End a temporary change set."
   (assert skroad--temporary-changes)
   (undo-amalgamate-change-group skroad--temporary-changes)
@@ -726,7 +726,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (message "Rename node: press <return> to rename, or leave field to cancel.")
     (skroad--suspend-font-lock)
     (skroad--deactivate-mark)
-    (skroad--start-undoable)
+    (skroad--start-temporary)
     (setq-local skroad--index-update-enable nil
                 cursor-type t
                 skroad--buf-renamer-original
@@ -745,7 +745,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (when (skroad--overlay-active-p skroad--buf-renamer)
     (delete-overlay skroad--buf-renamer)
     (skroad--deactivate-mark)
-    (skroad--end-undoable)
+    (skroad--end-temporary)
     (goto-char (overlay-start skroad--buf-hider))
     (skroad--unhide-text)
     (skroad--resume-font-lock)
