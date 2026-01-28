@@ -524,8 +524,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
          (make-hash-table :test 'equal
                           :size (hash-table-count skroad--buf-index))))
     (skroad--index-scan-region init-populate (point-min) (point-max) 1)
-    (skroad--index-update skroad--buf-index init-populate t))
-  (message "Populated local index."))
+    (skroad--index-update skroad--buf-index init-populate t)))
 
 (defun skroad--update-local-index ()
   "Apply all pending changes queued for the buffer-local text type index."
