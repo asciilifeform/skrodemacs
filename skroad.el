@@ -125,6 +125,19 @@
                        (apply orig-fun args))
                    (apply orig-fun args)))))
 
+(defconst skroad--time-epsilon 0.01 "Short idle interval for async dispatch.")
+
+(defun skroad--async-dispatch (fn &rest args)
+  "Dispatch FN with ARGS asynchronously; buffer is read-only until completed."
+  (setq-local buffer-read-only t)
+  (let ((here (current-buffer)))
+    (run-with-idle-timer
+     skroad--time-epsilon nil
+     (lambda ()
+       (with-current-buffer here
+         (apply fn args)
+         (setq-local buffer-read-only nil))))))
+
 (defun skroad--canonical-title (s)
   "Return a canonicalized node title from string S."
   (string-clean-whitespace s))
@@ -513,19 +526,6 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (skroad--index-scan-region init-populate (point-min) (point-max) 1)
     (skroad--index-update skroad--buf-index init-populate t))
   (message "Populated local index."))
-
-(defconst skroad--time-epsilon 0.01 "Short idle interval for async dispatch.")
-
-(defun skroad--async-dispatch (fn &rest args)
-  "Dispatch FN with ARGS asynchronously; buffer is read-only until completed."
-  (setq-local buffer-read-only t)
-  (let ((here (current-buffer)))
-    (run-with-idle-timer
-     skroad--time-epsilon nil
-     (lambda ()
-       (with-current-buffer here
-         (apply fn args)
-         (setq-local buffer-read-only nil))))))
 
 (defun skroad--update-local-index ()
   "Apply all pending changes queued for the buffer-local text type index."
