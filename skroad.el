@@ -125,6 +125,10 @@
                        (apply orig-fun args))
                    (apply orig-fun args)))))
 
+(defun skroad--canonical-title (s)
+  "Return a canonicalized node title from string S."
+  (string-clean-whitespace s))
+
 ;; Skroad text type mechanism and basic types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--define-text-type (name &rest properties)
@@ -508,21 +512,20 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
                           :size (hash-table-count skroad--buf-index))))
     (skroad--index-scan-region init-populate (point-min) (point-max) 1)
     (skroad--index-update skroad--buf-index init-populate t))
-  (setq-local buffer-read-only nil)
-  (message "Populated local index.")
-  )
+  (message "Populated local index."))
 
-(defconst skroad--populate-delay 0.01 "Idle interval before index populates.")
+(defconst skroad--time-epsilon 0.01 "Short idle interval for async dispatch.")
 
-;; TODO: if it's big enough, we'll want to do this in chunks
-(defun skroad--populate-local-index ()
-  "Init local index asynchronously, so that node is displayed immediately."
+(defun skroad--async-dispatch (fn &rest args)
+  "Dispatch FN with ARGS asynchronously; buffer is read-only until completed."
+  (setq-local buffer-read-only t)
   (let ((here (current-buffer)))
     (run-with-idle-timer
-     skroad--populate-delay nil
+     skroad--time-epsilon nil
      (lambda ()
        (with-current-buffer here
-         (skroad--init-local-index))))))
+         (apply fn args)
+         (setq-local buffer-read-only nil))))))
 
 (defun skroad--update-local-index ()
   "Apply all pending changes queued for the buffer-local text type index."
@@ -743,7 +746,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (setq-local skroad--index-update-enable nil
                 cursor-type t
                 skroad--buf-renamer-original
-                (string-trim (skroad--prop-at 'data start)))
+                (skroad--prop-at 'data start))
     (skroad--hide-text start end)
     (goto-char end)
     (insert (concat " " skroad--buf-renamer-original " "))
@@ -769,8 +772,8 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defun skroad--renamer-text ()
   "Get the text in the current renamer."
-  (string-trim (field-string-no-properties
-                (overlay-start skroad--buf-renamer))))
+  (skroad--canonical-title (field-string-no-properties
+                            (overlay-start skroad--buf-renamer))))
 
 (defun skroad--renamer-get-default-face ()
   "Get the default face of the current renamer."
@@ -1156,8 +1159,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   "Open a skroad node."
   (face-remap-set-base 'header-line 'skroad--title-face)
   (skroad--init-font-lock)
-  (setq-local buffer-read-only t) ;; Stay read-only until index populated
-  (skroad--populate-local-index)
+  (skroad--async-dispatch #'skroad--init-local-index)
   )
 
 (define-derived-mode skroad-mode text-mode "Skroad"
