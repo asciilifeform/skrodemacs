@@ -14,8 +14,6 @@
 (defconst skroad--node-title-regex "\\([^][\n\r\f\t\s]+[^][\n\r\f\t]*?\\)"
   "Regex for valid skroad node titles.")
 
-;; (string-match skroad--node-title-regex " this should not be valid~\n")
-
 (defvar skroad--floating-title-enable t
   "Display floating title at the top of the window if title is not in view.")
 
@@ -530,12 +528,12 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   "Apply all pending changes queued for the buffer-local text type index."
   (when (and skroad--index-update-enable skroad--buf-changes)
     (skroad--index-update skroad--buf-index skroad--buf-changes)
-    (setq skroad--buf-changes nil)))
+    (setq-local skroad--buf-changes nil)))
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in a skroad buffer in region START...END."
   (when (null skroad--buf-changes)
-    (setq skroad--buf-changes (make-hash-table :test 'equal)))
+    (setq-local skroad--buf-changes (make-hash-table :test 'equal)))
   (skroad--with-whole-lines start end
     (skroad--index-scan-region
      skroad--buf-changes start-expanded end-expanded -1)))
@@ -983,7 +981,6 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :use 'skroad--text-mixin-indexed
  )
 
-;; TODO: make sure there can only be one in a buffer
 (skroad--define-text-type
  'skroad--text-append-marker
  :doc "Auto-append marker."
