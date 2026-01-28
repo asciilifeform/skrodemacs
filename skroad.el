@@ -514,12 +514,14 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (message "Populated local index.")
   )
 
+(defconst skroad--populate-delay 0.01 "Idle interval before index populates.")
+
 ;; TODO: if it's big enough, we'll want to do this in chunks
 (defun skroad--populate-local-index ()
   "Init local index asynchronously, so that node is displayed immediately."
   (let ((here (current-buffer)))
     (run-with-idle-timer
-     0.01 nil
+     skroad--populate-delay nil
      (lambda ()
        (with-current-buffer here
          (skroad--init-local-index))))))
