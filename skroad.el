@@ -47,18 +47,25 @@
   "Face for use with direct (via node title line) renamer."
   :group 'skroad-faces)
 
-(defconst skroad--renamer-invalid-background "red"
+(defconst skroad--renamer-faces-invalid-background "red"
   "Background colour during invalid renamer state.")
 
 (defface skroad--dead-link-face
   '((t :inherit link :foreground "red"))
-  "Face used for dead links.."
+  "Face used for dead links."
   :group 'skroad-faces)
 
 (defface skroad--heading-face
   '((t :inherit skroad--text-face
        :weight bold :height 1.2 :inverse-video t))
   "Face used for skroad heading text."
+  :group 'skroad-faces)
+
+;; TODO: extend?
+(defface skroad--append-marker-face
+  '((t :inherit skroad--text-face
+       :box t :weight bold :inverse-video t))
+  "Face used for skroad append markers."
   :group 'skroad-faces)
 
 ;;; Utility functions. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -502,14 +509,20 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
          (make-hash-table :test 'equal
                           :size (hash-table-count skroad--buf-index))))
     (skroad--index-scan-region init-populate (point-min) (point-max) 1)
-    (skroad--index-update skroad--buf-index init-populate t)))
+    (skroad--index-update skroad--buf-index init-populate t))
+  (setq-local buffer-read-only nil)
+  (message "Populated local index.")
+  )
 
 ;; TODO: if it's big enough, we'll want to do this in chunks
 (defun skroad--populate-local-index ()
   "Init local index asynchronously, so that node is displayed immediately."
-  (setq-local buffer-read-only t)
-  (run-with-idle-timer 0.01 nil #'skroad--init-local-index)
-  (setq-local buffer-read-only nil))
+  (let ((here (current-buffer)))
+    (run-with-idle-timer
+     0.01 nil
+     (lambda ()
+       (with-current-buffer here
+         (skroad--init-local-index))))))
 
 (defun skroad--update-local-index ()
   "Apply all pending changes queued for the buffer-local text type index."
@@ -679,20 +692,20 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 ;; Temporary change mechanism. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar-local skroad--buf-temporary-changes nil "Temporary change group.")
+(defvar-local skroad--buf-unrollable-changes nil "Temporary change group.")
 
-(defun skroad--start-temporary ()
+(defun skroad--snapshot-prepare ()
   "Start a temporary change set."
-  (assert (null skroad--buf-temporary-changes))
-  (setq-local skroad--buf-temporary-changes (prepare-change-group))
-  (activate-change-group skroad--buf-temporary-changes))
+  (assert (null skroad--buf-unrollable-changes))
+  (setq-local skroad--buf-unrollable-changes (prepare-change-group))
+  (activate-change-group skroad--buf-unrollable-changes))
 
-(defun skroad--end-temporary ()
+(defun skroad--snapshot-rollback ()
   "End a temporary change set."
-  (assert skroad--buf-temporary-changes)
-  (undo-amalgamate-change-group skroad--buf-temporary-changes)
-  (cancel-change-group skroad--buf-temporary-changes)
-  (setq-local skroad--buf-temporary-changes nil))
+  (assert skroad--buf-unrollable-changes)
+  (undo-amalgamate-change-group skroad--buf-unrollable-changes)
+  (cancel-change-group skroad--buf-unrollable-changes)
+  (setq-local skroad--buf-unrollable-changes nil))
 
 ;; Interactive renamer. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -705,7 +718,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defvar skroad--title-prohibited-regex-cached nil)
 
 (defun skroad--title-prohibited-regex ()
-  "Return a regex matching all strings prohibited in skroad node titles."
+  "Memoized regex matching all strings prohibited in skroad node titles."
   (unless skroad--title-prohibited-regex-cached
     (setq skroad--title-prohibited-regex-cached
           (let ((prohib-strings skroad--strings-prohibited-in-titles))
@@ -726,7 +739,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (message "Rename node: press <return> to rename, or leave field to cancel.")
     (skroad--suspend-font-lock)
     (skroad--deactivate-mark)
-    (skroad--start-temporary)
+    (skroad--snapshot-prepare)
     (setq-local skroad--index-update-enable nil
                 cursor-type t
                 skroad--buf-renamer-original
@@ -745,7 +758,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (when (skroad--overlay-active-p skroad--buf-renamer)
     (delete-overlay skroad--buf-renamer)
     (skroad--deactivate-mark)
-    (skroad--end-temporary)
+    (skroad--snapshot-rollback)
     (goto-char (overlay-start skroad--buf-hider))
     (skroad--unhide-text)
     (skroad--resume-font-lock)
@@ -755,7 +768,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
                 skroad--buf-renamer-valid nil)))
 
 (defun skroad--renamer-text ()
-  "Return the current text in the renamer."
+  "Get the text in the current renamer."
   (string-trim (field-string-no-properties
                 (overlay-start skroad--buf-renamer))))
 
@@ -764,16 +777,16 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (get (overlay-get skroad--buf-renamer 'category) 'face))
 
 (defun skroad--renamer-mark-valid ()
-  "Mark the current renamer valid."
+  "Mark the current renamer as valid."
   (overlay-put skroad--buf-renamer 'face (skroad--renamer-get-default-face))
   t)
 
 (defun skroad--renamer-mark-invalid ()
-  "Mark the current renamer invalid."
+  "Mark the current renamer as invalid."
   (overlay-put
    skroad--buf-renamer 'face
    `(:inherit ,(skroad--renamer-get-default-face)
-              :background ,skroad--renamer-invalid-background))
+              :background ,skroad--renamer-faces-invalid-background))
   nil)
 
 (defun skroad--renamer-validate-if-active ()
@@ -785,10 +798,10 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
          (skroad--renamer-mark-invalid) (skroad--renamer-mark-valid)))))
 
 (defun skroad--cmd-renamer-accept-changes ()
-  "Accept a proposed renaming."
+  "Accept the current renaming."
   (interactive)
   (when skroad--buf-renamer-valid
-    (message (format "renamed: '%s' -> '%s'"
+    (message (format "renaming: '%s' -> '%s'"
                      skroad--buf-renamer-original (skroad--renamer-text)))
     (skroad--renamer-deactivate)))
 
@@ -800,9 +813,9 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :zone 'type-name
  :field 'zone
  :keymap (define-keymap
-           "<remap> <end-of-line>"
+           "<remap> <end-of-line>" ;; END jumps to the end of the renamer
            #'(lambda () (interactive) (goto-char (1- (field-end))))
-           "<backspace>"
+           "<backspace>" ;; backspace must not change preceding text
            #'(lambda () (interactive)
                (cond ((use-region-p)
                       (delete-region (region-beginning) (region-end)))
@@ -810,12 +823,8 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
                       (delete-char -1))))
            "RET" #'skroad--cmd-renamer-accept-changes
            "<remap> <keyboard-quit>"
-           #'(lambda () (interactive) (skroad--renamer-deactivate))
-           )
- :on-leave '(lambda (pos-from auto)
-              (message "Rename node: changes discarded.")
-              (skroad--renamer-deactivate))
- )
+           #'(lambda () (interactive) (skroad--renamer-deactivate)))
+ :on-leave '(lambda (pos-from auto) (skroad--renamer-deactivate)))
 
 (defun skroad--cmd-renamer-activate-here ()
   "Activate the renamer for the current zone and type."
@@ -889,14 +898,17 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (message (format "Live link pushed: '%s'" data)))
 
 (defun skroad--link-init (text-type payload)
+  "First instance of PAYLOAD of TEXT-TYPE was found in the buffer during load."
   ;; (message (format "Link init: type=%s payload='%s'" text-type payload))
   )
 
 (defun skroad--link-create (text-type payload)
+  "First instance of PAYLOAD of TEXT-TYPE was introduced into the buffer."
   (message (format "Link create: type=%s payload='%s'" text-type payload))
   )
 
 (defun skroad--link-destroy (text-type payload)
+  "Last instance of PAYLOAD of TEXT-TYPE was removed from the buffer."
   (message (format "Link destroy: type=%s payload='%s'" text-type payload))
   )
 
@@ -969,6 +981,18 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :use 'skroad--text-mixin-indexed
  )
 
+;; TODO: make sure there can only be one in a buffer
+(skroad--define-text-type
+ 'skroad--text-append-marker
+ :doc "Auto-append marker."
+ :use 'skroad--text-atomic
+ :face 'skroad--append-marker-face
+ :help-echo "Auto-append marker."
+ :payload-regex "^\\(\\$\\$\\$\\)"
+ :use 'skroad--text-mixin-delimited-non-title
+ :use 'skroad--text-mixin-render-delimited-zoned
+ )
+
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--get-title ()
@@ -993,7 +1017,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (skroad--define-text-type
  'skroad--text-node-title
  :doc "Node title."
- :kbd-doc "<r> rename this node"
+ :kbd-doc "<r> Rename this node."
  :use 'skroad--text-atomic
  :order 500
  :keymap
@@ -1026,13 +1050,13 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defvar-local skroad--buf-pre-command-point-state (list (point-min) nil nil)
   "Point, zone at point, and type at point prior to a command.")
 
-(defun skroad--point-state ()
+(defun skroad--get-point-state ()
   "Return a snapshot of the current point, zone, and type."
   (list (point) (skroad--prop-at 'zone) (skroad--prop-at 'category)))
 
 (defun skroad--motion (prev &optional auto)
   "To be called whenever the zone under the point may have changed."
-  (let ((current (skroad--point-state)))
+  (let ((current (skroad--get-point-state)))
     (seq-let (old-p old-zone old-type p zone type) (append prev current)
       (when
           (cond ;; text type actions `on-leave` and `on-enter` may both fire
@@ -1068,8 +1092,9 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
   (setq-local mouse-highlight nil
-              skroad--buf-pre-command-point-state (skroad--point-state)))
+              skroad--buf-pre-command-point-state (skroad--get-point-state)))
 
+;; TODO: some of these should be done only if buffer modified?
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
   (skroad--refontify-current-line)
@@ -1112,9 +1137,9 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
       (point))))
 
 (defconst skroad--find-word-boundary-function-table
-  (let ((tab (make-char-table nil)))
-    (set-char-table-range tab t #'skroad--find-word-boundary)
-    tab)
+  (let ((char-table (make-char-table nil)))
+    (set-char-table-range char-table t #'skroad--find-word-boundary)
+    char-table)
   "Assigned to `find-word-boundary-function-table' in skroad mode.")
 
 ;; TODO: does this need with-silent-modifications for textmode temp buffers
@@ -1132,6 +1157,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   "Open a skroad node."
   (face-remap-set-base 'header-line 'skroad--title-face)
   (skroad--init-font-lock)
+  (setq-local buffer-read-only t) ;; Stay read-only until index populated
   (skroad--populate-local-index)
   )
 
