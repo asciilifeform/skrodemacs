@@ -527,7 +527,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (skroad--index-update skroad--buf-index init-populate t)))
 
 (defun skroad--update-local-index ()
-  "Apply all pending changes queued for the buffer-local text type index."
+  "Apply all pending changes queued for the buffer-local index."
   (when (and skroad--index-update-enable skroad--buf-changes)
     (skroad--index-update skroad--buf-index skroad--buf-changes)
     (setq-local skroad--buf-changes nil)))
@@ -545,6 +545,13 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (skroad--with-whole-lines start end
     (skroad--index-scan-region
      skroad--buf-changes start-expanded end-expanded 1)))
+
+(defun skroad--for-all-indexed-of-type (type fn &rest other-args)
+  "Apply FN to all payloads of TYPE currently in the buffer-local index."
+  (maphash
+   #'(lambda (key val)
+       (when (eq type (car key)) (apply fn (cons (cdr key) other-args))))
+   skroad--buf-index))
 
 ;; Top-level keymap for the major mode. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
