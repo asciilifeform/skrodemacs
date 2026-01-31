@@ -555,7 +555,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
        (when (eq type (car key)) (apply fn (cons (cdr key) other-args))))
    skroad--buf-index))
 
-;;;
+
 ;; (measure-time
 ;;  (with-temp-buffer
 ;;    (insert-file-contents "~/skrode/k.skroad")
@@ -567,10 +567,23 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 ;;    )
 ;;  )
 
+;; (measure-time
+;;  (let ((vis-buf (find-buffer-visiting "~/skrode/k.skroad")))
+;;    (if vis-buf
+;;        (with-current-buffer vis-buf
+;;          (skroad--for-all-indexed-of-type
+;;           'skroad--text-link-node-live
+;;           #'(lambda (n) (message "live: '%s'" n))
+;;           )
+;;          )
+;;      nil
+;;      )
+;;    ))
+
 ;; Top-level keymap for the major mode. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--cmd-top-backspace ()
-  "If prev point is in an atomic, delete it. Otherwise normal backspace."
+  "If prev point is in an atomic, delete it; otherwise, normal backspace."
   (interactive)
   (let ((p (point)))
     (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
@@ -1008,16 +1021,35 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 ;; End-of-text marker. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun skroad--eot-marker-init (text-type payload)
+  "First instance of PAYLOAD of TEXT-TYPE was found in the buffer during load."
+  ;; (message (format "Eot-Marker init: type=%s payload='%s'" text-type payload))
+  )
+
+(defun skroad--eot-marker-create (text-type payload)
+  "First instance of PAYLOAD of TEXT-TYPE was introduced into the buffer."
+  (message (format "Eot-Marker create: type=%s payload='%s'" text-type payload))
+  )
+
+(defun skroad--eot-marker-destroy (text-type payload)
+  "Last instance of PAYLOAD of TEXT-TYPE was removed from the buffer."
+  (message (format "Eot-Marker destroy: type=%s payload='%s'" text-type payload))
+  )
+
 (skroad--define-text-type
  'skroad--eot-marker
  :doc "End-of-text marker."
  :kbd-doc "Auto-backlinks inserted below this marker; throws inserted above it."
  :use 'skroad--text-atomic
+ :on-init #'skroad--eot-marker-init
+ :on-create #'skroad--eot-marker-create
+ :on-destroy #'skroad--eot-marker-destroy
  :face 'skroad--eot-marker-face
  :help-echo "End-of-text marker."
  :payload-regex "^\\(\\@\\@\\@\\)\n"
  :use 'skroad--text-mixin-delimited-non-title
  :use 'skroad--text-mixin-render-delimited-zoned
+ :use 'skroad--text-mixin-indexed
  )
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1212,8 +1244,11 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (setq-local yank-handled-properties '((id . skroad--yank-handler)))
 
   ;; Buffer-local hooks:
+  
+  ;; TODO: allow these in temp mode?
   (add-hook 'before-change-functions 'skroad--before-change-function nil t)
   (add-hook 'after-change-functions 'skroad--after-change-function nil t)
+  
   (add-hook 'pre-command-hook 'skroad--pre-command-hook nil t)
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
   (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
