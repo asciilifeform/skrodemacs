@@ -61,10 +61,10 @@
   "Face used for skroad heading text."
   :group 'skroad-faces)
 
-(defface skroad--append-marker-face
+(defface skroad--eot-marker-face
   '((t :inherit skroad--text-face
        :box t :weight bold :inverse-video t :extend t))
-  "Face used for skroad append markers."
+  "Face used for skroad EOT marker."
   :group 'skroad-faces)
 
 ;;; Utility functions. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1005,14 +1005,15 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :use 'skroad--text-mixin-indexed
  )
 
-;; Auto-append marker. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; End-of-text marker. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (skroad--define-text-type
- 'skroad--text-append-marker
- :doc "Auto-append marker."
+ 'skroad--eot-marker
+ :doc "End-of-text marker."
+ :kbd-doc "Auto-backlinks inserted below this marker; throws inserted above it."
  :use 'skroad--text-atomic
- :face 'skroad--append-marker-face
- :help-echo "Auto-append marker."
+ :face 'skroad--eot-marker-face
+ :help-echo "End-of-text marker."
  :payload-regex "^\\(\\@\\@\\@\\)\n"
  :use 'skroad--text-mixin-delimited-non-title
  :use 'skroad--text-mixin-render-delimited-zoned
