@@ -150,12 +150,12 @@
 
 ;; Skroad text type mechanism and basic types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defmacro skroad--def-type (name &rest properties)
+(defmacro skroad--deftype (name &rest properties)
   "Define a new skroad text type NAME with given PROPERTIES."
   (declare (indent defun))
-  `(skroad--def-type-impl ',name ,@properties))
+  `(skroad--deftype-impl ',name ,@properties))
 
-(defun skroad--def-type-impl (name &rest properties)
+(defun skroad--deftype-impl (name &rest properties)
   "Define a new skroad text type NAME with given PROPERTIES."
   (if (plist-get properties :mixin) ;; Save a mixin's properties verbatim.
       (setf (symbol-plist name) properties) ;; ...will be eaten when :use'd.
@@ -213,14 +213,14 @@ call the action with ARGS."
   (when action-name (let ((action (get text-type action-name)))
                       (when action (apply action args)))))
 
-(skroad--def-type skroad--text-mixin-default-type
+(skroad--deftype skroad--text-mixin-default-type
   :doc "Default text type from which all other types (except mixins) inherit."
   :mixin t
   :order 100 ;; lower number will get rendered first
   :face 'skroad--text-face
   :rear-nonsticky t)
 
-(skroad--def-type skroad--text-mixin-delimited
+(skroad--deftype skroad--text-mixin-delimited
   :doc "Base mixin for delimited text types. Define delimiters before using."
   :mixin t
   :require 'payload-regex
@@ -233,7 +233,7 @@ call the action with ARGS."
   :make-regex '(lambda (s) (concat start-delim-regex s end-delim-regex))
   :regex-any '(funcall make-regex payload-regex))
 
-(skroad--def-type skroad--text-mixin-findable
+(skroad--deftype skroad--text-mixin-findable
   :doc "Mixin for findable text types. (Internal use only.)"
   :mixin t
   :require '(make-regex regex-any finder-regex-forward make-text)
@@ -295,7 +295,7 @@ call the action with ARGS."
   "Generate a backward finder for regex R."
   (lambda (limit) (re-search-forward r limit t)))
 
-(skroad--def-type skroad--text-mixin-delimited-anywhere
+(skroad--deftype skroad--text-mixin-delimited-anywhere
   :doc "Mixin for delimited text types found anywhere in the buffer."
   :mixin t
   :use 'skroad--text-mixin-delimited
@@ -330,7 +330,7 @@ call the action with ARGS."
     (let ((lim (max (skroad--node-body-start) (or limit (point-min)))))
       (when (> (point) lim) (re-search-backward r lim t)))))
 
-(skroad--def-type skroad--text-mixin-delimited-non-title
+(skroad--deftype skroad--text-mixin-delimited-non-title
   :doc "Mixin for delimited text types excluded from the node title."
   :mixin t
   :use 'skroad--text-mixin-delimited
@@ -342,7 +342,7 @@ call the action with ARGS."
 
 (defvar skroad--text-types-rendered nil "Text types for use with font-lock.")
 
-(skroad--def-type skroad--text-mixin-rendered
+(skroad--deftype skroad--text-mixin-rendered
   :doc "Finalization mixin for all text types rendered by font-lock."
   :mixin t
   :require '(find-any-forward render)
@@ -398,7 +398,7 @@ call the action with ARGS."
 
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(skroad--def-type skroad--text-mixin-render-delimited-zoned
+(skroad--deftype skroad--text-mixin-render-delimited-zoned
   :doc "Mixin for zoned delimited text types rendered by font-lock."
   :mixin t
   :exclude-delims-from-titles t
@@ -431,7 +431,7 @@ call the action with ARGS."
 
 ;; Decorative text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(skroad--def-type skroad--text-mixin-render-delimited-decorative
+(skroad--deftype skroad--text-mixin-render-delimited-decorative
   :doc "Mixin for decorative delimited text types rendered by font-lock."
   :mixin t
   :use 'skroad--text-mixin-delimited-anywhere
@@ -441,21 +441,21 @@ call the action with ARGS."
   :order 1000 ;; Render these last, so they can amend all other rendered faces
   :use 'skroad--text-mixin-rendered)
 
-(skroad--def-type skroad--text-decorative-italic
+(skroad--deftype skroad--text-decorative-italic
   :doc "Italicized text."
   :face 'italic
   :start-delim "__" :end-delim "__"
   :payload-regex "\\([^_]+\\)"
   :use 'skroad--text-mixin-render-delimited-decorative)
 
-(skroad--def-type skroad--text-decorative-bold
+(skroad--deftype skroad--text-decorative-bold
   :doc "Bold text."
   :face 'bold
   :start-delim "**" :end-delim "**"
   :payload-regex "\\([^*]+\\)"
   :use 'skroad--text-mixin-render-delimited-decorative)
 
-(skroad--def-type skroad--text-decorative-heading
+(skroad--deftype skroad--text-decorative-heading
   :doc "Heading text."
   :face 'skroad--heading-face
   :payload-regex "^##\s*\\([^\n\r\f\t\s]+[^\n\r\f\t]*\\)"
@@ -465,7 +465,7 @@ call the action with ARGS."
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
-(skroad--def-type skroad--text-mixin-indexed
+(skroad--deftype skroad--text-mixin-indexed
   :doc "Finalization mixin for indexed text types."
   :mixin t
   :require 'for-all-in-region-forward
@@ -711,7 +711,7 @@ or in its visiting buffer, if there is one."
   (funcall
    (get 'skroad--text-link-node-live 'jump-next-from) (skroad--zone-end)))
 
-(skroad--def-type skroad--text-atomic
+(skroad--deftype skroad--text-atomic
   :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
   :on-enter '(lambda (pos-from auto)
                (skroad--selector-activate-here)
@@ -869,7 +869,7 @@ or in its visiting buffer, if there is one."
                      skroad--buf-renamer-original (skroad--renamer-text)))
     (skroad--renamer-deactivate)))
 
-(skroad--def-type skroad--text-mixin-renamer-overlay
+(skroad--deftype skroad--text-mixin-renamer-overlay
   :doc "Base mixin for renamer overlays."
   :mixin t
   :rear-advance t
@@ -897,7 +897,7 @@ or in its visiting buffer, if there is one."
      (skroad--prop-at 'renamer-overlay-type) start end)
     (skroad--renamer-validate-if-active)))
 
-(skroad--def-type skroad--text-mixin-renameable
+(skroad--deftype skroad--text-mixin-renameable
   :doc "Mixin for allowing the use of the rename command with an atomic type."
   :mixin t
   :require 'renamer-overlay-type
@@ -923,7 +923,7 @@ or in its visiting buffer, if there is one."
   (interactive)
   (skroad--do-link-action (point)))
 
-(skroad--def-type skroad--text-link
+(skroad--deftype skroad--text-link
   :doc "Fundamental type from which all skroad links are derived."
   :use 'skroad--text-atomic
   :face 'link
@@ -947,7 +947,7 @@ or in its visiting buffer, if there is one."
   (with-current-buffer buf
     (skroad--prop-at 'data position)))
 
-(skroad--def-type skroad--text-link-node
+(skroad--deftype skroad--text-link-node
   :doc "Fundamental type for skroad node links (live or dead)."
   :use 'skroad--text-link
   :help-echo 'skroad--link-mouseover
@@ -972,13 +972,13 @@ or in its visiting buffer, if there is one."
   (message (format "Link destroy: type=%s payload='%s'" text-type payload))
   )
 
-(skroad--def-type skroad--text-renamer-indirect
+(skroad--deftype skroad--text-renamer-indirect
   :doc "Renamer for editing a node's title while standing on a link to the node."
   :use 'skroad--text-mixin-renamer-overlay
   :face 'skroad--indirect-renamer-face
   :before-string " " :after-string " ")
 
-(skroad--def-type skroad--text-link-node-live
+(skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :kbd-doc "<return> go|<r> rename|<l> deaden|<t> textify|<del> delete|<spc> prepend space"
   :use 'skroad--text-link-node
@@ -997,7 +997,7 @@ or in its visiting buffer, if there is one."
   :use 'skroad--text-mixin-render-delimited-zoned
   :use 'skroad--text-mixin-indexed)
 
-(skroad--def-type skroad--text-link-node-dead
+(skroad--deftype skroad--text-link-node-dead
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
   :kbd-doc "<l> liven|<t> textify|<del> delete|<spc> prepend space"
   :use 'skroad--text-link-node
@@ -1022,7 +1022,7 @@ or in its visiting buffer, if there is one."
       (search-forward "//" end)
       (insert " "))))
 
-(skroad--def-type skroad-text-url-link
+(skroad--deftype skroad-text-url-link
   :doc "URL."
   :kbd-doc "<return> go|<t> textify|<del> delete|<spc> prepend space"
   :use 'skroad--text-link
@@ -1054,7 +1054,7 @@ or in its visiting buffer, if there is one."
   (message (format "Eot-Marker destroy: type=%s payload='%s'" text-type payload))
   )
 
-(skroad--def-type skroad--eot-marker
+(skroad--deftype skroad--eot-marker
   :doc "End-of-text marker."
   :kbd-doc "Auto-backlinks inserted below this marker; throws inserted above it."
   :use 'skroad--text-atomic
@@ -1083,13 +1083,13 @@ or in its visiting buffer, if there is one."
       (insert (funcall (get 'skroad--text-link-node-live 'make-text) title))
       (copy-region-as-kill (point-min) (point-max)))))
 
-(skroad--def-type skroad--text-renamer-direct
+(skroad--deftype skroad--text-renamer-direct
   :doc "Renamer for editing a node's title directly."
   :use 'skroad--text-mixin-renamer-overlay
   :face 'skroad--direct-renamer-face
   :before-string "" :after-string " \n")
 
-(skroad--def-type skroad--text-node-title
+(skroad--deftype skroad--text-node-title
   :doc "Node title."
   :kbd-doc "<r> Rename this node."
   :use 'skroad--text-atomic
