@@ -63,7 +63,8 @@
 
 (defface skroad--eot-marker-face
   '((t :inherit skroad--text-face
-       :box t :weight bold :inverse-video t :extend t))
+       :foreground "white" :background "purple"
+       :weight bold :extend t))
   "Face used for skroad EOT marker."
   :group 'skroad-faces)
 
