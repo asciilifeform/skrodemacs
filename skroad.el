@@ -64,7 +64,7 @@
 (defface skroad--eot-marker-face
   '((t :inherit skroad--text-face
        :foreground "white" :background "purple"
-       :weight bold :extend t))
+       :weight bold))
   "Face used for skroad EOT marker."
   :group 'skroad-faces)
 
@@ -555,6 +555,16 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
        (when (eq type (car key)) (apply fn (cons (cdr key) other-args))))
    skroad--buf-index))
 
+;;;;
+(defun skroad--print-eot ()
+  (skroad--for-all-indexed-of-type
+   'skroad--eot-marker
+   #'(lambda (n) (message "eot: '%s'" n))))
+
+
+;; (skroad--for-all-indexed-of-type
+;;  'skroad--eot-marker
+;;  #'(lambda (n) (message "live: '%s'" n)))
 
 ;; (measure-time
 ;;  (with-temp-buffer
@@ -1023,7 +1033,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defun skroad--eot-marker-init (text-type payload)
   "First instance of PAYLOAD of TEXT-TYPE was found in the buffer during load."
-  ;; (message (format "Eot-Marker init: type=%s payload='%s'" text-type payload))
+  (message (format "Eot-Marker init: type=%s payload='%s'" text-type payload))
   )
 
 (defun skroad--eot-marker-create (text-type payload)
@@ -1046,7 +1056,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :on-destroy #'skroad--eot-marker-destroy
  :face 'skroad--eot-marker-face
  :help-echo "End-of-text marker."
- :payload-regex "^\\(\\@\\@\\@\\)\n"
+ :payload-regex "^\\(@@@\\)$"
  :use 'skroad--text-mixin-delimited-non-title
  :use 'skroad--text-mixin-render-delimited-zoned
  :use 'skroad--text-mixin-indexed
