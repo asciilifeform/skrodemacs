@@ -48,6 +48,8 @@
 (defconst skroad--renamer-faces-invalid-background "red"
   "Background colour during invalid renamer state.")
 
+;; cyan1
+
 (defface skroad--dead-link-face
   '((t :inherit link :foreground "red"))
   "Face used for dead links."
@@ -59,10 +61,9 @@
   "Face used for skroad heading text."
   :group 'skroad-faces)
 
-;; TODO: extend?
 (defface skroad--append-marker-face
   '((t :inherit skroad--text-face
-       :box t :weight bold :inverse-video t))
+       :box t :weight bold :inverse-video t :extend t))
   "Face used for skroad append markers."
   :group 'skroad-faces)
 
@@ -553,6 +554,18 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
        (when (eq type (car key)) (apply fn (cons (cdr key) other-args))))
    skroad--buf-index))
 
+;;;
+;; (measure-time
+;;  (with-temp-buffer
+;;    (insert-file-contents "~/skrode/k.skroad")
+;;    (skroad--init-local-index)
+;;    (skroad--for-all-indexed-of-type
+;;     'skroad--text-link-node-live
+;;     #'(lambda (n) (message "live: '%s'" n))
+;;     )
+;;    )
+;;  )
+
 ;; Top-level keymap for the major mode. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--cmd-top-backspace ()
@@ -579,7 +592,9 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (define-keymap
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
     "<tab>" #'skroad--cmd-top-jump-to-next-link
-    "C-<tab>" #'skroad--cmd-top-jump-to-prev-link)
+    "C-<tab>" #'skroad--cmd-top-jump-to-prev-link
+    "<f13>" #'skroad--reboot
+    )
   "Top-level keymap for the skroad major mode.")
 
 ;;; Atomic Text Type. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -981,7 +996,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :use 'skroad--text-link
  :mouse-face 'highlight
  :help-echo "External link."
- :payload-regex
+ :payload-regex ;; TODO: needs whitespace to terminate
  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\r\f\t\s]+\\)"
  :on-activate #'browse-url
  :keymap (define-keymap "t" #'skroad--cmd-url-comment)
@@ -990,13 +1005,15 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
  :use 'skroad--text-mixin-indexed
  )
 
+;; Auto-append marker. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (skroad--define-text-type
  'skroad--text-append-marker
  :doc "Auto-append marker."
  :use 'skroad--text-atomic
  :face 'skroad--append-marker-face
  :help-echo "Auto-append marker."
- :payload-regex "^\\(\\$\\$\\$\\)"
+ :payload-regex "^\\(\\@\\@\\@\\)\n"
  :use 'skroad--text-mixin-delimited-non-title
  :use 'skroad--text-mixin-render-delimited-zoned
  )
@@ -1167,6 +1184,18 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (skroad--init-font-lock)
   (skroad--async-dispatch #'skroad--init-local-index)
   )
+
+(defun skroad--reboot ()
+  "Reboot skroad mode. (FOR DEVELOPMENT USE ONLY)."
+  (interactive)
+  (message "Rebooting skroad!")
+  (setq skroad--font-lock-keywords nil)
+  (with-temp-buffer
+    (setq byte-compile-warnings nil)
+    (insert-file-contents (locate-library "skroad.el"))
+    (eval-buffer))
+  (revert-buffer t t)
+  (skroad--init-font-lock))
 
 (define-derived-mode skroad-mode text-mode "Skroad"
   ;; Prohibit change hooks firing when only text properties have changed:
