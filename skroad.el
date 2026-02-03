@@ -519,16 +519,18 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
                  (cond (create create-action)
                        (destroy (remhash key index) 'on-destroy))))
            (unless destroy (puthash key count index)) ;; update index if remains
-           (let ((text-type (car key)) (payload (cdr key))) ;; args for action
-             (skroad--type-action text-type action text-type payload))))
+           (when skroad--buf-index-action-enable
+             (let ((text-type (car key)) (payload (cdr key))) ;; args for action
+               (skroad--type-action text-type action text-type payload)))))
      pending))
   t)
 
 (defvar-local skroad--buf-index nil "Text type index for current buffer.")
-(defvar-local skroad--buf-changes nil "Pending index changes in the buffer.")
-(defvar-local skroad--index-update-enable t "Toggle for index updates.")
+(defvar-local skroad--buf-pending-changes nil "Pending index changes.")
+(defvar-local skroad--buf-index-update-enable t "Toggle for index updates.")
+(defvar-local skroad--buf-index-action-enable t "Toggle for index actions.")
 
-(defun skroad--init-local-index ()
+(defun skroad--init-buf-index ()
   "Ensure buffer-local indices exist, and populate them from current buffer."
   (when (null skroad--buf-index) ;; Only if this buffer doesn't have one yet
     (setq-local skroad--buf-index (make-hash-table
@@ -541,27 +543,27 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
       (skroad--index-scan-region init-populate (point-min) (point-max) 1)
       (skroad--index-update skroad--buf-index init-populate t))))
 
-(defun skroad--update-local-index ()
+(defun skroad--update-buf-index ()
   "Apply all pending changes queued for the buffer-local index."
-  (when (and skroad--index-update-enable skroad--buf-changes)
-    (skroad--index-update skroad--buf-index skroad--buf-changes)
-    (setq-local skroad--buf-changes nil)))
+  (when (and skroad--buf-index-update-enable skroad--buf-pending-changes)
+    (skroad--index-update skroad--buf-index skroad--buf-pending-changes)
+    (setq-local skroad--buf-pending-changes nil)))
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in a skroad buffer in region START...END."
   ;; (message (format "before change: %s %s" start end))
-  (when (null skroad--buf-changes)
-    (setq-local skroad--buf-changes (make-hash-table :test 'equal)))
+  (when (null skroad--buf-pending-changes)
+    (setq-local skroad--buf-pending-changes (make-hash-table :test 'equal)))
   (skroad--with-whole-lines start end
     (skroad--index-scan-region
-     skroad--buf-changes start-expanded end-expanded -1)))
+     skroad--buf-pending-changes start-expanded end-expanded -1)))
 
 (defun skroad--after-change-function (start end length)
   "Triggers following a change in a skroad buffer in region START...END."
   ;; (message (format "after change: %s %s %s" start end length))
   (skroad--with-whole-lines start end
     (skroad--index-scan-region
-     skroad--buf-changes start-expanded end-expanded 1)))
+     skroad--buf-pending-changes start-expanded end-expanded 1)))
 
 (defun skroad--for-all-indexed-of-type (type fn &rest other-args)
   "Apply FN to all payloads of TYPE currently in the buffer-local index."
@@ -594,7 +596,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 ;; (skroad--with-file
 ;;  "~/skrode/k.skroad"
-;;  (skroad--init-local-index)
+;;  (skroad--init-buf-index)
 ;;  (skroad--print-eot))
 
 ;; (skroad--with-file
@@ -828,7 +830,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (skroad--suspend-font-lock)
     (skroad--deactivate-mark)
     (skroad--snapshot-prepare)
-    (setq-local skroad--index-update-enable nil
+    (setq-local skroad--buf-index-update-enable nil
                 cursor-type t
                 skroad--buf-renamer-original
                 (skroad--prop-at 'data start))
@@ -851,7 +853,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
     (skroad--unhide-text)
     (skroad--resume-font-lock)
     (skroad--refontify-current-line)
-    (setq-local skroad--index-update-enable t
+    (setq-local skroad--buf-index-update-enable t
                 skroad--buf-renamer-original nil
                 skroad--buf-renamer-valid nil)))
 
@@ -1202,7 +1204,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   (skroad--refontify-current-line)
   (skroad--motion skroad--buf-pre-command-point-state)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
-  (skroad--update-local-index) ;; TODO: do it in save hook?
+  (skroad--update-buf-index) ;; TODO: do it in save hook?
   (when (buffer-modified-p)
     (skroad--renamer-validate-if-active))
   (unless mark-active (setq-local mouse-highlight t)))
@@ -1263,7 +1265,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   "Open a skroad node."
   (face-remap-set-base 'header-line 'skroad--title-face)
   (skroad--init-font-lock)
-  (skroad--async-dispatch #'skroad--init-local-index)
+  (skroad--async-dispatch #'skroad--init-buf-index)
   )
 
 (defun skroad--reboot ()
