@@ -338,6 +338,22 @@ call the action with ARGS."
   :finder-regex-backward #'skroad--finder-regex-backward-non-title
   :use 'skroad--text-mixin-findable)
 
+;; TODO: broken
+(defun skroad--finder-regex-forward-non-title-single (r)
+  "Exactly like `skroad--finder-regex-forward-non-title`, but find one R."
+  (lambda (limit)
+    (when (bobp)
+      (funcall (skroad--finder-regex-forward-non-title r) limit))))
+
+(skroad--deftype skroad--text-mixin-delimited-non-title-single
+  :doc "Mixin for single delimited text types excluded from the node title."
+  :mixin t
+  :use 'skroad--text-mixin-delimited
+  :finder-regex-forward #'skroad--finder-regex-forward-non-title-single
+  :finder-regex-backward #'skroad--finder-regex-backward-non-title
+  :use 'skroad--text-mixin-findable
+  )
+
 ;; Font lock rendered text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--text-types-rendered nil "Text types for use with font-lock.")
@@ -410,7 +426,7 @@ call the action with ARGS."
       (list 'category type-name
             'zone (gensym)
             'face face
-            'data (skroad--canonical-title
+            'data (string-clean-whitespace
                    (match-string-no-properties match-number)))))
   :use 'skroad--text-mixin-rendered)
 
@@ -513,18 +529,17 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defvar-local skroad--index-update-enable t "Toggle for index updates.")
 
 (defun skroad--init-local-index ()
-  "Create the buffer-local indices and populate them from current buffer."
-  (unless (null skroad--buf-index)
-    (error "Text type index already exists for this buffer!"))
-  (setq-local skroad--buf-index (make-hash-table
-                                 :test 'equal
-                                 :size (line-number-at-pos (point-max) t)))
-  ;; Populate while dispatching `on-init`s
-  (let ((init-populate
-         (make-hash-table :test 'equal
-                          :size (hash-table-count skroad--buf-index))))
-    (skroad--index-scan-region init-populate (point-min) (point-max) 1)
-    (skroad--index-update skroad--buf-index init-populate t)))
+  "Ensure buffer-local indices exist, and populate them from current buffer."
+  (when (null skroad--buf-index) ;; Only if this buffer doesn't have one yet
+    (setq-local skroad--buf-index (make-hash-table
+                                   :test 'equal
+                                   :size (line-number-at-pos (point-max) t)))
+    ;; Populate while dispatching `on-init`s
+    (let ((init-populate
+           (make-hash-table :test 'equal
+                            :size (hash-table-count skroad--buf-index))))
+      (skroad--index-scan-region init-populate (point-min) (point-max) 1)
+      (skroad--index-update skroad--buf-index init-populate t))))
 
 (defun skroad--update-local-index ()
   "Apply all pending changes queued for the buffer-local index."
@@ -534,6 +549,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in a skroad buffer in region START...END."
+  ;; (message (format "before change: %s %s" start end))
   (when (null skroad--buf-changes)
     (setq-local skroad--buf-changes (make-hash-table :test 'equal)))
   (skroad--with-whole-lines start end
@@ -542,6 +558,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 
 (defun skroad--after-change-function (start end length)
   "Triggers following a change in a skroad buffer in region START...END."
+  ;; (message (format "after change: %s %s %s" start end length))
   (skroad--with-whole-lines start end
     (skroad--index-scan-region
      skroad--buf-changes start-expanded end-expanded 1)))
@@ -554,58 +571,65 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
    skroad--buf-index))
 
 ;;;;
+(defmacro skroad--do-and-save (&rest body)
+  "Evaluate BODY, and then save the current buffer."
+  `(unwind-protect
+       (progn ,@body)
+     (save-buffer)))
 
 (defmacro skroad--with-file (node-path &rest body)
-  "Evaluate BODY in the context of the node at NODE-PATH;
-or in its visiting buffer, if there is one."
+  "Evaluate BODY, operating on the node at NODE-PATH."
   `(let ((vis-buf (find-buffer-visiting ,node-path)))
-     (if vis-buf ;; When there's a visiting buffer:
+     (if vis-buf ;; A buffer is visiting this node:
          (with-current-buffer vis-buf
-           ,@body)
-       (with-temp-buffer ;; When there isn't:
-         (insert-file-contents ,node-path)
-         (skroad--init-local-index)
-         ,@body))))
+           (skroad--do-and-save ,@body))
+       (with-temp-buffer ;; No visiting buffer, so make one:
+         (insert-file-contents ,node-path t nil nil t)
+         (skroad--do-and-save ,@body)))))
 
-;; (find-buffer-visiting "~/skrode/k.skroad")
+;; (defun skroad--print-eot ()
+;;   (skroad--for-all-indexed-of-type
+;;    'skroad--eot-marker
+;;    #'(lambda (n) (message "eot: '%s'" n))))
 
-(defun skroad--print-eot ()
-  (skroad--for-all-indexed-of-type
-   'skroad--eot-marker
-   #'(lambda (n) (message "eot: '%s'" n))))
+;; (skroad--with-file
+;;  "~/skrode/k.skroad"
+;;  (skroad--init-local-index)
+;;  (skroad--print-eot))
 
-(skroad--with-file
- "~/skrode/k.skroad"
- (skroad--print-eot))
-
-
-;; (skroad--for-all-indexed-of-type
-;;  'skroad--eot-marker
-;;  #'(lambda (n) (message "live: '%s'" n)))
-
-;; (measure-time
-;;  (with-temp-buffer
-;;    (insert-file-contents "~/skrode/k.skroad")
-;;    (skroad--init-local-index)
-;;    (skroad--for-all-indexed-of-type
-;;     'skroad--text-link-node-live
-;;     #'(lambda (n) (message "live: '%s'" n))
-;;     )
-;;    )
-;;  )
-
-;; (measure-time
-;;  (let ((vis-buf (find-buffer-visiting "~/skrode/k.skroad")))
-;;    (if vis-buf
-;;        (with-current-buffer vis-buf
-;;          (skroad--for-all-indexed-of-type
-;;           'skroad--text-link-node-live
-;;           #'(lambda (n) (message "live: '%s'" n))
-;;           )
-;;          )
-;;      nil
-;;      )
+;; (skroad--with-file
+;;  "~/skrode/k.skroad"
+;;  (save-mark-and-excursion
+;;    (goto-char (point-max))
+;;    (insert (funcall (get 'skroad--text-link-node-live 'make-text) "new link"))
+;;    (insert "\n")
 ;;    ))
+
+;; (funcall (get 'skroad--eot-marker 'jump-next-from) (point-min))
+;; (funcall (get 'skroad--eot-marker 'find-any-forward) (point-max))
+
+;; (defconst skroad--directory "~/skrode/" "where we keep the skrode files")
+;; (defconst skroad--extension ".skrd" "skrode nodes end with this extension")
+
+;; (mapcar #'file-name-sans-extension
+;;         (directory-files
+;;          skroad--directory nil
+;;          (concat
+;;           "\\`[^.]+" (regexp-quote skroad--extension) "\\'")))
+
+
+
+;; (defun init-skrode-node-names-cache ()
+;;   "Initialize the skrode node names cache, if not already initialized."
+;;   (if (not skrode-node-names-cache)
+;;       (setq skrode-node-names-cache
+;;             (mapcar #'file-name-sans-extension
+;;                     (directory-files
+;;                      skrode-directory nil
+;;                      (concat
+;;                       "\\`[^.]+" (regexp-quote skrode-extension) "\\'"))))))
+
+
 
 ;; Top-level keymap for the major mode. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1054,7 +1078,7 @@ or in its visiting buffer, if there is one."
   (message (format "Eot-Marker destroy: type=%s payload='%s'" text-type payload))
   )
 
-(skroad--deftype skroad--eot-marker
+(skroad--deftype skroad--text-eot-marker
   :doc "End-of-text marker."
   :kbd-doc "Auto-backlinks inserted below this marker; throws inserted above it."
   :use 'skroad--text-atomic
@@ -1064,10 +1088,12 @@ or in its visiting buffer, if there is one."
   :face 'skroad--eot-marker-face
   :help-echo "End-of-text marker."
   :payload-regex "^\\(@@@\\)$"
-  :use 'skroad--text-mixin-delimited-non-title
+  :use 'skroad--text-mixin-delimited-non-title-single
   :use 'skroad--text-mixin-render-delimited-zoned
   :use 'skroad--text-mixin-indexed
   )
+
+;; '(lambda (limit) (when (bobp) (goto-char (skroad--node-body-start)) t))
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1165,12 +1191,14 @@ or in its visiting buffer, if there is one."
 
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
+  ;; (message "pre!")
   (setq-local mouse-highlight nil
               skroad--buf-pre-command-point-state (skroad--get-point-state)))
 
 ;; TODO: some of these should be done only if buffer modified?
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
+  ;; (message "post!")
   (skroad--refontify-current-line)
   (skroad--motion skroad--buf-pre-command-point-state)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
@@ -1227,6 +1255,10 @@ or in its visiting buffer, if there is one."
     (font-lock-ensure start-expanded end-expanded))
   (skroad--deactivate-mark))
 
+(defun skroad--kill-handler (string)
+  "Filter any STRING that enters the kill ring."
+  (substring-no-properties string))
+
 (defun skroad--open-node ()
   "Open a skroad node."
   (face-remap-set-base 'header-line 'skroad--title-face)
@@ -1258,6 +1290,9 @@ or in its visiting buffer, if there is one."
   ;; Zap properties and refontify during yank.
   (setq-local yank-handled-properties '((id . skroad--yank-handler)))
 
+  ;; Prevent text properties from infesting the kill ring (emacs 28+) :
+  (setq-local kill-transform-function #'skroad--kill-handler)
+  
   ;; Buffer-local hooks:
   
   ;; TODO: allow these in temp mode?
@@ -1268,7 +1303,7 @@ or in its visiting buffer, if there is one."
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
   (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
   (add-hook 'window-scroll-functions 'skroad--scroll-hook nil t)
-  
+
   ;; Overlay for when an atomic is under the point. Initially inactive:
   (setq-local skroad--buf-selector (make-overlay (point-min) (point-min)))
   (skroad--selector-deactivate)
