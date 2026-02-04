@@ -273,10 +273,13 @@ call the action with ARGS."
          (funcall f (match-string-no-properties match-number)))))
   :replace-payload-all
   '(lambda (payload payload-new)
-     (save-mark-and-excursion
-       (goto-char (point-min))
-       (while (funcall find-payload-forward (point-max) payload)
-         (replace-match payload-new))))
+     (let ((found-any nil))
+       (save-mark-and-excursion
+         (goto-char (point-min))
+         (while (funcall find-payload-forward (point-max) payload)
+           (replace-match payload-new)
+           (setq found-any t)))
+       found-any))
   :payload-change-type
   '(lambda (payload new-type)
      (funcall replace-payload-all payload
@@ -504,10 +507,11 @@ it to finalize all pending changes when no further ones are expected."
   (dolist (text-type skroad--text-types-indexed) ;; walk all indexed types
     (funcall (get text-type 'index-scan-region) changes start end delta)))
 
-(defun skroad--index-update (index pending &optional init-scan)
+(defun skroad--index-update (index pending &optional init-scan disable-actions)
   "Update INDEX by applying all PENDING changes, and run text type actions when
 appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
-`on-create` for created entries; `on-destroy` runs for destroyed ones."
+`on-create` for created entries; `on-destroy` runs for destroyed ones.
+If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   (let ((create-action (if init-scan 'on-init 'on-create)))
     (maphash
      #'(lambda (key delta) ;; key and count delta in pending changes table
@@ -519,7 +523,7 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
                  (cond (create create-action)
                        (destroy (remhash key index) 'on-destroy))))
            (unless destroy (puthash key count index)) ;; update index if remains
-           (when skroad--buf-index-action-enable
+           (unless disable-actions
              (let ((text-type (car key)) (payload (cdr key))) ;; args for action
                (skroad--type-action text-type action text-type payload)))))
      pending))
@@ -528,7 +532,6 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
 (defvar-local skroad--buf-index nil "Text type index for current buffer.")
 (defvar-local skroad--buf-pending-changes nil "Pending index changes.")
 (defvar-local skroad--buf-index-update-enable t "Toggle for index updates.")
-(defvar-local skroad--buf-index-action-enable t "Toggle for index actions.")
 
 (defun skroad--init-buf-index ()
   "Ensure buffer-local indices exist, and populate them from current buffer."
@@ -543,10 +546,12 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
       (skroad--index-scan-region init-populate (point-min) (point-max) 1)
       (skroad--index-update skroad--buf-index init-populate t))))
 
-(defun skroad--update-buf-index ()
-  "Apply all pending changes queued for the buffer-local index."
+(defun skroad--update-buf-index (&optional disable-actions)
+  "Apply all pending changes queued for the buffer-local index.
+If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   (when (and skroad--buf-index-update-enable skroad--buf-pending-changes)
-    (skroad--index-update skroad--buf-index skroad--buf-pending-changes)
+    (skroad--index-update
+     skroad--buf-index skroad--buf-pending-changes nil disable-actions)
     (setq-local skroad--buf-pending-changes nil)))
 
 (defun skroad--before-change-function (start end)
@@ -577,13 +582,15 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   "Evaluate BODY, and then save the current buffer."
   `(unwind-protect
        (progn ,@body)
+     (when (skroad--mode-p) ;; Only if buffer is actually in skroad mode:
+       (skroad--update-buf-index t)) ;; update index (no type actions).
      (save-buffer)))
 
 (defmacro skroad--with-file (node-path &rest body)
   "Evaluate BODY, operating on the node at NODE-PATH."
-  `(let ((vis-buf (find-buffer-visiting ,node-path)))
-     (if vis-buf ;; A buffer is visiting this node:
-         (with-current-buffer vis-buf
+  `(let ((visiting-buffer (find-buffer-visiting ,node-path)))
+     (if visiting-buffer ;; A buffer is visiting this node:
+         (with-current-buffer visiting-buffer
            (skroad--do-and-save ,@body))
        (with-temp-buffer ;; No visiting buffer, so make one:
          (insert-file-contents ,node-path t nil nil t)
@@ -1063,6 +1070,26 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   :use 'skroad--text-mixin-indexed
   )
 
+;; Skroad link utility ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun skroad--link-turn-dead (node)
+  "Turn all live links to NODE in current buffer to dead links."
+  (funcall
+   (get 'skroad--text-link-node-live 'payload-change-type)
+   node
+   'skroad--text-link-node-dead))
+
+(defun skroad--link-turn-live (node)
+  "Turn all dead links to NODE in current buffer to live links."
+  (funcall
+   (get 'skroad--text-link-node-dead 'payload-change-type)
+   node
+   'skroad--text-link-node-live))
+
+(defun skroad--link-insert-live (node)
+  "Insert a live link to NODE into the current buffer at the current point."
+  (insert (funcall (get 'skroad--text-link-node-live 'make-text) node)))
+
 ;; End-of-text marker. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--eot-marker-init (text-type payload)
@@ -1094,8 +1121,6 @@ appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
   :use 'skroad--text-mixin-render-delimited-zoned
   :use 'skroad--text-mixin-indexed
   )
-
-;; '(lambda (limit) (when (bobp) (goto-char (skroad--node-body-start)) t))
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
