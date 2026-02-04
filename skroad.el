@@ -218,6 +218,7 @@ call the action with ARGS."
   :mixin t
   :order 100 ;; lower number will get rendered first
   :face 'skroad--text-face
+  :mouse-face nil
   :rear-nonsticky t)
 
 (skroad--deftype skroad--text-mixin-delimited
@@ -342,20 +343,20 @@ call the action with ARGS."
   :use 'skroad--text-mixin-findable)
 
 ;; TODO: broken
-(defun skroad--finder-regex-forward-non-title-single (r)
-  "Exactly like `skroad--finder-regex-forward-non-title`, but find one R."
-  (lambda (limit)
-    (when (bobp)
-      (funcall (skroad--finder-regex-forward-non-title r) limit))))
+;; (defun skroad--finder-regex-forward-non-title-single (r)
+;;   "Exactly like `skroad--finder-regex-forward-non-title`, but find one R."
+;;   (lambda (limit)
+;;     (when (bobp)
+;;       (funcall (skroad--finder-regex-forward-non-title r) limit))))
 
-(skroad--deftype skroad--text-mixin-delimited-non-title-single
-  :doc "Mixin for single delimited text types excluded from the node title."
-  :mixin t
-  :use 'skroad--text-mixin-delimited
-  :finder-regex-forward #'skroad--finder-regex-forward-non-title-single
-  :finder-regex-backward #'skroad--finder-regex-backward-non-title
-  :use 'skroad--text-mixin-findable
-  )
+;; (skroad--deftype skroad--text-mixin-delimited-non-title-single
+;;   :doc "Mixin for single delimited text types excluded from the node title."
+;;   :mixin t
+;;   :use 'skroad--text-mixin-delimited
+;;   :finder-regex-forward #'skroad--finder-regex-forward-non-title-single
+;;   :finder-regex-backward #'skroad--finder-regex-backward-non-title
+;;   :use 'skroad--text-mixin-findable
+;;   )
 
 ;; Font lock rendered text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -429,6 +430,7 @@ call the action with ARGS."
       (list 'category type-name
             'zone (gensym)
             'face face
+            'mouse-face (when mouse-face (list mouse-face)) ;; prevent glomming
             'data (string-clean-whitespace
                    (match-string-no-properties match-number)))))
   :use 'skroad--text-mixin-rendered)
@@ -1117,7 +1119,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   :face 'skroad--eot-marker-face
   :help-echo "End-of-text marker."
   :payload-regex "^\\(@@@\\)$"
-  :use 'skroad--text-mixin-delimited-non-title-single
+  :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-render-delimited-zoned
   :use 'skroad--text-mixin-indexed
   )
