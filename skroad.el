@@ -374,7 +374,7 @@ call the action with ARGS."
   :register 'skroad--text-types-rendered)
 
 (defconst skroad--font-lock-properties
-  '(category face mouse-face id data)
+  '(category face mouse-face zone data)
   "Let font lock know what props we use in renderers, so it will clean them.")
 
 (defvar skroad--font-lock-keywords nil "Font lock keywords for skroad mode.")
