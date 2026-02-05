@@ -585,7 +585,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   `(unwind-protect
        (progn
          (when (skroad--mode-p)
-           (skroad--renamer-deactivate)) ;; Zap renamer, so changes aren't lost
+           (skroad--renamer-deactivate)) ;; Zap renamer to prevent rollback
          (save-mark-and-excursion
            (atomic-change-group ,@body)))
      (when (skroad--mode-p) ;; Only if buffer is actually in skroad mode:
@@ -595,7 +595,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 (defmacro skroad--with-file (node-path &rest body)
   "Evaluate BODY, operating on the node at NODE-PATH."
   `(let ((visiting-buffer (find-buffer-visiting ,node-path)))
-     (if visiting-buffer ;; A buffer is visiting this node:
+     (if visiting-buffer ;; A buffer is visiting this node, so use it:
          (with-current-buffer visiting-buffer
            (skroad--do-and-save ,@body))
        (with-temp-buffer ;; No visiting buffer, so make one:
