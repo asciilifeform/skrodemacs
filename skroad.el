@@ -586,7 +586,8 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
        (progn
          (when (skroad--mode-p)
            (skroad--renamer-deactivate)) ;; Zap renamer, so changes aren't lost
-         (save-mark-and-excursion ,@body))
+         (save-mark-and-excursion
+           (atomic-change-group ,@body)))
      (when (skroad--mode-p) ;; Only if buffer is actually in skroad mode:
        (skroad--update-buf-index t)) ;; update index without type actions.
      (save-buffer)))
