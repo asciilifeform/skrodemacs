@@ -583,9 +583,12 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 (defmacro skroad--do-and-save (&rest body)
   "Evaluate BODY, and then save the current buffer."
   `(unwind-protect
-       (progn ,@body)
+       (progn
+         (when (skroad--mode-p)
+           (skroad--renamer-deactivate)) ;; Zap renamer, so changes aren't lost
+         (save-mark-and-excursion ,@body))
      (when (skroad--mode-p) ;; Only if buffer is actually in skroad mode:
-       (skroad--update-buf-index t)) ;; update index (no type actions).
+       (skroad--update-buf-index t)) ;; update index without type actions.
      (save-buffer)))
 
 (defmacro skroad--with-file (node-path &rest body)
@@ -608,13 +611,13 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 ;;  (skroad--init-buf-index)
 ;;  (skroad--print-eot))
 
-;; (skroad--with-file
-;;  "~/skrode/k.skroad"
-;;  (save-mark-and-excursion
-;;    (goto-char (point-max))
-;;    (insert (funcall (get 'skroad--text-link-node-live 'make-text) "new link"))
-;;    (insert "\n")
-;;    ))
+(skroad--with-file
+ "~/skrode/k.skroad"
+ (save-mark-and-excursion
+   (goto-char (point-max))
+   (insert (funcall (get 'skroad--text-link-node-live 'make-text) "new link"))
+   (insert "\n")
+   ))
 
 ;; (funcall (get 'skroad--eot-marker 'jump-next-from) (point-min))
 ;; (funcall (get 'skroad--eot-marker 'find-any-forward) (point-max))
@@ -1315,7 +1318,8 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   (skroad--silence-modifications 'remove-list-of-text-properties)
   (skroad--silence-modifications 'set-text-properties)
   (skroad--silence-modifications 'add-face-text-property)
-  
+
+  ;; TODO?
   ;; Zap properties and refontify during yank.
   (setq-local yank-handled-properties '((id . skroad--yank-handler)))
 
