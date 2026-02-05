@@ -240,6 +240,12 @@ call the action with ARGS."
   :require '(make-regex regex-any finder-regex-forward make-text)
   :find-any-forward '(funcall finder-regex-forward regex-any)
   :find-any-backward '(funcall finder-regex-backward regex-any)
+  :find-any-first '(lambda ()
+                     (goto-char (point-min))
+                     (funcall find-any-forward (point-max)))
+  :find-any-last '(lambda ()
+                    (goto-char (point-max))
+                    (funcall find-any-backward (point-min)))
   :find-payload-forward
   '(lambda (limit p)
      (funcall (funcall finder-regex-forward (funcall make-regex p)) limit))
@@ -252,8 +258,7 @@ call the action with ARGS."
       (or (save-mark-and-excursion
             (when (or (and (goto-char pos)
                            (funcall find-any-forward (point-max)))
-                      (and (goto-char (point-min))
-                           (funcall find-any-forward (point-max))))
+                      (funcall find-any-first))
               (match-beginning 0)))
           (point))))
   :jump-prev-from
@@ -262,8 +267,7 @@ call the action with ARGS."
       (or (save-mark-and-excursion
             (when (or (and (goto-char pos)
                            (funcall find-any-backward (point-min)))
-                      (and (goto-char (point-max))
-                           (funcall find-any-backward (point-min))))
+                      (funcall find-any-last))
               (match-beginning 0)))
           (point))))
   :for-all-in-region-forward
@@ -612,13 +616,15 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 ;;  (skroad--init-buf-index)
 ;;  (skroad--print-eot))
 
-(skroad--with-file
- "~/skrode/k.skroad"
- (save-mark-and-excursion
-   (goto-char (point-max))
-   (insert (funcall (get 'skroad--text-link-node-live 'make-text) "new link"))
-   (insert "\n")
-   ))
+;; (skroad--with-file
+;;  "~/skrode/k.skroad"
+;;  (save-mark-and-excursion
+;;    (goto-char (point-max))
+;;    (insert (funcall (get 'skroad--text-link-node-live 'make-text) "new link"))
+;;    (newline 1)
+;;    (insert (funcall (get 'skroad--text-link-node-live 'make-text) "new link2"))
+;;    (newline 1)
+;;    ))
 
 ;; (funcall (get 'skroad--eot-marker 'jump-next-from) (point-min))
 ;; (funcall (get 'skroad--eot-marker 'find-any-forward) (point-max))
@@ -1098,35 +1104,46 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 ;; End-of-text marker. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--eot-marker-init (text-type payload)
-  "First instance of PAYLOAD of TEXT-TYPE was found in the buffer during load."
-  (message (format "Eot-Marker init: type=%s payload='%s'" text-type payload))
-  )
+;; (defun skroad--eot-marker-init (text-type payload)
+;;   "First instance of PAYLOAD of TEXT-TYPE was found in the buffer during load."
+;;   (message (format "Eot-Marker init: type=%s payload='%s'" text-type payload))
+;;   )
 
-(defun skroad--eot-marker-create (text-type payload)
-  "First instance of PAYLOAD of TEXT-TYPE was introduced into the buffer."
-  (message (format "Eot-Marker create: type=%s payload='%s'" text-type payload))
-  )
+;; (defun skroad--eot-marker-create (text-type payload)
+;;   "First instance of PAYLOAD of TEXT-TYPE was introduced into the buffer."
+;;   (message (format "Eot-Marker create: type=%s payload='%s'" text-type payload))
+;;   )
 
-(defun skroad--eot-marker-destroy (text-type payload)
-  "Last instance of PAYLOAD of TEXT-TYPE was removed from the buffer."
-  (message (format "Eot-Marker destroy: type=%s payload='%s'" text-type payload))
-  )
+;; (defun skroad--eot-marker-destroy (text-type payload)
+;;   "Last instance of PAYLOAD of TEXT-TYPE was removed from the buffer."
+;;   (message (format "Eot-Marker destroy: type=%s payload='%s'" text-type payload))
+;;   )
 
 (skroad--deftype skroad--text-eot-marker
   :doc "End-of-text marker."
   :kbd-doc "Auto-backlinks inserted below this marker; throws inserted above it."
   :use 'skroad--text-atomic
-  :on-init #'skroad--eot-marker-init
-  :on-create #'skroad--eot-marker-create
-  :on-destroy #'skroad--eot-marker-destroy
+  ;; :on-init #'skroad--eot-marker-init
+  ;; :on-create #'skroad--eot-marker-create
+  ;; :on-destroy #'skroad--eot-marker-destroy
   :face 'skroad--eot-marker-face
   :help-echo "End-of-text marker."
   :payload-regex "^\\(@@@\\)$"
   :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-render-delimited-zoned
-  :use 'skroad--text-mixin-indexed
+  ;; :use 'skroad--text-mixin-indexed
   )
+
+(defconst skroad--eot-marker "@@@" "End-of-text marker.")
+
+(defun skroad--ensure-eot-marker ()
+  "Find or create the EOT marker in the current buffer."
+  (when
+      (not (progn
+             (goto-char (point-min))
+             (funcall (get 'skroad--text-eot-marker 'find-any-forward) (point-max))
+             ))
+    (message "not found")))
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
