@@ -14,6 +14,8 @@
 (defconst skroad--node-title-regex "\\([^][\n\r\f\t\s]+[^][\n\r\f\t]*?\\)"
   "Regex for valid skroad node titles.")
 
+;; "\\`[[:print:]]+$"
+
 (defvar skroad--floating-title-enable t
   "Display floating title at the top of the window if title is not in view.")
 
@@ -1023,7 +1025,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   :keymap (define-keymap "t" #'skroad--cmd-url-comment)
   :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-render-delimited-zoned
-  :use 'skroad--text-mixin-indexed
+  :use 'skroad--text-mixin-indexed ;; TODO: do we need this?
   )
 
 ;; Skroad link utility ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1122,6 +1124,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 ;; Linkage toggling. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: if we zap the last link in a node, move that node to orphans
 (defun skroad--set-linkage (node enable)
   "Ensure that the current buffer has a live link to NODE iff ENABLE is true."
   (if enable
