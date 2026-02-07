@@ -61,11 +61,11 @@
   "Face used for skroad heading text."
   :group 'skroad-faces)
 
-(defface skroad--eot-marker-face
+(defface skroad--node-tail-face
   '((t :inherit skroad--text-face
        :foreground "white" :background "purple"
        :weight bold))
-  "Face used for skroad EOT marker."
+  "Face used for skroad tails."
   :group 'skroad-faces)
 
 ;;; Utility functions. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -276,6 +276,11 @@ call the action with ARGS."
        (goto-char start)
        (while (funcall find-any-forward end)
          (funcall f (match-string-no-properties match-number)))))
+  :have-payload-p
+  '(lambda (payload)
+     (save-mark-and-excursion
+       (goto-char (point-min))
+       (funcall find-payload-forward (point-max) payload)))
   :replace-payload-all
   '(lambda (payload payload-new)
      (let ((found-any nil))
@@ -466,6 +471,7 @@ call the action with ARGS."
   :order 1000 ;; Render these last, so they can amend all other rendered faces
   :use 'skroad--text-mixin-rendered)
 
+;; TODO: fix regexps
 (skroad--deftype skroad--text-decorative-italic
   :doc "Italicized text."
   :face 'italic
@@ -537,6 +543,8 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 (defvar-local skroad--buf-index nil "Text type index for current buffer.")
 (defvar-local skroad--buf-pending-changes nil "Pending index changes.")
+
+;; TODO: scan enable rather than update?
 (defvar-local skroad--buf-index-update-enable t "Toggle for index updates.")
 
 (defun skroad--init-buf-index ()
@@ -552,6 +560,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
       (skroad--index-scan-region init-populate (point-min) (point-max) 1)
       (skroad--index-update skroad--buf-index init-populate t))))
 
+;; TODO: unwind protect?
 (defun skroad--update-buf-index (&optional disable-actions)
   "Apply all pending changes queued for the buffer-local index.
 If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
@@ -576,81 +585,16 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
     (skroad--index-scan-region
      skroad--buf-pending-changes start-expanded end-expanded 1)))
 
+(defun skroad--indexed-exists-p (type payload)
+  "Find if a PAYLOAD of TYPE currently exists in the buffer-local index."
+  (gethash (cons type payload) skroad--buf-index))
+
 (defun skroad--for-all-indexed-of-type (type fn &rest other-args)
   "Apply FN to all payloads of TYPE currently in the buffer-local index."
   (maphash
    #'(lambda (key val)
        (when (eq type (car key)) (apply fn (cons (cdr key) other-args))))
    skroad--buf-index))
-
-;;;;
-(defmacro skroad--do-and-save (&rest body)
-  "Evaluate BODY, and then save the current buffer."
-  `(unwind-protect
-       (progn
-         (when (skroad--mode-p)
-           (skroad--renamer-deactivate)) ;; Zap renamer to prevent rollback
-         (save-mark-and-excursion
-           (atomic-change-group ,@body)))
-     (when (skroad--mode-p) ;; Only if buffer is actually in skroad mode:
-       (skroad--update-buf-index t)) ;; update index without type actions.
-     (save-buffer)))
-
-(defmacro skroad--with-file (node-path &rest body)
-  "Evaluate BODY, operating on the node at NODE-PATH."
-  `(let ((visiting-buffer (find-buffer-visiting ,node-path)))
-     (if visiting-buffer ;; A buffer is visiting this node, so use it:
-         (with-current-buffer visiting-buffer
-           (skroad--do-and-save ,@body))
-       (with-temp-buffer ;; No visiting buffer, so make one:
-         (insert-file-contents ,node-path t nil nil t)
-         (skroad--do-and-save ,@body)))))
-
-;; (defun skroad--print-eot ()
-;;   (skroad--for-all-indexed-of-type
-;;    'skroad--eot-marker
-;;    #'(lambda (n) (message "eot: '%s'" n))))
-
-;; (skroad--with-file
-;;  "~/skrode/k.skroad"
-;;  (skroad--init-buf-index)
-;;  (skroad--print-eot))
-
-;; (skroad--with-file
-;;  "~/skrode/k.skroad"
-;;  (save-mark-and-excursion
-;;    (goto-char (point-max))
-;;    (insert (funcall (get 'skroad--text-link-node-live 'make-text) "new link"))
-;;    (newline 1)
-;;    (insert (funcall (get 'skroad--text-link-node-live 'make-text) "new link2"))
-;;    (newline 1)
-;;    ))
-
-;; (funcall (get 'skroad--eot-marker 'jump-next-from) (point-min))
-;; (funcall (get 'skroad--eot-marker 'find-any-forward) (point-max))
-
-;; (defconst skroad--directory "~/skrode/" "where we keep the skrode files")
-;; (defconst skroad--extension ".skrd" "skrode nodes end with this extension")
-
-;; (mapcar #'file-name-sans-extension
-;;         (directory-files
-;;          skroad--directory nil
-;;          (concat
-;;           "\\`[^.]+" (regexp-quote skroad--extension) "\\'")))
-
-
-
-;; (defun init-skrode-node-names-cache ()
-;;   "Initialize the skrode node names cache, if not already initialized."
-;;   (if (not skrode-node-names-cache)
-;;       (setq skrode-node-names-cache
-;;             (mapcar #'file-name-sans-extension
-;;                     (directory-files
-;;                      skrode-directory nil
-;;                      (concat
-;;                       "\\`[^.]+" (regexp-quote skrode-extension) "\\'"))))))
-
-
 
 ;; Top-level keymap for the major mode. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -664,12 +608,12 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
                (delete-region (skroad--zone-start (1- p)) p)
              (delete-char -1))))))
 
-(defun skroad--cmd-top-jump-to-next-link ()
+(defun skroad--cmd-top-jump-to-next-live-link ()
   "Jump to the next live link following point; cycle to first if no more."
   (interactive)
   (funcall (get 'skroad--text-link-node-live 'jump-next-from) (point)))
 
-(defun skroad--cmd-top-jump-to-prev-link ()
+(defun skroad--cmd-top-jump-to-prev-live-link ()
   "Jump to the previous live link preceding point; cycle to last if no more."
   (interactive)
   (funcall (get 'skroad--text-link-node-live 'jump-prev-from) (point)))
@@ -677,8 +621,8 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 (defvar skroad--mode-keymap
   (define-keymap
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
-    "<tab>" #'skroad--cmd-top-jump-to-next-link
-    "C-<tab>" #'skroad--cmd-top-jump-to-prev-link
+    "<tab>" #'skroad--cmd-top-jump-to-next-live-link
+    "C-<tab>" #'skroad--cmd-top-jump-to-prev-live-link
     "<f13>" #'skroad--reboot
     )
   "Top-level keymap for the skroad major mode.")
@@ -1084,14 +1028,14 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 ;; Skroad link utility ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--link-turn-dead (node)
+(defun skroad--link-deaden (node)
   "Turn all live links to NODE in current buffer to dead links."
   (funcall
    (get 'skroad--text-link-node-live 'payload-change-type)
    node
    'skroad--text-link-node-dead))
 
-(defun skroad--link-turn-live (node)
+(defun skroad--link-liven (node)
   "Turn all dead links to NODE in current buffer to live links."
   (funcall
    (get 'skroad--text-link-node-dead 'payload-change-type)
@@ -1102,48 +1046,89 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   "Insert a live link to NODE into the current buffer at the current point."
   (insert (funcall (get 'skroad--text-link-node-live 'make-text) node)))
 
-;; End-of-text marker. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defun skroad--live-p (node)
+  "Determine whether a live link to NODE exists in the current buffer."
+  (or (and (skroad--mode-p) ;; If we're in skroad mode, use fast path:
+           (null skroad--buf-pending-changes) ;; ... no pending changes
+           (skroad--indexed-exists-p
+            'skroad--text-link-node-live node)) ;; ... query the index.
+      (funcall (get 'skroad--text-link-node-live 'have-payload-p) node)))
 
-;; (defun skroad--eot-marker-init (text-type payload)
+;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; (defun skroad--tail-marker-init (text-type payload)
 ;;   "First instance of PAYLOAD of TEXT-TYPE was found in the buffer during load."
-;;   (message (format "Eot-Marker init: type=%s payload='%s'" text-type payload))
+;;   (message (format "Tail-Marker init: type=%s payload='%s'" text-type payload))
 ;;   )
 
-;; (defun skroad--eot-marker-create (text-type payload)
+;; (defun skroad--tail-marker-create (text-type payload)
 ;;   "First instance of PAYLOAD of TEXT-TYPE was introduced into the buffer."
-;;   (message (format "Eot-Marker create: type=%s payload='%s'" text-type payload))
+;;   (message (format "Tail-Marker create: type=%s payload='%s'" text-type payload))
 ;;   )
 
-;; (defun skroad--eot-marker-destroy (text-type payload)
+;; (defun skroad--tail-marker-destroy (text-type payload)
 ;;   "Last instance of PAYLOAD of TEXT-TYPE was removed from the buffer."
-;;   (message (format "Eot-Marker destroy: type=%s payload='%s'" text-type payload))
+;;   (message (format "Tail-Marker destroy: type=%s payload='%s'" text-type payload))
 ;;   )
 
-(skroad--deftype skroad--text-eot-marker
-  :doc "End-of-text marker."
+(skroad--deftype skroad--text-node-tail
+  :doc "Node tail."
   :kbd-doc "Auto-backlinks inserted below this marker; throws inserted above it."
   :use 'skroad--text-atomic
-  ;; :on-init #'skroad--eot-marker-init
-  ;; :on-create #'skroad--eot-marker-create
-  ;; :on-destroy #'skroad--eot-marker-destroy
-  :face 'skroad--eot-marker-face
-  :help-echo "End-of-text marker."
+  ;; :on-init #'skroad--tail-marker-init
+  ;; :on-create #'skroad--tail-marker-create
+  ;; :on-destroy #'skroad--tail-marker-destroy
+  :face 'skroad--node-tail-face
+  :help-echo "Node tail."
   :payload-regex "^\\(@@@\\)$"
   :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-render-delimited-zoned
   ;; :use 'skroad--text-mixin-indexed
   )
 
-(defconst skroad--eot-marker "@@@" "End-of-text marker.")
+(defconst skroad--node-tail "@@@" "Node tail marker.")
 
-(defun skroad--ensure-eot-marker ()
-  "Find or create the EOT marker in the current buffer."
-  (when
-      (not (progn
-             (goto-char (point-min))
-             (funcall (get 'skroad--text-eot-marker 'find-any-forward) (point-max))
-             ))
-    (message "not found")))
+(defun skroad--find-node-tail ()
+  "Go to the node tail, if one exists, in the current buffer."
+  (funcall (get 'skroad--text-node-tail 'find-any-first)))
+
+(defun skroad--put-node-tail () ;; TODO: smart, rather than point-max ?
+  "Emplace a node tail in the current buffer."
+  (goto-char (point-max))
+  (ensure-empty-lines 1)
+  (insert skroad--node-tail))
+
+(defun skroad--goto-below-node-tail ()
+  "Find or create the node tail in the current buffer; set point below it."
+  (or (skroad--find-node-tail) (skroad--put-node-tail)))
+
+(defun skroad--goto-node-tail ()
+  "Find or create the node tail in the current buffer; set point at it."
+  (skroad--goto-below-node-tail)
+  (goto-char (line-beginning-position)))
+
+(defun skroad--put-live-link (node)
+  "Emplace a live link to NODE below the node tail in the current buffer."
+  (skroad--goto-below-node-tail)
+  (ensure-empty-lines 1)
+  (skroad--link-insert-live node))
+
+(defun skroad--put-text (text)
+  "Emplace given TEXT above the node tail in the current buffer."
+  (skroad--goto-node-tail)
+  (ensure-empty-lines 1)
+  (insert text)
+  (ensure-empty-lines 1))
+
+;; Linkage toggling. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun skroad--set-linkage (node enable)
+  "Ensure that the current buffer has a live link to NODE iff ENABLE is true."
+  (if enable
+      (or (skroad--live-p node) ;; Already live?
+          (skroad--link-liven node) ;; If had dead links to node, liven them
+          (skroad--put-live-link node)) ;; If neither: emplace new one at tail.
+    (skroad--link-deaden node))) ;; Toggle off: deaden any live links found.
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1327,6 +1312,70 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
     (eval-buffer))
   (revert-buffer t t)
   (skroad--init-font-lock))
+
+;; Back-end. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; TODO: do initial update in the save hook ?
+(defmacro skroad--do-external (&rest body)
+  "Evaluate BODY, and then save the current buffer."
+  `(unwind-protect
+       (progn
+         (when (skroad--mode-p)
+           (skroad--renamer-deactivate) ;; Cancel renamer to prevent rollback
+           (skroad--update-buf-index)) ;; Apply pending updates, firing actions
+         (save-mark-and-excursion
+           (atomic-change-group ,@body)))
+     (when (skroad--mode-p) ;; Only if buffer is actually in skroad mode:
+       (skroad--update-buf-index t)) ;; Update index but don't fire any actions
+     (save-buffer)))
+
+(defmacro skroad--with-file (node-path &rest body)
+  "Evaluate BODY, operating on the node at NODE-PATH."
+  `(let ((visiting-buffer (find-buffer-visiting ,node-path)))
+     (if visiting-buffer ;; A buffer is visiting this node, so use it:
+         (if (eq visiting-buffer (current-buffer))
+             (error "May not be called on current buffer!")
+           (with-current-buffer visiting-buffer
+             (skroad--do-external ,@body)))
+       (with-temp-buffer ;; No visiting buffer, so make one:
+         (insert-file-contents ,node-path t nil nil t)
+         (skroad--do-external ,@body)))))
+
+
+;; (skroad--with-file
+;;  "~/skrode/k.skroad"
+;;  (save-mark-and-excursion
+;;    (skroad--put-live-link "new node3")
+;;    ))
+
+;; (skroad--with-file
+;;  "~/skrode/k.skroad"
+;;  (save-mark-and-excursion
+;;    ;; (skroad--put-text "")
+;;    (skroad--put-text "foo123")
+;;    ))
+
+
+;; (defconst skroad--directory "~/skrode/" "where we keep the skrode files")
+;; (defconst skroad--extension ".skrd" "skrode nodes end with this extension")
+
+;; (mapcar #'file-name-sans-extension
+;;         (directory-files
+;;          skroad--directory nil
+;;          (concat
+;;           "\\`[^.]+" (regexp-quote skroad--extension) "\\'")))
+
+
+
+;; (defun init-skrode-node-names-cache ()
+;;   "Initialize the skrode node names cache, if not already initialized."
+;;   (if (not skrode-node-names-cache)
+;;       (setq skrode-node-names-cache
+;;             (mapcar #'file-name-sans-extension
+;;                     (directory-files
+;;                      skrode-directory nil
+;;                      (concat
+;;                       "\\`[^.]+" (regexp-quote skrode-extension) "\\'"))))))
 
 (define-derived-mode skroad-mode text-mode "Skroad"
   ;; Prohibit change hooks firing when only text properties have changed:
