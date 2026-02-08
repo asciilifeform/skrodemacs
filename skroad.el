@@ -14,8 +14,6 @@
 (defconst skroad--node-title-regex "\\([^][\n\r\f\t\s]+[^][\n\r\f\t]*?\\)"
   "Regex for valid skroad node titles.")
 
-;; "\\`[[:print:]]+$"
-
 (defvar skroad--floating-title-enable t
   "Display floating title at the top of the window if title is not in view.")
 
@@ -1182,6 +1180,10 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
             'face face
             'data (skroad--get-title))))
   :use 'skroad--text-mixin-rendered)
+
+;;   :use 'skroad--text-mixin-delimited-anywhere
+;;   :use 'skroad--text-mixin-render-delimited-zoned
+;; "\\`[[:print:]]+$"
 
 ;; Cursor motion, mark, and floating title handling. ;;;;;;;;;;;;;;;;;;;;;;;;;
 
