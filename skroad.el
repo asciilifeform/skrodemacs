@@ -1457,28 +1457,6 @@ If ORPHAN, return a path to an orphan node; otherwise to an active node."
 
 
 
-;; (skroad--nodes-cache-populate)
-;; skroad--memo-nodes-list
-;; (skroad--nodes-cache-intern "foo")
-;; (skroad--nodes-cache-intern "foo2")
-;; (skroad--nodes-cache-evict "foo")
-;; (skroad--nodes-cache-evict "foo2")
-;; (skroad--nodes-cache-p "foo")
-;; (skroad--nodes-cache-list)
-
-;; (puthash "foo" t skroad--nodes-cache)
-;; (gethash "foo" skroad--nodes-cache)
-;; (remhash "foo" skroad--nodes-cache)
-
-;; (make-hash-table
-;;  :test 'equal ;; TODO: custom equal?
-;;  :size (line-number-at-pos (point-max) t))
-
-
-(defvar skroad--nodes (skroad--list-active-nodes)
-  "Titles of all currently-active nodes.")
-
-
 (defun skroad--activate-node (node)
   "Find, reactivate, or create NODE, and intern it in the cache."
   (let* ((active-path (skroad--node-path node))
@@ -1491,35 +1469,10 @@ If ORPHAN, return a path to an orphan node; otherwise to an active node."
 
 
 
-(skroad--activate-node "crap")
+;; (skroad--activate-node "crap")
+;; (skroad--rename-file "~/skrode/k.skroad.orphan" "~/skrode/k.skroad")
+;; (skroad--rename-file "~/skrode/k.skroad" "~/skrode/k.skroad.orphan")
 
-(skroad--rename-file "~/skrode/k.skroad.orphan" "~/skrode/k.skroad")
-(skroad--rename-file "~/skrode/k.skroad" "~/skrode/k.skroad.orphan")
-
-;; (skroad--rename-file "~/skrode/k.skroad" "~/skrode/kk.skroad")
-;; (skroad--rename-file "~/skrode/kk.skroad" "~/skrode/k.skroad")
-
-;;file-exists-p
-;;(rename-file file newname &optional ok-if-already-exists)
-
-;; (skroad--node-path "k")
-;; (file-exists-p (skroad--node-path "k"))
-;; (file-exists-p (skroad--node-path "kk"))
-
-;; (rename-file "~/skrode/k.skroad" "~/skrode/kk.skroad")
-;; (rename-file "~/skrode/kk.skroad" "~/skrode/k.skroad")
-
-;; (rename-visited-file "~/skrode/kk.skroad")
-
-
-;; (defun intern-to-skrode-names-cache (node-name)
-;;   "Intern a new node name into the skrode node names cache."
-;;   (add-to-list 'skrode-node-names-cache node-name))
-
-;; (defun evict-from-skrode-names-cache (node-name)
-;;   "Remove a node name from the skrode node names cache, if it exists there."
-;;   (setq skrode-node-names-cache
-;;         (delete node-name skrode-node-names-cache)))
 
 (define-derived-mode skroad-mode text-mode "Skroad"
   ;; Prohibit change hooks firing when only text properties have changed:
