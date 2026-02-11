@@ -144,6 +144,19 @@
          (apply fn args)
          (setq-local buffer-read-only nil))))))
 
+(defun skroad--rename-file (old-file new-file)
+  "Rename OLD-FILE to NEW-FILE, updating buffers if required.  Return success."
+  (when (and
+         (file-readable-p old-file)
+         (not (file-exists-p new-file)) (file-writable-p new-file))
+    (rename-file old-file new-file)
+    (when (and (not (file-exists-p old-file)) (file-readable-p new-file))
+      (let ((visiting-buffer (find-buffer-visiting old-file)))
+        (when visiting-buffer
+          (with-current-buffer visiting-buffer
+            (set-visited-file-name new-file t t))))
+      t)))
+
 (defun skroad--canonical-title (s)
   "Return a canonicalized node title from string S."
   (string-clean-whitespace s))
@@ -551,7 +564,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   "Ensure buffer-local indices exist, and populate them from current buffer."
   (when (null skroad--buf-index) ;; Only if this buffer doesn't have one yet
     (setq-local skroad--buf-index (make-hash-table
-                                   :test 'equal
+                                   :test 'equal ;; TODO: custom equal?
                                    :size (line-number-at-pos (point-max) t)))
     ;; Populate while dispatching `on-init`s
     (let ((init-populate
@@ -762,6 +775,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 ;; Interactive renamer. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: should be global, rather than per-buffer, and go away when we leave it
 (defvar-local skroad--buf-renamer nil "Node renamer overlay.")
 (defvar-local skroad--buf-renamer-original nil "Original name.")
 (defvar-local skroad--buf-renamer-valid nil "Whether proposed rename is valid.")
@@ -1122,7 +1136,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 ;; Linkage toggling. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: if we zap the last link in a node, move that node to orphans
+;; TODO: if we zap the last live link, node is now orphaned
 (defun skroad--set-linkage (node enable)
   "Ensure that the current buffer has a live link to NODE iff ENABLE is true."
   (if enable
@@ -1183,7 +1197,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 ;;   :use 'skroad--text-mixin-delimited-anywhere
 ;;   :use 'skroad--text-mixin-render-delimited-zoned
-;; "\\`[[:print:]]+$"
+;; :payload-regex "\\`[[:print:]]+$"
 
 ;; Cursor motion, mark, and floating title handling. ;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1360,27 +1374,152 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 ;;    (skroad--put-text "foo123")
 ;;    ))
 
+(defconst skroad--data-directory "~/skrode" "All user data is found here.")
 
-;; (defconst skroad--directory "~/skrode/" "where we keep the skrode files")
-;; (defconst skroad--extension ".skrd" "skrode nodes end with this extension")
+(defconst skroad--active-extension "skroad"
+  "File extension denoting a skroad node.")
 
-;; (mapcar #'file-name-sans-extension
-;;         (directory-files
-;;          skroad--directory nil
-;;          (concat
-;;           "\\`[^.]+" (regexp-quote skroad--extension) "\\'")))
+(defconst skroad--orphans-directory
+  (file-name-concat skroad--data-directory "orphans")
+  "Subdirectory for storing orphan (i.e. with no live links) nodes.")
+
+(defun skroad--ensure-directory (dir)
+  "Ensure that DIR exists; if not, create it, and return t iff succeeded."
+  (or (file-directory-p dir)
+      (progn (make-directory dir) (file-directory-p dir))))
+
+;; Ensure that the data and orphans directories exist on warmup:
+(unless (and
+         (skroad--ensure-directory skroad--data-directory)
+         (skroad--ensure-directory skroad--orphans-directory))
+  (error "Unable to create skroad data and orphans directories!"))
+
+(defun skroad--node-path (node &optional orphan)
+  "Generate the canonical file path for NODE (which may or may not exist.)
+If ORPHAN, return a path to an orphan node; otherwise to an active node."
+  (expand-file-name
+   (file-name-concat
+    (if orphan skroad--orphans-directory skroad--data-directory)
+    (file-name-with-extension node skroad--active-extension))))
+
+(defun skroad--list-active-node-files ()
+  "Return a list of all active node files in the data directory."
+  (file-expand-wildcards (skroad--node-path "*")))
+
+(defun skroad--filename-to-node (filename)
+  "Transform FILENAME to a valid node title."
+  (file-name-base filename))
+
+(defun skroad--buffer-node ()
+  "Return the filename-derived title of the node in the current buffer."
+  (skroad--filename-to-node (buffer-file-name)))
+
+(defun skroad--list-active-nodes ()
+  "Return a list of all active node titles."
+  (mapcar #'skroad--filename-to-node (skroad--list-active-node-files)))
+
+(defvar skroad--nodes-cache (make-hash-table :test 'equal)
+  "Node titles cache.")
+
+(defvar skroad--memo-nodes-list nil
+  "Synced list form of the node titles cache.")
+
+(defun skroad--nodes-cache-p (node)
+  "Test whether NODE is currently interned in the titles cache."
+  (gethash node skroad--nodes-cache))
+
+(defun skroad--nodes-cache-intern (node)
+  "Intern NODE in the titles cache."
+  (unless (skroad--nodes-cache-p node)
+    (setq skroad--memo-nodes-list nil)
+    (puthash node t skroad--nodes-cache)))
+
+(defun skroad--nodes-cache-evict (node)
+  "Evict NODE from the titles cache."
+  (when (skroad--nodes-cache-p node)
+    (setq skroad--memo-nodes-list nil)
+    (remhash node skroad--nodes-cache)))
+
+(defun skroad--nodes-cache-list ()
+  "Return a list of all nodes in the titles cache for use with autocomplete."
+  (unless skroad--memo-nodes-list
+    (let (nodes-list)
+      (maphash #'(lambda (k v) (push k nodes-list)) skroad--nodes-cache)
+      (setq skroad--memo-nodes-list nodes-list)))
+  skroad--memo-nodes-list)
+
+(defun skroad--nodes-cache-populate ()
+  "Populate the titles cache from the data directory."
+  (setq skroad--memo-nodes-list nil)
+  (mapc #'(lambda (node) (puthash node t skroad--nodes-cache))
+        (skroad--list-active-nodes))
+  (setq skroad--memo-nodes-list (skroad--nodes-cache-list)))
 
 
 
-;; (defun init-skrode-node-names-cache ()
-;;   "Initialize the skrode node names cache, if not already initialized."
-;;   (if (not skrode-node-names-cache)
-;;       (setq skrode-node-names-cache
-;;             (mapcar #'file-name-sans-extension
-;;                     (directory-files
-;;                      skrode-directory nil
-;;                      (concat
-;;                       "\\`[^.]+" (regexp-quote skrode-extension) "\\'"))))))
+;; (skroad--nodes-cache-populate)
+;; skroad--memo-nodes-list
+;; (skroad--nodes-cache-intern "foo")
+;; (skroad--nodes-cache-intern "foo2")
+;; (skroad--nodes-cache-evict "foo")
+;; (skroad--nodes-cache-evict "foo2")
+;; (skroad--nodes-cache-p "foo")
+;; (skroad--nodes-cache-list)
+
+;; (puthash "foo" t skroad--nodes-cache)
+;; (gethash "foo" skroad--nodes-cache)
+;; (remhash "foo" skroad--nodes-cache)
+
+;; (make-hash-table
+;;  :test 'equal ;; TODO: custom equal?
+;;  :size (line-number-at-pos (point-max) t))
+
+
+(defvar skroad--nodes (skroad--list-active-nodes)
+  "Titles of all currently-active nodes.")
+
+
+(defun skroad--activate-node (node)
+  "Find, reactivate, or create NODE, and intern it in the cache."
+  (let* ((active-path (skroad--node-path node))
+         (orphan-path (skroad--node-path node t))
+         (active-p (file-exists-p active-path))
+         (orphan-p (file-exists-p orphan-path))
+         )
+    (list active-path active-p orphan-path orphan-p)
+    ))
+
+
+
+(skroad--activate-node "crap")
+
+(skroad--rename-file "~/skrode/k.skroad.orphan" "~/skrode/k.skroad")
+(skroad--rename-file "~/skrode/k.skroad" "~/skrode/k.skroad.orphan")
+
+;; (skroad--rename-file "~/skrode/k.skroad" "~/skrode/kk.skroad")
+;; (skroad--rename-file "~/skrode/kk.skroad" "~/skrode/k.skroad")
+
+;;file-exists-p
+;;(rename-file file newname &optional ok-if-already-exists)
+
+;; (skroad--node-path "k")
+;; (file-exists-p (skroad--node-path "k"))
+;; (file-exists-p (skroad--node-path "kk"))
+
+;; (rename-file "~/skrode/k.skroad" "~/skrode/kk.skroad")
+;; (rename-file "~/skrode/kk.skroad" "~/skrode/k.skroad")
+
+;; (rename-visited-file "~/skrode/kk.skroad")
+
+
+;; (defun intern-to-skrode-names-cache (node-name)
+;;   "Intern a new node name into the skrode node names cache."
+;;   (add-to-list 'skrode-node-names-cache node-name))
+
+;; (defun evict-from-skrode-names-cache (node-name)
+;;   "Remove a node name from the skrode node names cache, if it exists there."
+;;   (setq skrode-node-names-cache
+;;         (delete node-name skrode-node-names-cache)))
 
 (define-derived-mode skroad-mode text-mode "Skroad"
   ;; Prohibit change hooks firing when only text properties have changed:
