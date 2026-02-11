@@ -144,8 +144,8 @@
          (apply fn args)
          (setq-local buffer-read-only nil))))))
 
-(defun skroad--rename-file (old-file new-file)
-  "Rename OLD-FILE to NEW-FILE, updating buffers if required.  Return success."
+(defun skroad--mv-file (old-file new-file)
+  "Move OLD-FILE to NEW-FILE, updating buffers if required.  Return success."
   (when (and
          (file-readable-p old-file)
          (not (file-exists-p new-file)) (file-writable-p new-file))
@@ -1394,21 +1394,30 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
          (skroad--ensure-directory skroad--orphans-directory))
   (error "Unable to create skroad data and orphans directories!"))
 
-(defun skroad--node-path (node &optional orphan)
-  "Generate the canonical file path for NODE (which may or may not exist.)
-If ORPHAN, return a path to an orphan node; otherwise to an active node."
+(defun skroad--filename-to-node (filename)
+  "Transform FILENAME to a valid node title."
+  (file-name-base filename))
+
+(defun skroad--node-to-filename (node)
+  "Transform NODE to a valid file name."
+  (file-name-with-extension node skroad--active-extension))
+
+(defun skroad--node-path-in-directory (node directory)
+  "Generate the canonical file path for NODE in the given DIRECTORY."
   (expand-file-name
-   (file-name-concat
-    (if orphan skroad--orphans-directory skroad--data-directory)
-    (file-name-with-extension node skroad--active-extension))))
+   (file-name-concat directory (skroad--node-to-filename node))))
+
+(defun skroad--node-path (node)
+  "Generate the canonical file path where NODE would reside if active."
+  (skroad--node-path-in-directory node skroad--data-directory))
+
+(defun skroad--node-path-orphan (node)
+  "Generate the canonical file path where NODE would reside if orphaned."
+  (skroad--node-path-in-directory node skroad--orphans-directory))
 
 (defun skroad--list-active-node-files ()
   "Return a list of all active node files in the data directory."
   (file-expand-wildcards (skroad--node-path "*")))
-
-(defun skroad--filename-to-node (filename)
-  "Transform FILENAME to a valid node title."
-  (file-name-base filename))
 
 (defun skroad--buffer-node ()
   "Return the filename-derived title of the node in the current buffer."
@@ -1438,14 +1447,15 @@ If ORPHAN, return a path to an orphan node; otherwise to an active node."
   "Evict NODE from the titles cache."
   (when (skroad--nodes-cache-p node)
     (setq skroad--memo-nodes-list nil)
-    (remhash node skroad--nodes-cache)))
+    (remhash node skroad--nodes-cache)
+    t))
 
 (defun skroad--nodes-cache-list ()
   "Return a list of all nodes in the titles cache for use with autocomplete."
   (unless skroad--memo-nodes-list
     (let (nodes-list)
       (maphash #'(lambda (k v) (push k nodes-list)) skroad--nodes-cache)
-      (setq skroad--memo-nodes-list nodes-list)))
+      (setq skroad--memo-nodes-list nodes-list))) ;; TODO: sort?
   skroad--memo-nodes-list)
 
 (defun skroad--nodes-cache-populate ()
@@ -1453,26 +1463,36 @@ If ORPHAN, return a path to an orphan node; otherwise to an active node."
   (setq skroad--memo-nodes-list nil)
   (mapc #'(lambda (node) (puthash node t skroad--nodes-cache))
         (skroad--list-active-nodes))
-  (setq skroad--memo-nodes-list (skroad--nodes-cache-list)))
-
-
+  (setq skroad--memo-nodes-list (skroad--nodes-cache-list))
+  t)
 
 (defun skroad--activate-node (node)
-  "Find, reactivate, or create NODE, and intern it in the cache."
-  (let* ((active-path (skroad--node-path node))
-         (orphan-path (skroad--node-path node t))
-         (active-p (file-exists-p active-path))
-         (orphan-p (file-exists-p orphan-path))
-         )
-    (list active-path active-p orphan-path orphan-p)
-    ))
+  "Find, reactivate, or create NODE; ensure that it is interned in the cache."
+  (or (skroad--nodes-cache-p node) ;; Do nothing if node is already active
+      (and
+       (let ((node-path (skroad--node-path node))) ;; Path where node belongs
+         (or (file-exists-p node-path) ;; Node exists, but needs internment
+             (skroad--mv-file ;; May be an orphan, so try reactivating it:
+              (skroad--node-path-orphan node) node-path)
+             ;; Node does not exist at all, so create it:
+             
+             ))
+       (skroad--nodes-cache-intern node)) ;; Node exists now, so intern it
+      (error "Could not activate node '%s'!" node)))
+
+(defun skroad--deactivate-node (node)
+  "Deactivate (i.e. mark as orphan) NODE and evict it from the cache."
+  (when (skroad--nodes-cache-evict node) ;; Do nothing if already inactive
+    (skroad--mv-file
+     (skroad--node-path node) (skroad--node-path-orphan node))))
 
 
 
-;; (skroad--activate-node "crap")
-;; (skroad--rename-file "~/skrode/k.skroad.orphan" "~/skrode/k.skroad")
-;; (skroad--rename-file "~/skrode/k.skroad" "~/skrode/k.skroad.orphan")
+(skroad--activate-node "crap")
+;; (skroad--mv-file "~/skrode/k.skroad.orphan" "~/skrode/k.skroad")
+;; (skroad--mv-file "~/skrode/k.skroad" "~/skrode/k.skroad.orphan")
 
+;; (skroad--mv-file "~/skrode/k111.skroad" "~/skrode/k.skroad.orphan")
 
 (define-derived-mode skroad-mode text-mode "Skroad"
   ;; Prohibit change hooks firing when only text properties have changed:
