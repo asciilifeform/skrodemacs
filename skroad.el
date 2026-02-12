@@ -1381,7 +1381,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 (defconst skroad--orphans-directory
   (file-name-concat skroad--data-directory "orphans")
-  "Subdirectory for storing orphan (i.e. with no live links) nodes.")
+  "Subdirectory for storing orphan (i.e. fully-unlinked) nodes.")
 
 (defun skroad--ensure-directory (dir)
   "Ensure that DIR exists; if not, create it, and return t iff succeeded."
@@ -1390,9 +1390,8 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 (defun skroad--ensure-data-directories ()
   "Ensure that the data and orphans directories exist."
-  (unless (and
-           (skroad--ensure-directory skroad--data-directory)
-           (skroad--ensure-directory skroad--orphans-directory))
+  (unless (and (skroad--ensure-directory skroad--data-directory)
+               (skroad--ensure-directory skroad--orphans-directory))
     (error "Unable to create skroad data and orphans directories!")))
 
 (defun skroad--filename-to-node (filename)
@@ -1456,20 +1455,20 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   (gethash node skroad--nodes-cache))
 
 (defun skroad--nodes-cache-intern (node)
-  "Intern NODE in the titles cache.  Return t iff it was not already interned."
+  "Intern NODE in the titles cache.  Return t unless it was already interned."
   (unless (skroad--nodes-cache-p node)
     (push node skroad--memo-nodes-ac-list) ;; Glue it to AC list, fast
     (puthash node t skroad--nodes-cache)))
 
 (defun skroad--nodes-cache-evict (node)
-  "Evict NODE from the titles cache.  Return t iff it was actually removed."
+  "Evict NODE from the titles cache.  Return t unless it was already gone."
   (when (skroad--nodes-cache-p node)
     (setq skroad--memo-nodes-ac-list nil) ;; Zap AC list, it will get regenned
     (remhash node skroad--nodes-cache)
     t))
 
 (defun skroad--nodes-cache-rename (node node-new)
-  "Rename NODE to NODE-NEW in the cache.  Return t iff it was actually renamed."
+  "Rename NODE to NODE-NEW in the cache.  Return t unless renaming failed."
   (when (skroad--nodes-cache-p node)
     (unless (skroad--nodes-cache-p node-new)
       (setq skroad--memo-nodes-ac-list nil) ;; Zap AC list, it will get regenned
@@ -1477,17 +1476,21 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
       (puthash node-new t skroad--nodes-cache)
       t)))
 
+(defun skroad--init-node-text (node)
+  "Generate the initial content of NODE."
+  (concat node "\n"))
+
 (defun skroad--activate-node (node)
   "Find, reactivate, or create NODE; ensure that it is interned in the cache."
   (or (skroad--nodes-cache-p node) ;; Do nothing if node is already active
       (and
        (let ((node-path (skroad--node-path node))) ;; Path where node belongs
-         (or (file-exists-p node-path) ;; Node exists, but needs internment
+         (or (file-exists-p node-path) ;; Exists on disk, but needs internment
              (skroad--mv-file ;; May be an orphan, so try reactivating it:
               (skroad--node-orphan-path node) node-path)
-             ;; Node does not exist at all, so create it:
-             
-             ))
+             (progn ;; Node does not exist at all, so create it:
+               (write-region (skroad--init-node-text node) nil node-path nil 0)
+               (file-readable-p node-path))))
        (skroad--nodes-cache-intern node)) ;; Node exists now, so intern it
       (error "Could not activate node '%s'!" node)))
 
@@ -1496,21 +1499,21 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   (when (skroad--nodes-cache-evict node) ;; Do nothing if already inactive
     (unless (skroad--mv-file
              (skroad--node-path node) (skroad--node-orphan-path node))
-      (error "Could not deactivate node '%s'!" node))))
+      (error "Could not deactivate node '%s'!" node)))
+  t)
 
 (defun skroad--rename-node (node node-new) ;; TODO: proper renamer
   "Rename NODE to NODE-NEW."
   (unless (and (skroad--nodes-cache-rename node node-new)
                (skroad--mv-file
                 (skroad--node-path node) (skroad--node-path node-new)))
-    (error "Could not rename node '%s' to '%s'!" node node-new)))
+    (error "Could not rename node '%s' to '%s'!" node node-new))
+  t)
 
 
-(skroad--activate-node "crap")
-;; (skroad--mv-file "~/skrode/k.skroad.orphan" "~/skrode/k.skroad")
-;; (skroad--mv-file "~/skrode/k.skroad" "~/skrode/k.skroad.orphan")
+;; (skroad--activate-node "crap")
+;; (skroad--deactivate-node "crap")
 
-;; (skroad--mv-file "~/skrode/k111.skroad" "~/skrode/k.skroad.orphan")
 
 (define-derived-mode skroad-mode text-mode "Skroad"
   ;; Prohibit change hooks firing when only text properties have changed:
