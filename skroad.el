@@ -1385,14 +1385,15 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 (defun skroad--ensure-directory (dir)
   "Ensure that DIR exists; if not, create it, and return t iff succeeded."
-  (or (file-directory-p dir)
-      (progn (make-directory dir) (file-directory-p dir))))
+  (or (file-accessible-directory-p dir)
+      (progn (make-directory dir) (file-accessible-directory-p dir))))
 
-;; Ensure that the data and orphans directories exist on warmup:
-(unless (and
-         (skroad--ensure-directory skroad--data-directory)
-         (skroad--ensure-directory skroad--orphans-directory))
-  (error "Unable to create skroad data and orphans directories!"))
+(defun skroad--ensure-data-directories ()
+  "Ensure that the data and orphans directories exist."
+  (unless (and
+           (skroad--ensure-directory skroad--data-directory)
+           (skroad--ensure-directory skroad--orphans-directory))
+    (error "Unable to create skroad data and orphans directories!")))
 
 (defun skroad--filename-to-node (filename)
   "Transform FILENAME to a valid node title."
@@ -1442,6 +1443,14 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
              skroad--nodes-cache))
   skroad--memo-nodes-ac-list)
 
+(defun skroad--nodes-cache-populate ()
+  "Populate the titles cache from the data directory listing."
+  (skroad--ensure-data-directories)
+  (setq skroad--memo-nodes-ac-list (skroad--list-active-nodes-on-disk))
+  (mapc #'(lambda (node) (puthash node t skroad--nodes-cache))
+        skroad--memo-nodes-ac-list)
+  t) ;; TODO: reverse AC list?
+
 (defun skroad--nodes-cache-p (node)
   "Test whether NODE is currently interned in the node titles cache."
   (gethash node skroad--nodes-cache))
@@ -1467,15 +1476,6 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
       (remhash node skroad--nodes-cache)
       (puthash node-new t skroad--nodes-cache)
       t)))
-
-(defun skroad--nodes-cache-populate ()
-  "Populate the titles cache from the data directory."
-  (setq skroad--memo-nodes-ac-list nil)
-  (mapc #'(lambda (node)
-            (puthash node t skroad--nodes-cache)
-            (push node skroad--memo-nodes-ac-list))
-        (skroad--list-active-nodes-on-disk))
-  t) ;; TODO: reverse AC list?
 
 (defun skroad--activate-node (node)
   "Find, reactivate, or create NODE; ensure that it is interned in the cache."
