@@ -1407,12 +1407,14 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   (expand-file-name
    (file-name-concat directory (skroad--node-to-filename node))))
 
+;; (locate-file "k" (list "~/skrode/") (list ".skroad"))
+
 (defun skroad--node-path (node)
   "Generate the canonical file path where NODE would reside if active."
   (skroad--node-path-in-directory node skroad--data-directory))
 
-(defun skroad--node-path-orphan (node)
-  "Generate the canonical file path where NODE would reside if orphaned."
+(defun skroad--node-orphan-path (node)
+  "Generate the canonical file path where NODE would reside if inactive."
   (skroad--node-path-in-directory node skroad--orphans-directory))
 
 (defun skroad--list-active-node-files ()
@@ -1423,48 +1425,57 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   "Return the filename-derived title of the node in the current buffer."
   (skroad--filename-to-node (buffer-file-name)))
 
-(defun skroad--list-active-nodes ()
+(defun skroad--list-active-nodes-on-disk ()
   "Return a list of all active node titles."
   (mapcar #'skroad--filename-to-node (skroad--list-active-node-files)))
 
 (defvar skroad--nodes-cache (make-hash-table :test 'equal)
   "Node titles cache.")
 
-(defvar skroad--memo-nodes-list nil
-  "Synced list form of the node titles cache.")
+(defvar skroad--memo-nodes-ac-list nil
+  "Synced list form of the node titles cache.  (Do not access directly).")
+
+(defun skroad--nodes-ac-list ()
+  "Return a list of all nodes in the titles cache for use with autocomplete."
+  (unless skroad--memo-nodes-ac-list
+    (maphash #'(lambda (k v) (push k skroad--memo-nodes-ac-list))
+             skroad--nodes-cache))
+  skroad--memo-nodes-ac-list)
 
 (defun skroad--nodes-cache-p (node)
-  "Test whether NODE is currently interned in the titles cache."
+  "Test whether NODE is currently interned in the node titles cache."
   (gethash node skroad--nodes-cache))
 
 (defun skroad--nodes-cache-intern (node)
-  "Intern NODE in the titles cache."
+  "Intern NODE in the titles cache.  Return t iff it was not already interned."
   (unless (skroad--nodes-cache-p node)
-    (setq skroad--memo-nodes-list nil)
+    (push node skroad--memo-nodes-ac-list) ;; Glue it to AC list, fast
     (puthash node t skroad--nodes-cache)))
 
 (defun skroad--nodes-cache-evict (node)
-  "Evict NODE from the titles cache."
+  "Evict NODE from the titles cache.  Return t iff it was actually removed."
   (when (skroad--nodes-cache-p node)
-    (setq skroad--memo-nodes-list nil)
+    (setq skroad--memo-nodes-ac-list nil) ;; Zap AC list, it will get regenned
     (remhash node skroad--nodes-cache)
     t))
 
-(defun skroad--nodes-cache-list ()
-  "Return a list of all nodes in the titles cache for use with autocomplete."
-  (unless skroad--memo-nodes-list
-    (let (nodes-list)
-      (maphash #'(lambda (k v) (push k nodes-list)) skroad--nodes-cache)
-      (setq skroad--memo-nodes-list nodes-list))) ;; TODO: sort?
-  skroad--memo-nodes-list)
+(defun skroad--nodes-cache-rename (node node-new)
+  "Rename NODE to NODE-NEW in the cache.  Return t iff it was actually renamed."
+  (when (skroad--nodes-cache-p node)
+    (unless (skroad--nodes-cache-p node-new)
+      (setq skroad--memo-nodes-ac-list nil) ;; Zap AC list, it will get regenned
+      (remhash node skroad--nodes-cache)
+      (puthash node-new t skroad--nodes-cache)
+      t)))
 
 (defun skroad--nodes-cache-populate ()
   "Populate the titles cache from the data directory."
-  (setq skroad--memo-nodes-list nil)
-  (mapc #'(lambda (node) (puthash node t skroad--nodes-cache))
-        (skroad--list-active-nodes))
-  (setq skroad--memo-nodes-list (skroad--nodes-cache-list))
-  t)
+  (setq skroad--memo-nodes-ac-list nil)
+  (mapc #'(lambda (node)
+            (puthash node t skroad--nodes-cache)
+            (push node skroad--memo-nodes-ac-list))
+        (skroad--list-active-nodes-on-disk))
+  t) ;; TODO: reverse AC list?
 
 (defun skroad--activate-node (node)
   "Find, reactivate, or create NODE; ensure that it is interned in the cache."
@@ -1473,7 +1484,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
        (let ((node-path (skroad--node-path node))) ;; Path where node belongs
          (or (file-exists-p node-path) ;; Node exists, but needs internment
              (skroad--mv-file ;; May be an orphan, so try reactivating it:
-              (skroad--node-path-orphan node) node-path)
+              (skroad--node-orphan-path node) node-path)
              ;; Node does not exist at all, so create it:
              
              ))
@@ -1483,9 +1494,16 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 (defun skroad--deactivate-node (node)
   "Deactivate (i.e. mark as orphan) NODE and evict it from the cache."
   (when (skroad--nodes-cache-evict node) ;; Do nothing if already inactive
-    (skroad--mv-file
-     (skroad--node-path node) (skroad--node-path-orphan node))))
+    (unless (skroad--mv-file
+             (skroad--node-path node) (skroad--node-orphan-path node))
+      (error "Could not deactivate node '%s'!" node))))
 
+(defun skroad--rename-node (node node-new) ;; TODO: proper renamer
+  "Rename NODE to NODE-NEW."
+  (unless (and (skroad--nodes-cache-rename node node-new)
+               (skroad--mv-file
+                (skroad--node-path node) (skroad--node-path node-new)))
+    (error "Could not rename node '%s' to '%s'!" node node-new)))
 
 
 (skroad--activate-node "crap")
