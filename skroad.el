@@ -144,12 +144,14 @@
          (apply fn args)
          (setq-local buffer-read-only nil))))))
 
-(defun skroad--mv-file (old-file new-file)
-  "Move OLD-FILE to NEW-FILE, updating buffers if required.  Return success."
+(defun skroad--mv-file (old-file new-file &optional overwrite)
+  "Move OLD-FILE to NEW-FILE, updating buffers if required.
+If OVERWRITE is t, allow overwriting.  Return success."
   (when (and
          (file-readable-p old-file)
-         (not (file-exists-p new-file)) (file-writable-p new-file))
-    (rename-file old-file new-file)
+         (or overwrite (not (file-exists-p new-file)))
+         (file-writable-p new-file))
+    (rename-file old-file new-file overwrite)
     (when (and (not (file-exists-p old-file)) (file-readable-p new-file))
       (let ((visiting-buffer (find-buffer-visiting old-file)))
         (when visiting-buffer
@@ -1498,7 +1500,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   "Deactivate (i.e. mark as orphan) NODE and evict it from the cache."
   (when (skroad--nodes-cache-evict node) ;; Do nothing if already inactive
     (unless (skroad--mv-file
-             (skroad--node-path node) (skroad--node-orphan-path node))
+             (skroad--node-path node) (skroad--node-orphan-path node) t)
       (error "Could not deactivate node '%s'!" node)))
   t)
 
@@ -1513,7 +1515,9 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 ;; (skroad--activate-node "crap")
 ;; (skroad--deactivate-node "crap")
-
+;; (skroad--rename-node "crap" "zcrap")
+;; (skroad--deactivate-node "zcrap")
+;; (skroad--activate-node "zcrap")
 
 (define-derived-mode skroad-mode text-mode "Skroad"
   ;; Prohibit change hooks firing when only text properties have changed:
