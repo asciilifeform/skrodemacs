@@ -1493,9 +1493,11 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
           (file-exists-p node-path) ;; Exists on disk, but needs internment
           (skroad--mv-file ;; May be an orphan, so try reactivating it:
            (skroad--node-orphan-path node) node-path)
-          (progn ;; Node does not exist at all, so create it:
-            (write-region (skroad--init-node-text node) nil node-path nil 0)
-            (file-readable-p node-path))))
+          (and ;; Node does not exist at all, so create it:
+           (file-writable-p node-path)
+           (progn
+             (write-region (skroad--init-node-text node) nil node-path nil 0)
+             (file-readable-p node-path)))))
        (skroad--nodes-cache-intern node)) ;; Node exists now, so intern it
       (error "Could not activate node '%s'!" node)))
 
