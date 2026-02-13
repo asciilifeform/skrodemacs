@@ -11,6 +11,8 @@
 (unless skroad--debug
   (setq byte-compile-warnings nil))
 
+;;; User data directories. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defconst skroad--data-directory "~/skrode" "All user data is found here.")
 
 (defconst skroad--active-extension "skroad"
@@ -19,6 +21,16 @@
 (defconst skroad--orphans-directory
   (file-name-concat skroad--data-directory "orphans")
   "Subdirectory for storing orphan (i.e. fully-unlinked) nodes.")
+
+(defconst skroad--stub-list-file
+  (file-name-concat skroad--data-directory ".stubs")
+  "List of nodes that are currently stubs.")
+
+(defconst skroad--stub-removal-list-file
+  (file-name-concat skroad--data-directory ".antistubs")
+  "List of stubs queued for removal from the stubs list.")
+
+;;; Fonts. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defconst skroad--node-title-regex "\\([^][\n\r\f\t\s]+[^][\n\r\f\t]*?\\)"
   "Regex for valid skroad node titles.")
@@ -153,6 +165,12 @@
          (apply fn args)
          (setq-local buffer-read-only nil))))))
 
+(defun skroad--canonical-title (s)
+  "Return a canonicalized node title from string S."
+  (string-clean-whitespace s))
+
+;; File and directory ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun skroad--mv-file (old-file new-file &optional overwrite)
   "Move OLD-FILE to NEW-FILE, updating buffers if required.
 If OVERWRITE is t, allow overwriting.  Return success."
@@ -168,11 +186,19 @@ If OVERWRITE is t, allow overwriting.  Return success."
             (set-visited-file-name new-file t t))))
       t)))
 
-(defun skroad--canonical-title (s)
-  "Return a canonicalized node title from string S."
-  (string-clean-whitespace s))
+(defun skroad--append-to-file (file string)
+  "Silently append STRING to FILE, which is created if it did not exist."
+  (write-region (concat string "\n") nil file t 0))
 
-;; Skroad directory and file ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defun skroad--file-lines-foreach (fn file)
+  "Evaluate (for side effects) FN for each line in FILE (if it exists)."
+  (when (file-exists-p file)
+    (with-temp-buffer
+      (insert-file-contents file t nil nil t)
+      (while (not (eobp))
+        (funcall fn (buffer-substring-no-properties
+                     (line-beginning-position) (line-end-position)))
+        (forward-line 1)))))
 
 (defun skroad--ensure-directory (dir)
   "Ensure that DIR exists; if not, create it, and return t iff succeeded."
@@ -210,7 +236,7 @@ If OVERWRITE is t, allow overwriting.  Return success."
   "Return a list of all active node files in the data directory."
   (file-expand-wildcards (skroad--node-path "*")))
 
-(defun skroad--buffer-node ()
+(defun skroad--current-buffer-node ()
   "Return the filename-derived title of the node in the current buffer."
   (skroad--filename-to-node (buffer-file-name)))
 
@@ -218,10 +244,60 @@ If OVERWRITE is t, allow overwriting.  Return success."
   "Return a list of all active node titles."
   (mapcar #'skroad--filename-to-node (skroad--list-active-node-files)))
 
-;; Skroad node title cache and AC support. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Hash sets. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar skroad--nodes-cache (make-hash-table :test 'equal)
-  "Node titles cache.")
+(defun skroad--make-hash-set ()
+  "Create a new hash set."
+  (make-hash-table :test 'equal))
+
+(defun skroad--hash-set-empty-p (hset)
+  "Return t iff HSET is empty."
+  (zerop (hash-table-count hset)))
+
+(defun skroad--hashset-member-p (item hset)
+  "Return t iff ITEM is a member of the hashset HSET."
+  (gethash item hset))
+
+(defun skroad--hashset-add (item hset)
+  "Add ITEM to the hashset HSET."
+  (puthash item t hset))
+
+(defun skroad--hashset-remove (item hset)
+  "Remove ITEM from the hashset HSET."
+  (remhash item hset))
+
+(defun skroad--hashset-foreach (fn hset)
+  "Evaluate (for side effects) FN on each member of HSET."
+  (maphash #'(lambda (k v) (funcall fn k)) hset))
+
+(defun skroad--hashset-subtract (hset-a hset-b)
+  "Subtract (destructively) HSET-B from HSET-A."
+  (skroad--hashset-foreach #'(lambda (kb) (remhash kb hset-a)) hset-b))
+
+(defun skroad--hashset-from-list (list)
+  "Return a hash table where the keys are the elements of LIST.
+If LIST is empty, an empty table is returned."
+  (let ((hset (skroad--make-hash-set)))
+    (mapc #'(lambda (e) (skroad--hashset-add e hset)) list)
+    hset))
+
+(defun skroad--hashset-from-list-file (file)
+  "Return a hash table where the keys are the lines (without endings) in FILE.
+If FILE does not exist, an empty table is returned."
+  (let ((hset (skroad--make-hash-set)))
+    (skroad--file-lines-foreach
+     #'(lambda (line) (skroad--hashset-add line hset)) file)
+    hset))
+
+(defun skroad--hashset-to-list-file (hset file)
+  "Create or overwrite FILE with a dump of the keys in HSET, one per line."
+  (with-temp-file file
+    (skroad--hashset-foreach #'(lambda (k) (insert k) (newline)) hset)))
+
+;; Node title cache and autocomplete support. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defvar skroad--nodes-cache (skroad--make-hash-set)
+  "Node titles cache.  (Active nodes only).")
 
 (defvar skroad--memo-nodes-ac-list nil
   "Synced list form of the node titles cache.  (Do not access directly).")
@@ -237,35 +313,77 @@ If OVERWRITE is t, allow overwriting.  Return success."
   "Populate the titles cache from the data directory listing."
   (skroad--ensure-data-directories)
   (setq skroad--memo-nodes-ac-list (skroad--list-active-nodes-on-disk))
-  (mapc #'(lambda (node) (puthash node t skroad--nodes-cache))
-        skroad--memo-nodes-ac-list)
+  (setq skroad--nodes-cache
+        (skroad--hashset-from-list skroad--memo-nodes-ac-list))
   t) ;; TODO: reverse AC list?
 
-(defun skroad--nodes-cache-p (node)
+(defun skroad--node-registered-p (node)
   "Test whether NODE is currently interned in the node titles cache."
-  (gethash node skroad--nodes-cache))
+  (skroad--hashset-member-p node skroad--nodes-cache))
 
-(defun skroad--nodes-cache-intern (node)
+(defun skroad--node-register (node)
   "Intern NODE in the titles cache.  Return t unless it was already interned."
-  (unless (skroad--nodes-cache-p node)
+  (unless (skroad--node-registered-p node)
     (push node skroad--memo-nodes-ac-list) ;; Glue it to AC list, fast
-    (puthash node t skroad--nodes-cache)))
+    (skroad--hashset-add node skroad--nodes-cache)))
 
-(defun skroad--nodes-cache-evict (node)
+(defun skroad--node-unregister (node)
   "Evict NODE from the titles cache.  Return t unless it was already gone."
-  (when (skroad--nodes-cache-p node)
+  (when (skroad--node-registered-p node)
     (setq skroad--memo-nodes-ac-list nil) ;; Zap AC list, it will get regenned
-    (remhash node skroad--nodes-cache)
+    (skroad--hashset-remove node skroad--nodes-cache)
     t))
 
-(defun skroad--nodes-cache-rename (node node-new)
+(defun skroad--node-cache-rename (node node-new)
   "Rename NODE to NODE-NEW in the cache.  Return t unless renaming failed."
-  (when (skroad--nodes-cache-p node)
-    (unless (skroad--nodes-cache-p node-new)
+  (when (skroad--node-registered-p node)
+    (unless (skroad--node-registered-p node-new)
       (setq skroad--memo-nodes-ac-list nil) ;; Zap AC list, it will get regenned
-      (remhash node skroad--nodes-cache)
-      (puthash node-new t skroad--nodes-cache)
+      (skroad--hashset-remove node skroad--nodes-cache)
+      (skroad--hashset-add node-new skroad--nodes-cache)
       t)))
+
+;; Stub nodes tracker. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defvar skroad--stub-nodes-cache nil "Stub nodes cache.")
+(defvar skroad--stub-removal-nodes-cache nil "Cache of stub nodes to remove.")
+
+(defun skroad--stub-cache-populate ()
+  "Populate the stub nodes cache (iff empty) from disk, if it exists there.
+If the stub removal list exists, eat it, and regenerate the stubs cache file."
+  (unless skroad--stub-nodes-cache
+    (setq skroad--stub-nodes-cache
+          (skroad--hashset-from-list-file skroad--stub-list-file))
+    (when (file-exists-p skroad--stub-removal-list-file)
+      (skroad--file-lines-foreach
+       #'(lambda (line) (skroad--hashset-remove line skroad--stub-nodes-cache))
+       skroad--stub-removal-list-file)
+      (skroad--hashset-to-file skroad--stub-nodes-cache skroad--stub-list-file)
+      (setq skroad--stub-removal-nodes-cache (skroad--make-hash-set))
+      (delete-file skroad--stub-removal-list-file)))
+  t)
+
+(defun skroad--stub-registered-p (node)
+  "Return t iff NODE is currently interned in the stub nodes cache."
+  (skroad--hashset-member-p node skroad--stub-nodes-cache))
+
+(defun skroad--stub-register (node)
+  "Intern NODE in the stub nodes cache and add it to the stub list on disk."
+  (unless (skroad--stub-registered-p node)
+    (skroad--hashset-add node skroad--stub-nodes-cache)
+    (skroad--append-to-file skroad--stub-list-file node)
+    (skroad--hashset-remove node skroad--stub-removal-nodes-cache)))
+
+(defun skroad--stub-unregister (node)
+  "Evict NODE from the stub nodes cache and add it to the removal list on disk."
+  (when (skroad--stub-registered-p node)
+    (skroad--hashset-remove node skroad--stub-nodes-cache)
+    (skroad--hashset-add node skroad--stub-removal-nodes-cache)
+    (skroad--hashset-to-file
+     skroad--stub-removal-nodes-cache skroad--stub-removal-list-file)))
+
+;; (skroad--stub-register "foo3")
+;; skroad--stub-nodes-cache
 
 ;; Skroad text type mechanism and basic types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -632,17 +750,17 @@ call the action with ARGS."
   :register 'skroad--text-types-indexed)
 
 (defun skroad--index-scan-region (changes start end delta)
-  "Apply DELTA (must be 1 or -1) to each indexed item found in START..END,
-updating the hash table CHANGES, and `skroad--index-update` must be called on
+  "Apply DELTA (must be 1 or -1) to each indexed item found in START ... END,
+updating the hash table CHANGES;  `skroad--index-update` must be called on
 it to finalize all pending changes when no further ones are expected."
   (dolist (text-type skroad--text-types-indexed) ;; walk all indexed types
     (funcall (get text-type 'index-scan-region) changes start end delta)))
 
 (defun skroad--index-update (index pending &optional init-scan disable-actions)
-  "Update INDEX by applying all PENDING changes, and run text type actions when
-appropriate. If `INIT-SCAN` is t, run a text type's `on-init` rather than
-`on-create` for created entries; `on-destroy` runs for destroyed ones.
-If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
+  "Update INDEX by applying all PENDING changes, running appropriate actions.
+If `INIT-SCAN` is t, run a text type's `on-init` rather than `on-create`
+action for created entries; an `on-destroy` action runs for destroyed ones.
+If `DISABLE-ACTIONS` is t, do not perform any type actions at all."
   (let ((create-action (if init-scan 'on-init 'on-create)))
     (maphash
      #'(lambda (key delta) ;; key and count delta in pending changes table
@@ -1480,31 +1598,27 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 ;;    (skroad--put-text "foo123")
 ;;    ))
 
-(defun skroad--init-node-text (node)
-  "Generate the initial content of NODE."
-  (concat node "\n"))
-
 (defun skroad--activate-node (node)
   "Find, reactivate, or create NODE; ensure that it is interned in the cache."
-  (or (skroad--nodes-cache-p node) ;; Do nothing if node is already active
+  (or (skroad--node-registered-p node) ;; Do nothing if node is already active
       (and
        (let ((node-path (skroad--node-path node))) ;; Path where node belongs
          (or
-          (file-exists-p node-path) ;; Exists on disk, but needs internment
+          (file-exists-p node-path) ;; Found on disk, but needs internment
           (skroad--mv-file ;; May be an orphan, so try reactivating it:
            (skroad--node-orphan-path node) node-path)
-          (and ;; Node does not exist at all, so create it:
+          (and ;; Node does not exist on disk, so create it:
            (file-writable-p node-path)
-           (progn
-             (write-region (skroad--init-node-text node) nil node-path nil 0)
+           (progn ;; Initialize the new node, with only a title to start with
+             (write-region (concat node "\n") nil node-path nil 0)
              (file-readable-p node-path)))))
-       (skroad--nodes-cache-intern node)) ;; Node exists now, so intern it
+       (skroad--node-register node)) ;; Node is on disk, now intern it
       (error "Could not activate node '%s'!" node)))
 
 (defun skroad--deactivate-node (node)
   "Deactivate (i.e. mark as orphan) NODE and evict it from the cache.
 If an orphan of NODE already exists in the orphans dir, overwrite it."
-  (when (skroad--nodes-cache-evict node) ;; Do nothing if already inactive
+  (when (skroad--node-unregister node) ;; Do nothing if already inactive
     (unless (skroad--mv-file
              (skroad--node-path node) (skroad--node-orphan-path node) t)
       (error "Could not deactivate node '%s'!" node)))
@@ -1512,7 +1626,7 @@ If an orphan of NODE already exists in the orphans dir, overwrite it."
 
 (defun skroad--rename-node (node node-new) ;; TODO: proper renamer
   "Rename NODE to NODE-NEW."
-  (unless (and (skroad--nodes-cache-rename node node-new)
+  (unless (and (skroad--node-cache-rename node node-new)
                (skroad--mv-file
                 (skroad--node-path node) (skroad--node-path node-new)))
     (error "Could not rename node '%s' to '%s'!" node node-new))
