@@ -321,13 +321,13 @@ If FILE does not exist, an empty table is returned."
   "Test whether NODE is currently interned in the node titles cache."
   (skroad--hashset-member-p node skroad--nodes-cache))
 
-(defun skroad--node-register (node)
+(defun skroad--node-intern (node)
   "Intern NODE in the titles cache.  Return t unless it was already interned."
   (unless (skroad--node-registered-p node)
     (push node skroad--memo-nodes-ac-list) ;; Glue it to AC list, fast
     (skroad--hashset-add node skroad--nodes-cache)))
 
-(defun skroad--node-unregister (node)
+(defun skroad--node-evict (node)
   "Evict NODE from the titles cache.  Return t unless it was already gone."
   (when (skroad--node-registered-p node)
     (setq skroad--memo-nodes-ac-list nil) ;; Zap AC list, it will get regenned
@@ -373,7 +373,7 @@ If the stub removal list exists, eat and delete it, then rewrite the cache."
   "Return t iff NODE is currently interned in the stub nodes cache."
   (skroad--hashset-member-p node skroad--stub-nodes-cache))
 
-(defun skroad--stub-register (node)
+(defun skroad--stub-intern (node)
   "Intern NODE in the stub nodes cache and add it to the stub list on disk."
   (unless (skroad--stub-registered-p node)
     (skroad--hashset-add node skroad--stub-nodes-cache)
@@ -382,7 +382,7 @@ If the stub removal list exists, eat and delete it, then rewrite the cache."
       (skroad--hashset-remove node skroad--stub-removal-nodes-cache)
       (skroad--stub-removal-nodes-cache-save))))
 
-(defun skroad--stub-unregister (node)
+(defun skroad--stub-evict (node)
   "Evict NODE from the stub nodes cache and add it to the removal list on disk."
   (when (skroad--stub-registered-p node)
     (skroad--hashset-remove node skroad--stub-nodes-cache)
@@ -390,7 +390,7 @@ If the stub removal list exists, eat and delete it, then rewrite the cache."
       (skroad--hashset-add node skroad--stub-removal-nodes-cache)
       (skroad--stub-removal-nodes-cache-save))))
 
-;; (skroad--stub-register "foo3")
+;; (skroad--stub-intern "foo3")
 ;; skroad--stub-nodes-cache
 
 ;; Skroad text type mechanism and basic types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1620,13 +1620,13 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
            (progn ;; Initialize the new node, with only a title to start with
              (write-region (concat node "\n") nil node-path nil 0)
              (file-readable-p node-path)))))
-       (skroad--node-register node)) ;; Node is on disk, now intern it
+       (skroad--node-intern node)) ;; Node is on disk, now intern it
       (error "Could not activate node '%s'!" node)))
 
 (defun skroad--deactivate-node (node)
   "Deactivate (i.e. mark as orphan) NODE and evict it from the cache.
 If an orphan of NODE already exists in the orphans dir, overwrite it."
-  (when (skroad--node-unregister node) ;; Do nothing if already inactive
+  (when (skroad--node-evict node) ;; Do nothing if already inactive
     (unless (skroad--mv-file
              (skroad--node-path node) (skroad--node-orphan-path node) t)
       (error "Could not deactivate node '%s'!" node)))
