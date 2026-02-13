@@ -296,51 +296,51 @@ If FILE does not exist, an empty table is returned."
 
 ;; Node title cache and autocomplete support. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar skroad--nodes-cache (skroad--make-hash-set)
+(defvar skroad--node-cache (skroad--make-hash-set)
   "Node titles cache.  (Active nodes only).")
 
-(defvar skroad--memo-nodes-ac-list nil
+(defvar skroad--memo-node-ac-list nil
   "Synced list form of the node titles cache.  (Do not access directly).")
 
 (defun skroad--nodes-ac-list ()
   "Return a list of all nodes in the titles cache for use with autocomplete."
-  (unless skroad--memo-nodes-ac-list
-    (maphash #'(lambda (k v) (push k skroad--memo-nodes-ac-list))
-             skroad--nodes-cache))
-  skroad--memo-nodes-ac-list)
+  (unless skroad--memo-node-ac-list
+    (maphash #'(lambda (k v) (push k skroad--memo-node-ac-list))
+             skroad--node-cache))
+  skroad--memo-node-ac-list)
 
 (defun skroad--nodes-cache-populate ()
   "Populate the titles cache from the data directory listing."
   (skroad--ensure-data-directories)
-  (setq skroad--memo-nodes-ac-list (skroad--list-active-nodes-on-disk))
-  (setq skroad--nodes-cache
-        (skroad--hashset-from-list skroad--memo-nodes-ac-list))
+  (setq skroad--memo-node-ac-list (skroad--list-active-nodes-on-disk))
+  (setq skroad--node-cache
+        (skroad--hashset-from-list skroad--memo-node-ac-list))
   t) ;; TODO: reverse AC list?
 
 (defun skroad--node-registered-p (node)
   "Test whether NODE is currently interned in the node titles cache."
-  (skroad--hashset-member-p node skroad--nodes-cache))
+  (skroad--hashset-member-p node skroad--node-cache))
 
 (defun skroad--node-intern (node)
   "Intern NODE in the titles cache.  Return t unless it was already interned."
   (unless (skroad--node-registered-p node)
-    (push node skroad--memo-nodes-ac-list) ;; Glue it to AC list, fast
-    (skroad--hashset-add node skroad--nodes-cache)))
+    (push node skroad--memo-node-ac-list) ;; Glue it to AC list, fast
+    (skroad--hashset-add node skroad--node-cache)))
 
 (defun skroad--node-evict (node)
   "Evict NODE from the titles cache.  Return t unless it was already gone."
   (when (skroad--node-registered-p node)
-    (setq skroad--memo-nodes-ac-list nil) ;; Zap AC list, it will get regenned
-    (skroad--hashset-remove node skroad--nodes-cache)
+    (setq skroad--memo-node-ac-list nil) ;; Zap AC list, it will get regenned
+    (skroad--hashset-remove node skroad--node-cache)
     t))
 
 (defun skroad--node-cache-rename (node node-new)
   "Rename NODE to NODE-NEW in the cache.  Return t unless renaming failed."
   (when (skroad--node-registered-p node)
     (unless (skroad--node-registered-p node-new)
-      (setq skroad--memo-nodes-ac-list nil) ;; Zap AC list, it will get regenned
-      (skroad--hashset-remove node skroad--nodes-cache)
-      (skroad--hashset-add node-new skroad--nodes-cache)
+      (setq skroad--memo-node-ac-list nil) ;; Zap AC list, it will get regenned
+      (skroad--hashset-remove node skroad--node-cache)
+      (skroad--hashset-add node-new skroad--node-cache)
       t)))
 
 ;; Stub nodes tracker. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
