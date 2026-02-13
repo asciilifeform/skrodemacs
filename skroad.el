@@ -358,7 +358,8 @@ If the stub removal list exists, eat it, and regenerate the stubs cache file."
       (skroad--file-lines-foreach
        #'(lambda (line) (skroad--hashset-remove line skroad--stub-nodes-cache))
        skroad--stub-removal-list-file)
-      (skroad--hashset-to-file skroad--stub-nodes-cache skroad--stub-list-file)
+      (skroad--hashset-to-list-file
+       skroad--stub-nodes-cache skroad--stub-list-file)
       (setq skroad--stub-removal-nodes-cache (skroad--make-hash-set))
       (delete-file skroad--stub-removal-list-file)))
   t)
@@ -371,7 +372,7 @@ If the stub removal list exists, eat it, and regenerate the stubs cache file."
   "Intern NODE in the stub nodes cache and add it to the stub list on disk."
   (unless (skroad--stub-registered-p node)
     (skroad--hashset-add node skroad--stub-nodes-cache)
-    (skroad--append-to-file skroad--stub-list-file node)
+    (skroad--append-to-list-file skroad--stub-list-file node)
     (skroad--hashset-remove node skroad--stub-removal-nodes-cache)))
 
 (defun skroad--stub-unregister (node)
@@ -379,7 +380,7 @@ If the stub removal list exists, eat it, and regenerate the stubs cache file."
   (when (skroad--stub-registered-p node)
     (skroad--hashset-remove node skroad--stub-nodes-cache)
     (skroad--hashset-add node skroad--stub-removal-nodes-cache)
-    (skroad--hashset-to-file
+    (skroad--hashset-to-list-file
      skroad--stub-removal-nodes-cache skroad--stub-removal-list-file)))
 
 ;; (skroad--stub-register "foo3")
