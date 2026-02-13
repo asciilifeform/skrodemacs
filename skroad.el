@@ -345,53 +345,53 @@ If FILE does not exist, an empty table is returned."
 
 ;; Stub nodes tracker. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar skroad--stub-node-cache nil "Stub nodes cache.")
-(defvar skroad--stub-removal-node-cache nil "Cache of stub nodes to remove.")
+(defvar skroad--stub-cache nil "Stub nodes cache.")
+(defvar skroad--stub-removal-cache nil "Cache of stub nodes to remove.")
 
 (defun skroad--stub-removal-nodes-cache-save ()
   "Save the current queue of stubs to remove to disk."
   (skroad--hashset-to-list-file ;; Stays reasonably small, so won't pound disk
-   skroad--stub-removal-node-cache skroad--stub-removal-list-file))
+   skroad--stub-removal-cache skroad--stub-removal-list-file))
 
 (defun skroad--stub-cache-populate ()
   "Populate the stub nodes cache (iff empty) from disk, if it exists there.
 If the stub removal list exists, eat and delete it, then rewrite the cache."
-  (unless skroad--stub-node-cache
-    (setq skroad--stub-node-cache
+  (unless skroad--stub-cache
+    (setq skroad--stub-cache
           (skroad--hashset-from-list-file skroad--stub-list-file))
     (when (file-exists-p skroad--stub-removal-list-file)
       (skroad--file-lines-foreach
-       #'(lambda (line) (skroad--hashset-remove line skroad--stub-node-cache))
+       #'(lambda (line) (skroad--hashset-remove line skroad--stub-cache))
        skroad--stub-removal-list-file)
       (skroad--hashset-to-list-file
-       skroad--stub-node-cache skroad--stub-list-file)
-      (setq skroad--stub-removal-node-cache (skroad--make-hash-set))
+       skroad--stub-cache skroad--stub-list-file)
+      (setq skroad--stub-removal-cache (skroad--make-hash-set))
       (delete-file skroad--stub-removal-list-file)))
   t)
 
 (defun skroad--stub-interned-p (node)
   "Return t iff NODE is currently interned in the stub nodes cache."
-  (skroad--hashset-member-p node skroad--stub-node-cache))
+  (skroad--hashset-member-p node skroad--stub-cache))
 
 (defun skroad--stub-intern (node)
   "Intern NODE in the stub nodes cache and add it to the stub list on disk."
   (unless (skroad--stub-interned-p node)
-    (skroad--hashset-add node skroad--stub-node-cache)
+    (skroad--hashset-add node skroad--stub-cache)
     (skroad--append-to-list-file skroad--stub-list-file node) ;; Save it ASAP
-    (when (skroad--hashset-member-p node skroad--stub-removal-node-cache)
-      (skroad--hashset-remove node skroad--stub-removal-node-cache)
+    (when (skroad--hashset-member-p node skroad--stub-removal-cache)
+      (skroad--hashset-remove node skroad--stub-removal-cache)
       (skroad--stub-removal-nodes-cache-save))))
 
 (defun skroad--stub-evict (node)
   "Evict NODE from the stub nodes cache and add it to the removal list on disk."
   (when (skroad--stub-interned-p node)
-    (skroad--hashset-remove node skroad--stub-node-cache)
-    (unless (skroad--hashset-member-p node skroad--stub-removal-node-cache)
-      (skroad--hashset-add node skroad--stub-removal-node-cache)
+    (skroad--hashset-remove node skroad--stub-cache)
+    (unless (skroad--hashset-member-p node skroad--stub-removal-cache)
+      (skroad--hashset-add node skroad--stub-removal-cache)
       (skroad--stub-removal-nodes-cache-save))))
 
 ;; (skroad--stub-intern "foo3")
-;; skroad--stub-node-cache
+;; skroad--stub-cache
 
 ;; Skroad text type mechanism and basic types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
