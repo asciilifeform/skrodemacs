@@ -380,7 +380,7 @@ If the stub removal list exists, eat it, and regenerate the stubs cache file."
   (when (skroad--stub-registered-p node)
     (skroad--hashset-remove node skroad--stub-nodes-cache)
     (skroad--hashset-add node skroad--stub-removal-nodes-cache)
-    (skroad--hashset-to-list-file
+    (skroad--hashset-to-list-file ;; Stays reasonably small, so won't pound disk
      skroad--stub-removal-nodes-cache skroad--stub-removal-list-file)))
 
 ;; (skroad--stub-register "foo3")
