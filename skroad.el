@@ -350,7 +350,7 @@ If FILE does not exist, an empty table is returned."
 
 (defun skroad--stub-cache-populate ()
   "Populate the stub nodes cache (iff empty) from disk, if it exists there.
-If the stub removal list exists, eat it, and regenerate the stubs cache file."
+If the stub removal list exists, eat it, and regenerate the cache on disk."
   (unless skroad--stub-nodes-cache
     (setq skroad--stub-nodes-cache
           (skroad--hashset-from-list-file skroad--stub-list-file))
