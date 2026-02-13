@@ -317,27 +317,27 @@ If FILE does not exist, an empty table is returned."
         (skroad--hashset-from-list skroad--memo-node-ac-list))
   t) ;; TODO: reverse AC list?
 
-(defun skroad--node-registered-p (node)
+(defun skroad--node-interned-p (node)
   "Test whether NODE is currently interned in the node titles cache."
   (skroad--hashset-member-p node skroad--node-cache))
 
 (defun skroad--node-intern (node)
   "Intern NODE in the titles cache.  Return t unless it was already interned."
-  (unless (skroad--node-registered-p node)
+  (unless (skroad--node-interned-p node)
     (push node skroad--memo-node-ac-list) ;; Glue it to AC list, fast
     (skroad--hashset-add node skroad--node-cache)))
 
 (defun skroad--node-evict (node)
   "Evict NODE from the titles cache.  Return t unless it was already gone."
-  (when (skroad--node-registered-p node)
+  (when (skroad--node-interned-p node)
     (setq skroad--memo-node-ac-list nil) ;; Zap AC list, it will get regenned
     (skroad--hashset-remove node skroad--node-cache)
     t))
 
 (defun skroad--node-cache-rename (node node-new)
   "Rename NODE to NODE-NEW in the cache.  Return t unless renaming failed."
-  (when (skroad--node-registered-p node)
-    (unless (skroad--node-registered-p node-new)
+  (when (skroad--node-interned-p node)
+    (unless (skroad--node-interned-p node-new)
       (setq skroad--memo-node-ac-list nil) ;; Zap AC list, it will get regenned
       (skroad--hashset-remove node skroad--node-cache)
       (skroad--hashset-add node-new skroad--node-cache)
@@ -369,13 +369,13 @@ If the stub removal list exists, eat and delete it, then rewrite the cache."
       (delete-file skroad--stub-removal-list-file)))
   t)
 
-(defun skroad--stub-registered-p (node)
+(defun skroad--stub-interned-p (node)
   "Return t iff NODE is currently interned in the stub nodes cache."
   (skroad--hashset-member-p node skroad--stub-node-cache))
 
 (defun skroad--stub-intern (node)
   "Intern NODE in the stub nodes cache and add it to the stub list on disk."
-  (unless (skroad--stub-registered-p node)
+  (unless (skroad--stub-interned-p node)
     (skroad--hashset-add node skroad--stub-node-cache)
     (skroad--append-to-list-file skroad--stub-list-file node) ;; Save it ASAP
     (when (skroad--hashset-member-p node skroad--stub-removal-node-cache)
@@ -384,7 +384,7 @@ If the stub removal list exists, eat and delete it, then rewrite the cache."
 
 (defun skroad--stub-evict (node)
   "Evict NODE from the stub nodes cache and add it to the removal list on disk."
-  (when (skroad--stub-registered-p node)
+  (when (skroad--stub-interned-p node)
     (skroad--hashset-remove node skroad--stub-node-cache)
     (unless (skroad--hashset-member-p node skroad--stub-removal-node-cache)
       (skroad--hashset-add node skroad--stub-removal-node-cache)
@@ -1608,7 +1608,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 (defun skroad--activate-node (node)
   "Find, reactivate, or create NODE; ensure that it is interned in the cache."
-  (or (skroad--node-registered-p node) ;; Do nothing if node is already active
+  (or (skroad--node-interned-p node) ;; Do nothing if node is already active
       (and
        (let ((node-path (skroad--node-path node))) ;; Path where node belongs
          (or
