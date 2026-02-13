@@ -297,7 +297,7 @@ If FILE does not exist, an empty table is returned."
 ;; Node title cache and autocomplete support. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--node-cache (skroad--make-hash-set)
-  "Node titles cache.  (Active nodes only).")
+  "Set of nodes known to be active.")
 
 (defvar skroad--memo-node-ac-list nil
   "Synced list form of the node titles cache.  (Do not access directly).")
@@ -345,8 +345,8 @@ If FILE does not exist, an empty table is returned."
 
 ;; Stub nodes tracker. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar skroad--stub-cache nil "Stub nodes cache.")
-(defvar skroad--stub-removal-cache nil "Cache of stub nodes to remove.")
+(defvar skroad--stub-cache nil "Set of nodes currently considered stubs.")
+(defvar skroad--stub-removal-cache nil "Set of stubs removed in this session.")
 
 (defun skroad--stub-removal-nodes-cache-save ()
   "Save the current queue of stubs to remove to disk."
