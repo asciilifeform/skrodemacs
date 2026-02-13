@@ -348,6 +348,11 @@ If FILE does not exist, an empty table is returned."
 (defvar skroad--stub-nodes-cache nil "Stub nodes cache.")
 (defvar skroad--stub-removal-nodes-cache nil "Cache of stub nodes to remove.")
 
+(defun skroad--stub-removal-nodes-cache-save ()
+  "Save the current queue of stubs to remove to disk."
+  (skroad--hashset-to-list-file ;; Stays reasonably small, so won't pound disk
+   skroad--stub-removal-nodes-cache skroad--stub-removal-list-file))
+
 (defun skroad--stub-cache-populate ()
   "Populate the stub nodes cache (iff empty) from disk, if it exists there.
 If the stub removal list exists, eat it, and regenerate the cache on disk."
@@ -372,16 +377,18 @@ If the stub removal list exists, eat it, and regenerate the cache on disk."
   "Intern NODE in the stub nodes cache and add it to the stub list on disk."
   (unless (skroad--stub-registered-p node)
     (skroad--hashset-add node skroad--stub-nodes-cache)
-    (skroad--append-to-list-file skroad--stub-list-file node)
-    (skroad--hashset-remove node skroad--stub-removal-nodes-cache)))
+    (skroad--append-to-list-file skroad--stub-list-file node) ;; fast save
+    (when (skroad--hashset-member-p node skroad--stub-removal-nodes-cache)
+      (skroad--hashset-remove node skroad--stub-removal-nodes-cache)
+      (skroad--stub-removal-nodes-cache-save))))
 
 (defun skroad--stub-unregister (node)
   "Evict NODE from the stub nodes cache and add it to the removal list on disk."
   (when (skroad--stub-registered-p node)
     (skroad--hashset-remove node skroad--stub-nodes-cache)
-    (skroad--hashset-add node skroad--stub-removal-nodes-cache)
-    (skroad--hashset-to-list-file ;; Stays reasonably small, so won't pound disk
-     skroad--stub-removal-nodes-cache skroad--stub-removal-list-file)))
+    (unless (skroad--hashset-member-p node skroad--stub-removal-nodes-cache)
+      (skroad--hashset-add node skroad--stub-removal-nodes-cache)
+      (skroad--stub-removal-nodes-cache-save))))
 
 ;; (skroad--stub-register "foo3")
 ;; skroad--stub-nodes-cache
