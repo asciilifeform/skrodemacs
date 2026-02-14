@@ -271,22 +271,27 @@ If OVERWRITE is t, allow overwriting.  Return success."
   (maphash #'(lambda (k v) (funcall fn k)) hset))
 
 (defun skroad--hashset-from-list (list)
-  "Return a hash table where the keys are the elements of LIST.
-If LIST is empty, an empty table is returned."
+  "Return a hashset (possibly empty) constructed from the elements of LIST."
   (let ((hset (skroad--make-hash-set)))
     (mapc #'(lambda (e) (skroad--hashset-add e hset)) list)
     hset))
 
+(defun skroad--hashset-to-list (hset)
+  "Return a list (possibly empty) consisting of the elements of HSET."
+  (let ((list nil))
+    (maphash #'(lambda (k v) (push k list)) hset)
+    (reverse list)))
+
 (defun skroad--hashset-load (file)
-  "Return a hash table where the keys are the lines (without endings) in FILE.
-If FILE does not exist, an empty table is returned."
+  "Return a hashset constructed from the lines (without endings) in FILE.
+If FILE does not exist, an empty hashset is returned."
   (let ((hset (skroad--make-hash-set)))
     (skroad--file-lines-foreach
      #'(lambda (line) (skroad--hashset-add line hset)) file)
     hset))
 
 (defun skroad--hashset-save (hset file)
-  "Create or overwrite FILE with a dump of the keys in HSET, one per line."
+  "Create or overwrite FILE with a dump of HSET, one element per line."
   (with-temp-file file
     (skroad--hashset-foreach #'(lambda (k) (insert k) (newline)) hset)))
 
@@ -298,11 +303,11 @@ If FILE does not exist, an empty table is returned."
 (defvar skroad--memo-node-ac-list nil
   "Synced list form of the node titles cache.  (Do not access directly).")
 
-(defun skroad--nodes-ac-list ()
+(defun skroad--node-ac-list ()
   "Return a list of all nodes in the titles cache for use with autocomplete."
   (unless skroad--memo-node-ac-list
-    (maphash #'(lambda (k v) (push k skroad--memo-node-ac-list))
-             skroad--node-cache))
+    (setq skroad--memo-node-ac-list
+          (skroad--hashset-to-list skroad--node-cache)))
   skroad--memo-node-ac-list)
 
 (defun skroad--nodes-cache-populate ()
@@ -853,11 +858,13 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
                (delete-region (skroad--zone-start (1- p)) p)
              (delete-char -1))))))
 
+;; TODO: jump to either living or dead?
 (defun skroad--cmd-top-jump-to-next-live-link ()
   "Jump to the next live link following point; cycle to first if no more."
   (interactive)
   (funcall (get 'skroad--text-link-node-live 'jump-next-from) (point)))
 
+;; TODO: jump to either living or dead?
 (defun skroad--cmd-top-jump-to-prev-live-link ()
   "Jump to the previous live link preceding point; cycle to last if no more."
   (interactive)
@@ -1096,7 +1103,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
      (if (string-match (skroad--title-prohibited-regex) (skroad--renamer-text))
          (skroad--renamer-mark-invalid) (skroad--renamer-mark-valid)))))
 
-(defun skroad--cmd-renamer-accept-changes ()
+(defun skroad--cmd-renamer-accept-changes () ;; TODO: actually rename anything
   "Accept the current renaming."
   (interactive)
   (when skroad--buf-renamer-valid
@@ -1193,6 +1200,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   (message (format "Live link pushed: '%s'" data)))
 
 ;; TODO: maintain count of live links and give predicate for when not zero
+;; TODO: these should be for live links strictly
 
 (defun skroad--link-init (text-type payload)
   "First instance of PAYLOAD of TEXT-TYPE was found in the buffer during load."
@@ -1277,14 +1285,14 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 ;; Skroad link utility ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--link-deaden (node)
-  "Turn all live links to NODE in current buffer to dead links."
+  "Transform all live links to NODE in the current buffer to dead links."
   (funcall
    (get 'skroad--text-link-node-live 'payload-change-type)
    node
    'skroad--text-link-node-dead))
 
 (defun skroad--link-liven (node)
-  "Turn all dead links to NODE in current buffer to live links."
+  "Transform all dead links to NODE in the current buffer to live links."
   (funcall
    (get 'skroad--text-link-node-dead 'payload-change-type)
    node
@@ -1619,7 +1627,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
            (skroad--node-orphan-path node) node-path)
           (and ;; Node does not exist on disk, so create it:
            (file-writable-p node-path)
-           (progn ;; Initialize the new node, with only a title to start with
+           (progn ;; Initialize the new node, with only the title at first
              (write-region (concat node "\n") nil node-path nil 0)
              (file-readable-p node-path)))))
        (skroad--node-intern node)) ;; Node is on disk, now intern it
