@@ -105,6 +105,10 @@
   "Determine whether skroad mode is currently active."
   (derived-mode-p 'skroad-mode))
 
+(defmacro skroad--when-in-mode (&rest body)
+  "Evaluate BODY only when skroad mode is active in the current buffer."
+  `(when (skroad--mode-p) ,@body))
+
 (defun skroad--keyword-to-symbol (exp)
   "If EXP is a keyword, convert it to a symbol. If not, return it as-is."
   (unless (keywordp exp) (error "%s is not a keyword!" exp))
@@ -172,12 +176,13 @@
 ;; File and directory ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--mv-file (old-file new-file &optional overwrite)
-  "Move OLD-FILE to NEW-FILE, updating buffers if required.
+  "Move OLD-FILE to NEW-FILE (may NOT be equal), updating buffers if required.
 If OVERWRITE is t, allow overwriting.  Return success."
   (when (and
          (file-readable-p old-file)
          (or overwrite (not (file-exists-p new-file)))
-         (file-writable-p new-file))
+         (file-writable-p new-file)
+         (not (file-equal-p old-file new-file)))
     (rename-file old-file new-file overwrite)
     (when (and (not (file-exists-p old-file)) (file-readable-p new-file))
       (let ((visiting-buffer (find-buffer-visiting old-file)))
@@ -354,14 +359,16 @@ If FILE does not exist, an empty hashset is returned."
 
 (defun skroad--stub-removal-cache-save ()
   "Save to disk the set of stubs queued for removal during this session."
-  (skroad--hashset-save ;; Stays reasonably small, so won't pound disk
-   skroad--stub-removal-cache skroad--stub-removal-list-file))
+  (when skroad--stub-removal-cache
+    (skroad--hashset-save ;; Stays reasonably small, so won't pound disk
+     skroad--stub-removal-cache skroad--stub-removal-list-file)))
 
 (defun skroad--stub-queued-for-removal-p (node)
   "Return t iff NODE is queued for removal from the stub list on disk."
-  (skroad--hashset-member-p node skroad--stub-removal-cache))
+  (when skroad--stub-removal-cache
+    (skroad--hashset-member-p node skroad--stub-removal-cache)))
 
-(defun skroad--stub-cache-populate ()
+(defun skroad--stub-cache-ensure-init ()
   "Populate the stub nodes cache from disk, if empty and the file was found.
 If a stub removal list was also found, process and delete it."
   (unless skroad--stub-cache
@@ -379,13 +386,14 @@ If a stub removal list was also found, process and delete it."
 
 (defun skroad--stub-interned-p (node)
   "Return t iff NODE is currently interned in the stub nodes cache."
+  (skroad--stub-cache-ensure-init)
   (skroad--hashset-member-p node skroad--stub-cache))
 
 (defun skroad--stub-intern (node)
   "Intern NODE in the stub nodes cache and add it to the stub list on disk."
   (unless (skroad--stub-interned-p node) ;; Do nothing if already interned
     (skroad--hashset-add node skroad--stub-cache) ;; Intern it
-    (skroad--append-to-list-file skroad--stub-list-file node) ;; Save it ASAP
+    (skroad--append-to-file skroad--stub-list-file node) ;; Save it ASAP
     (when (skroad--stub-queued-for-removal-p node) ;; If queued for removal:
       (skroad--hashset-remove node skroad--stub-removal-cache) ;; Unqueue it
       (skroad--stub-removal-cache-save)))) ;; Save modified removal list
@@ -397,9 +405,6 @@ If a stub removal list was also found, process and delete it."
     (unless (skroad--stub-queued-for-removal-p node) ;; If not yet queued:
       (skroad--hashset-add node skroad--stub-removal-cache) ;; Queue for removal
       (skroad--stub-removal-cache-save)))) ;; Save modified removal list
-
-;; (skroad--stub-intern "foo3")
-;; skroad--stub-cache
 
 ;; Skroad text type mechanism and basic types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -747,6 +752,8 @@ call the action with ARGS."
 
 ;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: maybe separate hash table for each type?
+
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
 (skroad--deftype skroad--text-mixin-indexed
@@ -838,7 +845,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
     (skroad--index-scan-region
      skroad--buf-pending-changes start-expanded end-expanded 1)))
 
-(defun skroad--indexed-exists-p (type payload)
+(defun skroad--indexed-type-payload-exists-p (type payload)
   "Find if a PAYLOAD of TYPE currently exists in the buffer-local index."
   (gethash (cons type payload) skroad--buf-index))
 
@@ -1015,7 +1022,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   (cancel-change-group skroad--buf-unrollable-changes)
   (setq-local skroad--buf-unrollable-changes nil))
 
-;; Interactive renamer. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Interactive node renamer. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; TODO: should be global, rather than per-buffer, and go away when we leave it
 (defvar-local skroad--buf-renamer nil "Node renamer overlay.")
@@ -1177,7 +1184,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
             "RET" #'skroad--cmd-link-activate))
 
 (defun skroad--cmd-link-comment ()
-  "Delinkify the link under the point to plain text by removing delimiters."
+  "Transform the link under the point to plain text by removing delimiters."
   (interactive)
   (skroad--with-current-zone
     (let ((text (skroad--prop-at 'data)))
@@ -1309,7 +1316,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   "Determine whether a live link to NODE exists in the current buffer."
   (or (and (skroad--mode-p) ;; If we're in skroad mode, use fast path:
            (null skroad--buf-pending-changes) ;; ... no pending changes
-           (skroad--indexed-exists-p
+           (skroad--indexed-type-payload-exists-p
             'skroad--text-link-node-live node)) ;; ... query the index.
       (funcall (get 'skroad--text-link-node-live 'have-payload-p) node)))
 
@@ -1492,14 +1499,12 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
-  ;; (message "pre!")
   (setq-local mouse-highlight nil
               skroad--buf-pre-command-point-state (skroad--get-point-state)))
 
 ;; TODO: some of these should be done only if buffer modified?
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
-  ;; (message "post!")
   (skroad--refontify-current-line)
   (skroad--motion skroad--buf-pre-command-point-state)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
@@ -1583,16 +1588,17 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 ;; TODO: do initial update in the save hook ?
 ;; TODO: thrown text should perform actions
+;; TODO: there should be only one renamer, so we won't need to cancel it here
 (defmacro skroad--do-external (&rest body)
   "Evaluate BODY, and then save the current buffer."
   `(unwind-protect
        (progn
-         (when (skroad--mode-p)
+         (skroad--when-in-mode
            (skroad--renamer-deactivate) ;; Cancel renamer to prevent rollback
            (skroad--update-buf-index)) ;; Apply pending updates, firing actions
          (save-mark-and-excursion
            (atomic-change-group ,@body)))
-     (when (skroad--mode-p) ;; Only if buffer is actually in skroad mode:
+     (skroad--when-in-mode ;; Only if buffer is actually in skroad mode:
        (skroad--update-buf-index t)) ;; Update index but don't fire any actions
      (save-buffer)))
 
@@ -1634,7 +1640,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
            (file-writable-p node-path)
            (progn ;; Initialize the new node, with only the title at first
              (write-region (concat node "\n") nil node-path nil 0)
-             (skroad--stub-intern node) ;; Register the node as a stub
+             ;; (skroad--stub-intern node) ;; Register the node as a stub
              (file-readable-p node-path)))))
        (skroad--node-intern node)) ;; Node is on disk, now intern it
       (error "Could not activate node '%s'!" node)))
