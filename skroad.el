@@ -270,10 +270,6 @@ If OVERWRITE is t, allow overwriting.  Return success."
   "Evaluate (for side effects) FN on each member of HSET."
   (maphash #'(lambda (k v) (funcall fn k)) hset))
 
-(defun skroad--hashset-subtract (hset-a hset-b)
-  "Subtract (destructively) HSET-B from HSET-A."
-  (skroad--hashset-foreach #'(lambda (kb) (remhash kb hset-a)) hset-b))
-
 (defun skroad--hashset-from-list (list)
   "Return a hash table where the keys are the elements of LIST.
 If LIST is empty, an empty table is returned."
@@ -281,7 +277,7 @@ If LIST is empty, an empty table is returned."
     (mapc #'(lambda (e) (skroad--hashset-add e hset)) list)
     hset))
 
-(defun skroad--hashset-from-list-file (file)
+(defun skroad--hashset-load (file)
   "Return a hash table where the keys are the lines (without endings) in FILE.
 If FILE does not exist, an empty table is returned."
   (let ((hset (skroad--make-hash-set)))
@@ -289,7 +285,7 @@ If FILE does not exist, an empty table is returned."
      #'(lambda (line) (skroad--hashset-add line hset)) file)
     hset))
 
-(defun skroad--hashset-to-list-file (hset file)
+(defun skroad--hashset-save (hset file)
   "Create or overwrite FILE with a dump of the keys in HSET, one per line."
   (with-temp-file file
     (skroad--hashset-foreach #'(lambda (k) (insert k) (newline)) hset)))
@@ -348,9 +344,9 @@ If FILE does not exist, an empty table is returned."
 (defvar skroad--stub-cache nil "Set of nodes currently considered stubs.")
 (defvar skroad--stub-removal-cache nil "Set of stubs queued for removal.")
 
-(defun skroad--stub-removal-nodes-cache-save ()
+(defun skroad--stub-removal-cache-save ()
   "Save to disk the set of stubs queued for removal during this session."
-  (skroad--hashset-to-list-file ;; Stays reasonably small, so won't pound disk
+  (skroad--hashset-save ;; Stays reasonably small, so won't pound disk
    skroad--stub-removal-cache skroad--stub-removal-list-file))
 
 (defun skroad--stub-queued-for-removal-p (node)
@@ -362,12 +358,12 @@ If FILE does not exist, an empty table is returned."
 If a stub removal list was also found, process and delete it."
   (unless skroad--stub-cache
     (setq skroad--stub-cache
-          (skroad--hashset-from-list-file skroad--stub-list-file))
+          (skroad--hashset-load skroad--stub-list-file))
     (when (file-exists-p skroad--stub-removal-list-file) ;; Removal list exists?
       (skroad--file-lines-foreach ;; Evict each stub queued for removal
        #'(lambda (node) (skroad--hashset-remove node skroad--stub-cache))
        skroad--stub-removal-list-file)
-      (skroad--hashset-to-list-file ;; Snapshot the updated stubs list to disk
+      (skroad--hashset-save ;; Snapshot the updated stubs list to disk
        skroad--stub-cache skroad--stub-list-file)
       (setq skroad--stub-removal-cache (skroad--make-hash-set)) ;; Make new set
       (delete-file skroad--stub-removal-list-file))) ;; Delete removals list
@@ -384,7 +380,7 @@ If a stub removal list was also found, process and delete it."
     (skroad--append-to-list-file skroad--stub-list-file node) ;; Save it ASAP
     (when (skroad--stub-queued-for-removal-p node)
       (skroad--hashset-remove node skroad--stub-removal-cache)
-      (skroad--stub-removal-nodes-cache-save))))
+      (skroad--stub-removal-cache-save))))
 
 (defun skroad--stub-evict (node)
   "Evict NODE from the stub nodes cache and add it to the removal list on disk."
@@ -392,7 +388,7 @@ If a stub removal list was also found, process and delete it."
     (skroad--hashset-remove node skroad--stub-cache)
     (unless (skroad--stub-queued-for-removal-p node)
       (skroad--hashset-add node skroad--stub-removal-cache)
-      (skroad--stub-removal-nodes-cache-save))))
+      (skroad--stub-removal-cache-save))))
 
 ;; (skroad--stub-intern "foo3")
 ;; skroad--stub-cache
