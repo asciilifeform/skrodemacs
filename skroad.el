@@ -772,9 +772,9 @@ If `DISABLE-ACTIONS` is t, do not perform any type actions at all."
   (let ((create-action (if init-scan 'on-init 'on-create)))
     (maphash
      #'(lambda (key delta) ;; key and count delta in pending changes table
-         (let* ((prior (or (gethash key index) 0)) ;; copies in index prior
-                (create (zerop prior)) ;; t if index did not contain this item
-                (count (+ prior delta)) ;; copies of item in index + delta
+         (let* ((prior (or (gethash key index) 0)) ;; copies we already had
+                (create (zerop prior)) ;; t if we had no copies of this item
+                (count (+ prior delta)) ;; net change in number of copies
                 (destroy (zerop count)) ;; t if change will destroy all copies
                 (action ;; text type action to invoke, if any. nil if none.
                  (cond (create create-action)
@@ -1191,6 +1191,8 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 (defun skroad--browse-skroad-link (data)
   (message (format "Live link pushed: '%s'" data)))
+
+;; TODO: maintain count of live links and give predicate for when not zero
 
 (defun skroad--link-init (text-type payload)
   "First instance of PAYLOAD of TEXT-TYPE was found in the buffer during load."
