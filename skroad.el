@@ -349,7 +349,7 @@ If FILE does not exist, an empty table is returned."
 (defvar skroad--stub-removal-cache nil "Set of stubs removed in this session.")
 
 (defun skroad--stub-removal-nodes-cache-save ()
-  "Save the current queue of stubs to remove to disk."
+  "Save the set of stubs we have removed during this session to disk."
   (skroad--hashset-to-list-file ;; Stays reasonably small, so won't pound disk
    skroad--stub-removal-cache skroad--stub-removal-list-file))
 
