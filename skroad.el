@@ -280,7 +280,7 @@ If OVERWRITE is t, allow overwriting.  Return success."
   "Return a list (possibly empty) consisting of the elements of HSET."
   (let ((list nil))
     (maphash #'(lambda (k v) (push k list)) hset)
-    (reverse list)))
+    list))
 
 (defun skroad--hashset-load (file)
   "Return a hashset constructed from the lines (without endings) in FILE.
@@ -303,11 +303,14 @@ If FILE does not exist, an empty hashset is returned."
 (defvar skroad--memo-node-ac-list nil
   "Synced list form of the node titles cache.  (Do not access directly).")
 
+(defun skroad--node-ac-list-regenerate ()
+  "Regenerate the autocomplete nodes list."
+  (setq skroad--memo-node-ac-list
+        (sort (skroad--hashset-to-list skroad--node-cache))))
+
 (defun skroad--node-ac-list ()
   "Return a list of all nodes in the titles cache for use with autocomplete."
-  (unless skroad--memo-node-ac-list
-    (setq skroad--memo-node-ac-list
-          (skroad--hashset-to-list skroad--node-cache)))
+  (unless skroad--memo-node-ac-list (skroad--node-ac-list-regenerate))
   skroad--memo-node-ac-list)
 
 (defun skroad--nodes-cache-populate ()
@@ -316,7 +319,7 @@ If FILE does not exist, an empty hashset is returned."
   (setq skroad--memo-node-ac-list (skroad--list-active-nodes-on-disk))
   (setq skroad--node-cache
         (skroad--hashset-from-list skroad--memo-node-ac-list))
-  t) ;; TODO: reverse AC list?
+  t)
 
 (defun skroad--node-interned-p (node)
   "Test whether NODE is currently interned in the node titles cache."
