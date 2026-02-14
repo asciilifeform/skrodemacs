@@ -195,7 +195,7 @@ If OVERWRITE is t, allow overwriting.  Return success."
   "Silently append STRING to FILE, which is created if it did not exist."
   (write-region (concat string "\n") nil file t 0))
 
-(defun skroad--file-lines-foreach (fn file)
+(defun skroad--file-lines-foreach (file fn)
   "Evaluate (for side effects) FN for each line in FILE (if it exists)."
   (when (file-exists-p file)
     (with-temp-buffer
@@ -292,7 +292,7 @@ If OVERWRITE is t, allow overwriting.  Return success."
 If FILE does not exist, an empty hashset is returned."
   (let ((hset (skroad--make-hash-set)))
     (skroad--file-lines-foreach
-     #'(lambda (line) (skroad--hashset-add line hset)) file)
+     file #'(lambda (line) (skroad--hashset-add line hset)))
     hset))
 
 (defun skroad--hashset-save (hset file)
@@ -376,8 +376,8 @@ If a stub removal list was also found, process and delete it."
           (skroad--hashset-load skroad--stub-list-file))
     (when (file-exists-p skroad--stub-removal-list-file) ;; Removal list exists?
       (skroad--file-lines-foreach ;; Evict each stub queued for removal
-       #'(lambda (node) (skroad--hashset-remove node skroad--stub-cache))
-       skroad--stub-removal-list-file)
+       skroad--stub-removal-list-file
+       #'(lambda (node) (skroad--hashset-remove node skroad--stub-cache)))
       (skroad--hashset-save ;; Update the stubs list on disk to the current one
        skroad--stub-cache skroad--stub-list-file)
       (setq skroad--stub-removal-cache (skroad--make-hash-set)) ;; Make new set
