@@ -196,7 +196,7 @@ If OVERWRITE is t, allow overwriting.  Return success."
   (write-region (concat string "\n") nil file t 0))
 
 (defun skroad--file-lines-foreach (file fn)
-  "Evaluate (for side effects) FN for each line in FILE (if it exists)."
+  "Evaluate (for side effects) FN on each line in FILE (if it exists)."
   (when (file-exists-p file)
     (with-temp-buffer
       (insert-file-contents file t nil nil t)
@@ -844,6 +844,11 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   (skroad--with-whole-lines start end
     (skroad--index-scan-region
      skroad--buf-pending-changes start-expanded end-expanded 1)))
+
+(defun skroad--install-change-hooks ()
+  "Install the skroad change hooks (index updaters) in the current buffer."
+  (add-hook 'before-change-functions 'skroad--before-change-function nil t)
+  (add-hook 'after-change-functions 'skroad--after-change-function nil t))
 
 (defun skroad--indexed-type-payload-exists-p (type payload)
   "Find if a PAYLOAD of TYPE currently exists in the buffer-local index."
@@ -1689,8 +1694,7 @@ If an orphan of NODE already exists in the orphans dir, overwrite it."
   ;; Buffer-local hooks:
   
   ;; TODO: allow these in temp mode?
-  (add-hook 'before-change-functions 'skroad--before-change-function nil t)
-  (add-hook 'after-change-functions 'skroad--after-change-function nil t)
+  (skroad--install-change-hooks)
   
   (add-hook 'pre-command-hook 'skroad--pre-command-hook nil t)
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
