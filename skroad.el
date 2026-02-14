@@ -23,11 +23,11 @@
   "Subdirectory for storing orphan (i.e. fully-unlinked) nodes.")
 
 (defconst skroad--stub-list-file
-  (file-name-concat skroad--data-directory ".stubs")
+  (file-name-concat skroad--data-directory "stubs.txt")
   "List of nodes that are currently stubs.")
 
 (defconst skroad--stub-removal-list-file
-  (file-name-concat skroad--data-directory ".antistubs")
+  (file-name-concat skroad--data-directory "stubs-to-remove.txt")
   "List of stubs queued for removal from the stubs list.")
 
 ;;; Fonts. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -111,7 +111,7 @@
   (read (substring (symbol-name exp) 1)))
 
 (defmacro skroad--do-plist (key val plist &rest body)
-  "Evaluate BODY for side-effects with key,val bound to each pair in PLIST."
+  "Evaluate BODY for side-effects with KEY,VAL bound to each pair in PLIST."
   (declare (indent defun))
   (let ((l (gensym)))
     `(let ((,l ,plist))
@@ -314,7 +314,7 @@ If FILE does not exist, an empty hashset is returned."
   skroad--memo-node-ac-list)
 
 (defun skroad--nodes-cache-populate ()
-  "Populate the titles cache from the data directory listing."
+  "Populate the node titles cache from the data directory listing."
   (skroad--ensure-data-directories)
   (setq skroad--memo-node-ac-list (skroad--list-active-nodes-on-disk))
   (setq skroad--node-cache
@@ -371,7 +371,7 @@ If a stub removal list was also found, process and delete it."
       (skroad--file-lines-foreach ;; Evict each stub queued for removal
        #'(lambda (node) (skroad--hashset-remove node skroad--stub-cache))
        skroad--stub-removal-list-file)
-      (skroad--hashset-save ;; Snapshot the updated stubs list to disk
+      (skroad--hashset-save ;; Update the stubs list on disk to the current one
        skroad--stub-cache skroad--stub-list-file)
       (setq skroad--stub-removal-cache (skroad--make-hash-set)) ;; Make new set
       (delete-file skroad--stub-removal-list-file))) ;; Delete removals list
@@ -384,19 +384,19 @@ If a stub removal list was also found, process and delete it."
 (defun skroad--stub-intern (node)
   "Intern NODE in the stub nodes cache and add it to the stub list on disk."
   (unless (skroad--stub-interned-p node) ;; Do nothing if already interned
-    (skroad--hashset-add node skroad--stub-cache)
+    (skroad--hashset-add node skroad--stub-cache) ;; Intern it
     (skroad--append-to-list-file skroad--stub-list-file node) ;; Save it ASAP
-    (when (skroad--stub-queued-for-removal-p node)
-      (skroad--hashset-remove node skroad--stub-removal-cache)
-      (skroad--stub-removal-cache-save))))
+    (when (skroad--stub-queued-for-removal-p node) ;; If queued for removal:
+      (skroad--hashset-remove node skroad--stub-removal-cache) ;; Unqueue it
+      (skroad--stub-removal-cache-save)))) ;; Save modified removal list
 
 (defun skroad--stub-evict (node)
   "Evict NODE from the stub nodes cache and add it to the removal list on disk."
   (when (skroad--stub-interned-p node) ;; Do nothing if already gone
-    (skroad--hashset-remove node skroad--stub-cache)
-    (unless (skroad--stub-queued-for-removal-p node)
-      (skroad--hashset-add node skroad--stub-removal-cache)
-      (skroad--stub-removal-cache-save))))
+    (skroad--hashset-remove node skroad--stub-cache) ;; Unintern it
+    (unless (skroad--stub-queued-for-removal-p node) ;; If not yet queued:
+      (skroad--hashset-add node skroad--stub-removal-cache) ;; Queue for removal
+      (skroad--stub-removal-cache-save)))) ;; Save modified removal list
 
 ;; (skroad--stub-intern "foo3")
 ;; skroad--stub-cache
@@ -1305,7 +1305,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   "Insert a live link to NODE into the current buffer at the current point."
   (insert (funcall (get 'skroad--text-link-node-live 'make-text) node)))
 
-(defun skroad--live-p (node)
+(defun skroad--link-live-exists-p (node)
   "Determine whether a live link to NODE exists in the current buffer."
   (or (and (skroad--mode-p) ;; If we're in skroad mode, use fast path:
            (null skroad--buf-pending-changes) ;; ... no pending changes
@@ -1379,16 +1379,18 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   (insert text)
   (ensure-empty-lines 1))
 
-;; Linkage toggling. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Linking and unlinking nodes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: if we zap the last live link, node is now orphaned
-(defun skroad--set-linkage (node enable)
-  "Ensure that the current buffer has a live link to NODE iff ENABLE is true."
-  (if enable
-      (or (skroad--live-p node) ;; Already live?
-          (skroad--link-liven node) ;; If had dead links to node, liven them
-          (skroad--put-live-link node)) ;; If neither: emplace new one at tail.
-    (skroad--link-deaden node))) ;; Toggle off: deaden any live links found.
+(defun skroad--ensure-linked-to (node)
+  "Ensure that the current buffer has at least one live link to NODE."
+  (or (skroad--link-live-exists-p node) ;; Already live?
+      (skroad--link-liven node) ;; Otherwise, try livening any dead links found
+      (skroad--put-live-link node))) ;; If neither: emplace new one at tail.
+
+;; TODO: if we zap the last live link, current node is now orphaned
+(defun skroad--ensure-not-linked-to (node)
+  "Ensure that the current buffer does NOT contain any live links to NODE."
+  (skroad--link-deaden node)) ;; Deaden any live links found.
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1580,6 +1582,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 ;; Back-end. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; TODO: do initial update in the save hook ?
+;; TODO: thrown text should perform actions
 (defmacro skroad--do-external (&rest body)
   "Evaluate BODY, and then save the current buffer."
   `(unwind-protect
@@ -1604,7 +1607,6 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
        (with-temp-buffer ;; No visiting buffer, so make one:
          (insert-file-contents ,node-path t nil nil t)
          (skroad--do-external ,@body)))))
-
 
 ;; (skroad--with-file
 ;;  "~/skrode/k.skroad"
@@ -1632,10 +1634,12 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
            (file-writable-p node-path)
            (progn ;; Initialize the new node, with only the title at first
              (write-region (concat node "\n") nil node-path nil 0)
+             (skroad--stub-intern node) ;; Register the node as a stub
              (file-readable-p node-path)))))
        (skroad--node-intern node)) ;; Node is on disk, now intern it
       (error "Could not activate node '%s'!" node)))
 
+;; TODO: handle stub
 (defun skroad--deactivate-node (node)
   "Deactivate (i.e. mark as orphan) NODE and evict it from the cache.
 If an orphan of NODE already exists in the orphans dir, overwrite it."
@@ -1645,6 +1649,7 @@ If an orphan of NODE already exists in the orphans dir, overwrite it."
       (error "Could not deactivate node '%s'!" node)))
   t)
 
+;; TODO: handle stub
 (defun skroad--rename-node (node node-new) ;; TODO: proper renamer
   "Rename NODE to NODE-NEW."
   (unless (and (skroad--node-cache-rename node node-new)
