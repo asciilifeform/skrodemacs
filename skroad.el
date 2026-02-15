@@ -646,6 +646,7 @@ call the action with ARGS."
 
 (defvar skroad--font-lock-keywords nil "Font lock keywords for skroad mode.")
 
+;; TODO: abstract out types ordering sort
 (defun skroad--generate-font-lock-keywords ()
   "Generate font-lock keywords for skroad mode."
   (unless skroad--font-lock-keywords
