@@ -779,6 +779,7 @@ it to finalize all pending changes when no further ones are expected."
   (dolist (text-type skroad--text-types-indexed) ;; walk all indexed types
     (funcall (get text-type 'index-scan-region) changes start end delta)))
 
+;; TODO: separate index for each type, in alist
 (defun skroad--index-update (index pending &optional init-scan disable-actions)
   "Update INDEX by applying all PENDING changes, running appropriate actions.
 If `INIT-SCAN` is t, run a text type's `on-init` rather than `on-create`
@@ -1406,14 +1407,14 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--get-title ()
+(defun skroad--get-title-from-buffer ()
   "Get the current node title from the buffer."
   (buffer-substring-no-properties (point-min) (skroad--get-end-of-line 1)))
 
 (defun skroad--cmd-title-kill-ring-save ()
   "Save the current node's title, transformed to a live link, to the kill ring."
   (interactive)
-  (let ((title (skroad--get-title)))
+  (let ((title (skroad--get-title-from-buffer)))
     (with-temp-buffer
       (insert (funcall (get 'skroad--text-link-node-live 'make-text) title))
       (copy-region-as-kill (point-min) (point-max)))))
@@ -1451,7 +1452,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
       (list 'category type-name
             'zone type-name ;; there can only be one
             'face face
-            'data (skroad--get-title))))
+            'data (skroad--get-title-from-buffer))))
   :use 'skroad--text-mixin-rendered)
 
 ;;   :use 'skroad--text-mixin-delimited-anywhere
