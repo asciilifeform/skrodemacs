@@ -760,16 +760,22 @@ call the action with ARGS."
 ;;;;;;;;
 
 (defvar skroad--buf-indices nil
-  "Local text type indices for the current buffer.")
+  "Text type indices for the current buffer.")
 
 (defvar skroad--buf-indices-pending nil
-  "Pending changes to Local text type indices for the current buffer.")
+  "Pending changes to the text type indices for the current buffer.")
 
-(defun skroad--ensure-buf-index (text-type)
-  "Retrieve or create the index for TEXT-TYPE in `skroad--buf-indices`."
-  (or (alist-get text-type skroad--buf-indices)
-      (cdar (push (cons text-type (make-hash-table :test 'equal))
-                  skroad--buf-indices))))
+;; (defun skroad--ensure-buf-index (text-type)
+;;   "Retrieve or create the index for TEXT-TYPE in `skroad--buf-indices`."
+;;   (or (alist-get text-type skroad--buf-indices)
+;;       (cdar (push (cons text-type (make-hash-table :test 'equal))
+;;                   skroad--buf-indices))))
+
+(defmacro skroad--ensure-index (indices text-type)
+  "Retrieve or create the index for TEXT-TYPE in INDICES."
+  `(or (alist-get ,text-type ,indices)
+       (cdar (push (cons ,text-type (make-hash-table :test 'equal))
+                   ,indices))))
 
 ;; TODO: zero if index is null?
 (defun skroad--index-count (index payload)
@@ -789,10 +795,24 @@ If FINAL is t, the count sum going below zero will signal an error."
         (puthash payload sum index)
         (when had-none create)))))
 
+(defun skroad--index-pending-update (text-type payload increment)
+  "Update pending change for PAYLOAD of TEXT-TYPE in current buffer.
+If INCREMENT is t, up the count by 1; otherwise reduce by 1."
+  (skroad--index-delta
+   (skroad--ensure-index skroad--buf-indices-pending text-type)
+   payload
+   (if increment 1 -1)))
+
+
+
+;; skroad--buf-indices-pending
+;; (skroad--index-pending-update 'foox "xyz" nil)
+
 
 
 ;; (setq skroad--buf-indices nil)
-;; (skroad--index-delta (skroad--ensure-buf-index 'foox) "xyz1" -1 t "create" "destroy")
+;; (skroad--index-delta
+;;  (skroad--ensure-index skroad--buf-indices 'foox) "xyz1" 1 t "create" "destroy")
 ;; skroad--buf-indices
 
 ;; (skroad--index-count (skroad--ensure-buf-index 'foox) "xyz1")
