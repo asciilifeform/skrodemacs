@@ -795,13 +795,13 @@ If INCREMENT is t, up the count by 1; otherwise reduce by 1."
 (defun skroad--buf-indices-update (&optional init-scan disable-actions)
   "Apply all pending updates to the text type indices of the current buffer.
 Type actions (perform only if defined, and `DISABLE-ACTIONS` is nil) :
-`on-create`: a payload of a given text type first appeared in the buffer.
+`on-create`: a particular payload of this type now appears in the buffer.
 `on-init`: same as above, but during initial scan (`INIT-SCAN` is t.)
-`on-destroy`: a payload of a given text type no longer appears in the buffer.
+`on-destroy`: a particular payload of this type no longer appears in the buffer.
 Secondary type actions (run after a primary action has ran, if applicable) :
-`on-create-first`: the text type has been introduced into the buffer.
+`on-create-first`: the first payload of this type has appeared in the buffer.
 `on-init-first`: same as above, but during initial scan (`INIT-SCAN` is t.)
-`on-destroy-last`: the text type no longer appears in the buffer."
+`on-destroy-last`: the last payload of this type was removed from the buffer."
   (let ((create-action (if init-scan 'on-init 'on-create))
         (type-create-action (if init-scan 'on-init-first 'on-create-first)))
     (dolist (pending skroad--buf-indices-pending)
