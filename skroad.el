@@ -771,15 +771,6 @@ call the action with ARGS."
        (cdar (push (cons ,text-type (make-hash-table :test 'equal))
                    ,indices))))
 
-;; TODO: zero if index is null?
-;; (defun skroad--index-payload-count (index payload)
-;;   "Get the current count of PAYLOAD from INDEX."
-;;   (gethash payload index 0))
-
-;; (defun skroad--index-count (index)
-;;   "Get the current count of INDEX."
-;;   (hash-table-count index))
-
 (defun skroad--index-delta (index payload delta &optional final create destroy)
   "Update the count of PAYLOAD in INDEX by DELTA.
 Return `create` if introduced PAYLOAD; `destroy` if removed last copy; else nil.
@@ -812,7 +803,7 @@ If `DISABLE-ACTIONS` is t, do not perform any type actions at all."
       (let* ((text-type (car pending))
              (pending-index (cdr pending))
              (buf-index (skroad--ensure-index skroad--buf-indices text-type))
-             (no-type-before (zerop (hash-table-count buf-index))))
+             (empty-before (zerop (hash-table-count buf-index))))
         (maphash
          #'(lambda (payload count)
              (let ((action
@@ -823,10 +814,10 @@ If `DISABLE-ACTIONS` is t, do not perform any type actions at all."
          pending-index)
         (clrhash pending-index) ;; Empty the pending change index for this type
         ;; Did we create the first or destroy the last item of this type?
-        (let* ((no-type-after (zerop (hash-table-count buf-index)))
-               (action (cond ((and no-type-before (not no-type-after))
+        (let* ((empty-after (zerop (hash-table-count buf-index)))
+               (action (cond ((and empty-before (not empty-after))
                               type-create-action)
-                             ((and (not no-type-before) no-type-after)
+                             ((and (not empty-before) empty-after)
                               'on-destroy-last))))
           (unless (or (null action) disable-actions)
             (skroad--type-action text-type action text-type)))
