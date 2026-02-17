@@ -757,6 +757,48 @@ call the action with ARGS."
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
+;;;;;;;;
+
+(defvar skroad--buf-indices nil
+  "Local text type indices for the current buffer.")
+
+(defvar skroad--buf-indices-pending nil
+  "Pending changes to Local text type indices for the current buffer.")
+
+(defun skroad--ensure-buf-index (text-type)
+  "Retrieve or create the index for TEXT-TYPE in `skroad--buf-indices`."
+  (or (alist-get text-type skroad--buf-indices)
+      (cdar (push (cons text-type (make-hash-table :test 'equal))
+                  skroad--buf-indices))))
+
+;; TODO: zero if index is null?
+(defun skroad--index-count (index payload)
+  "Get the current count of PAYLOAD from INDEX."
+  (gethash payload index 0))
+
+(defun skroad--index-delta (index payload delta &optional final create destroy)
+  "Update the count of PAYLOAD in INDEX by DELTA.
+Return `create` if introduced PAYLOAD; `destroy` if removed last copy; else nil.
+If FINAL is t, the count sum going below zero will signal an error."
+  (let* ((had-prev (skroad--index-count index payload))
+         (had-none (zerop had-prev))
+         (sum (+ delta had-prev)))
+    (if (zerop sum)
+        (unless had-none (remhash payload index) destroy)
+      (if (and final (< sum 0)) (error "Index underflow!")
+        (puthash payload sum index)
+        (when had-none create)))))
+
+
+
+;; (setq skroad--buf-indices nil)
+;; (skroad--index-delta (skroad--ensure-buf-index 'foox) "xyz1" -1 t "create" "destroy")
+;; skroad--buf-indices
+
+;; (skroad--index-count (skroad--ensure-buf-index 'foox) "xyz1")
+
+;;;;;;;;
+
 (skroad--deftype skroad--text-mixin-indexed
   :doc "Finalization mixin for indexed text types."
   :mixin t
@@ -1576,7 +1618,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   "Open a skroad node."
   (face-remap-set-base 'header-line 'skroad--title-face)
   (skroad--init-font-lock)
-  (skroad--async-dispatch #'skroad--init-buf-index)
+  (skroad--async-dispatch #'skroad--init-buf-index) ;; move this to enabler
   )
 
 (defun skroad--reboot ()
