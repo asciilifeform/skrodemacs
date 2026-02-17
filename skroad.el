@@ -820,10 +820,10 @@ Secondary type actions (run after a primary action has ran, if applicable) :
         (clrhash pending-index) ;; Empty the pending change index for this type
         ;; Did we create the first or destroy the last item of this type?
         (let* ((none-after (zerop (hash-table-count buf-index)))
-               (action (cond ((and none-before (not none-after))
-                              type-create-action)
-                             ((and (not none-before) none-after)
-                              'on-destroy-last))))
+               (type-appeared (and none-before (not none-after)))
+               (type-disappeared (and (not none-before) none-after))
+               (action (cond (type-appeared type-create-action)
+                             (type-disappeared 'on-destroy-last))))
           (unless (or (null action) disable-actions)
             (skroad--type-action text-type action text-type)))
         t))))
