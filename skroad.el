@@ -753,11 +753,7 @@ call the action with ARGS."
 
 ;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: maybe separate hash table for each type?
-
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
-
-;;;;;;;;
 
 (defvar skroad--buf-indices nil
   "Text type indices for the current buffer.")
@@ -784,17 +780,9 @@ If FINAL is t, the count sum going below zero will signal an error."
         (puthash payload sum index)
         (when had-none create)))))
 
-(defun skroad--buf-index-pending-delta (text-type payload increment)
-  "Update pending change for PAYLOAD of TEXT-TYPE in current buffer.
-If INCREMENT is t, up the count by 1; otherwise reduce by 1."
-  (skroad--index-delta
-   (skroad--ensure-index skroad--buf-indices-pending text-type)
-   payload
-   (if increment 1 -1)))
-
 (defun skroad--buf-indices-update (&optional init-scan disable-actions)
-  "Apply all pending updates to the text type indices of the current buffer.
-Type actions (perform only if defined, and `DISABLE-ACTIONS` is nil) :
+  "Apply pending update to the text type indices in the current buffer.
+Type actions (perform for given text type, unless `DISABLE-ACTIONS` is t) :
 `on-create`: a particular payload of this type first appeared in the buffer.
 `on-init`: same as above, but during initial scan (`INIT-SCAN` is t.)
 `on-destroy`: a particular payload of this type no longer appears in the buffer.
@@ -818,7 +806,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
                  (skroad--type-action text-type action text-type payload))))
          pending-index)
         (clrhash pending-index) ;; Empty the pending change index for this type
-        ;; Did we create the first or destroy the last item of this type?
+        ;; Created the first or destroyed the last item of this type?
         (let* ((none-after (zerop (hash-table-count buf-index)))
                (type-appeared (and none-before (not none-after)))
                (type-disappeared (and (not none-before) none-after))
@@ -828,16 +816,16 @@ Secondary type actions (run after a primary action has ran, if applicable) :
             (skroad--type-action text-type action text-type)))
         t))))
 
+(defun skroad--buf-index-pending-delta (text-type payload delta)
+  "Update pending DELTA for PAYLOAD of TEXT-TYPE in current buffer."
+  (skroad--index-delta
+   (skroad--ensure-index skroad--buf-indices-pending text-type) payload delta))
 
 ;; (skroad--buf-indices-update)
 ;; (setq skroad--buf-indices nil)
 ;; (setq skroad--buf-indices-pending skroad--buf-indices)
 ;; skroad--buf-indices
 ;; skroad--buf-indices-pending
-;; (skroad--buf-index-pending-delta 'fooz "xyz2" t)
-;; (skroad--buf-index-pending-delta 'foox "xyz1" nil)
-
-;;;;;;;;
 
 (skroad--deftype skroad--text-mixin-indexed
   :doc "Finalization mixin for indexed text types."
@@ -938,12 +926,12 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   "Find if a PAYLOAD of TYPE currently exists in the buffer-local index."
   (gethash (cons type payload) skroad--buf-index))
 
-(defun skroad--for-all-indexed-of-type (type fn &rest other-args)
-  "Apply FN to all payloads of TYPE currently in the buffer-local index."
-  (maphash
-   #'(lambda (key val)
-       (when (eq type (car key)) (apply fn (cons (cdr key) other-args))))
-   skroad--buf-index))
+;; (defun skroad--for-all-indexed-of-type (type fn &rest other-args)
+;;   "Apply FN to all payloads of TYPE currently in the buffer-local index."
+;;   (maphash
+;;    #'(lambda (key val)
+;;        (when (eq type (car key)) (apply fn (cons (cdr key) other-args))))
+;;    skroad--buf-index))
 
 ;; Top-level keymap for the major mode. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
