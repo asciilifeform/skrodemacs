@@ -765,12 +765,6 @@ call the action with ARGS."
 (defvar skroad--buf-indices-pending nil
   "Pending changes to the text type indices for the current buffer.")
 
-;; (defun skroad--ensure-buf-index (text-type)
-;;   "Retrieve or create the index for TEXT-TYPE in `skroad--buf-indices`."
-;;   (or (alist-get text-type skroad--buf-indices)
-;;       (cdar (push (cons text-type (make-hash-table :test 'equal))
-;;                   skroad--buf-indices))))
-
 (defmacro skroad--ensure-index (indices text-type)
   "Retrieve or create the index for TEXT-TYPE in INDICES."
   `(or (alist-get ,text-type ,indices)
@@ -778,15 +772,19 @@ call the action with ARGS."
                    ,indices))))
 
 ;; TODO: zero if index is null?
-(defun skroad--index-count (index payload)
-  "Get the current count of PAYLOAD from INDEX."
-  (gethash payload index 0))
+;; (defun skroad--index-payload-count (index payload)
+;;   "Get the current count of PAYLOAD from INDEX."
+;;   (gethash payload index 0))
+
+;; (defun skroad--index-count (index)
+;;   "Get the current count of INDEX."
+;;   (hash-table-count index))
 
 (defun skroad--index-delta (index payload delta &optional final create destroy)
   "Update the count of PAYLOAD in INDEX by DELTA.
 Return `create` if introduced PAYLOAD; `destroy` if removed last copy; else nil.
 If FINAL is t, the count sum going below zero will signal an error."
-  (let* ((had-prev (skroad--index-count index payload))
+  (let* ((had-prev (gethash payload index 0))
          (had-none (zerop had-prev))
          (sum (+ delta had-prev)))
     (if (zerop sum)
@@ -795,7 +793,7 @@ If FINAL is t, the count sum going below zero will signal an error."
         (puthash payload sum index)
         (when had-none create)))))
 
-(defun skroad--index-pending-update (text-type payload increment)
+(defun skroad--buf-index-pending-update (text-type payload increment)
   "Update pending change for PAYLOAD of TEXT-TYPE in current buffer.
 If INCREMENT is t, up the count by 1; otherwise reduce by 1."
   (skroad--index-delta
@@ -803,19 +801,45 @@ If INCREMENT is t, up the count by 1; otherwise reduce by 1."
    payload
    (if increment 1 -1)))
 
+(defun skroad--buf-indices-update (&optional init-scan disable-actions)
+  "Apply any pending updates to the text type indices of the current buffer.
+If `INIT-SCAN` is t, run a text type's `on-init` rather than `on-create`
+action for created entries; an `on-destroy` action runs for destroyed ones.
+If `DISABLE-ACTIONS` is t, do not perform any type actions at all."
+  (let ((create-action (if init-scan 'on-init 'on-create))
+        (type-create-action (if init-scan 'on-init-first 'on-create-first)))
+    (dolist (pending skroad--buf-indices-pending)
+      (let* ((text-type (car pending))
+             (pending-index (cdr pending))
+             (buf-index (skroad--ensure-index skroad--buf-indices text-type))
+             (no-type-before (zerop (hash-table-count buf-index))))
+        (maphash
+         #'(lambda (payload count)
+             (let ((action
+                    (skroad--index-delta buf-index payload count
+                                         t create-action 'on-destroy)))
+               (unless (or (null action) disable-actions)
+                 (skroad--type-action text-type action text-type payload))))
+         pending-index)
+        (clrhash pending-index) ;; Empty the pending change index for this type
+        ;; Did we create the first or destroy the last item of this type?
+        (let* ((no-type-after (zerop (hash-table-count buf-index)))
+               (action (cond ((and no-type-before (not no-type-after))
+                              type-create-action)
+                             ((and (not no-type-before) no-type-after)
+                              'on-destroy-last))))
+          (unless (or (null action) disable-actions)
+            (skroad--type-action text-type action text-type)))
+        t))))
 
 
-;; skroad--buf-indices-pending
-;; (skroad--index-pending-update 'foox "xyz" nil)
-
-
-
+;; (skroad--buf-indices-update)
 ;; (setq skroad--buf-indices nil)
-;; (skroad--index-delta
-;;  (skroad--ensure-index skroad--buf-indices 'foox) "xyz1" 1 t "create" "destroy")
+;; (setq skroad--buf-indices-pending skroad--buf-indices)
 ;; skroad--buf-indices
-
-;; (skroad--index-count (skroad--ensure-buf-index 'foox) "xyz1")
+;; skroad--buf-indices-pending
+;; (skroad--buf-index-pending-update 'fooz "xyz2" nil)
+;; (skroad--buf-index-pending-update 'foox "xyz1" nil)
 
 ;;;;;;;;
 
