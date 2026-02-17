@@ -808,7 +808,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
       (let* ((text-type (car pending))
              (pending-index (cdr pending))
              (buf-index (skroad--ensure-index skroad--buf-indices text-type))
-             (empty-before (zerop (hash-table-count buf-index))))
+             (none-before (zerop (hash-table-count buf-index))))
         (maphash
          #'(lambda (payload count)
              (let ((action
@@ -819,10 +819,10 @@ Secondary type actions (run after a primary action has ran, if applicable) :
          pending-index)
         (clrhash pending-index) ;; Empty the pending change index for this type
         ;; Did we create the first or destroy the last item of this type?
-        (let* ((empty-after (zerop (hash-table-count buf-index)))
-               (action (cond ((and empty-before (not empty-after))
+        (let* ((none-after (zerop (hash-table-count buf-index)))
+               (action (cond ((and none-before (not none-after))
                               type-create-action)
-                             ((and (not empty-before) empty-after)
+                             ((and (not none-before) none-after)
                               'on-destroy-last))))
           (unless (or (null action) disable-actions)
             (skroad--type-action text-type action text-type)))
