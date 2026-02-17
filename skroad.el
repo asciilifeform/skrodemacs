@@ -784,7 +784,7 @@ If FINAL is t, the count sum going below zero will signal an error."
         (puthash payload sum index)
         (when had-none create)))))
 
-(defun skroad--buf-index-pending-update (text-type payload increment)
+(defun skroad--buf-index-pending-delta (text-type payload increment)
   "Update pending change for PAYLOAD of TEXT-TYPE in current buffer.
 If INCREMENT is t, up the count by 1; otherwise reduce by 1."
   (skroad--index-delta
@@ -793,10 +793,15 @@ If INCREMENT is t, up the count by 1; otherwise reduce by 1."
    (if increment 1 -1)))
 
 (defun skroad--buf-indices-update (&optional init-scan disable-actions)
-  "Apply any pending updates to the text type indices of the current buffer.
-If `INIT-SCAN` is t, run a text type's `on-init` rather than `on-create`
-action for created entries; an `on-destroy` action runs for destroyed ones.
-If `DISABLE-ACTIONS` is t, do not perform any type actions at all."
+  "Apply all pending updates to the text type indices of the current buffer.
+Type actions (perform only if defined, and `DISABLE-ACTIONS` is nil) :
+`on-create`: a payload of a given text type first appeared in the buffer.
+`on-init`: same as above, but during initial scan (`INIT-SCAN` is t.)
+`on-destroy`: a payload of a given text type no longer appears in the buffer.
+Secondary type actions (run after a primary action has ran, if applicable) :
+`on-create-first`: the text type has been introduced into the buffer.
+`on-init-first`: same as above, but during initial scan (`INIT-SCAN` is t.)
+`on-destroy-last`: the text type no longer appears in the buffer."
   (let ((create-action (if init-scan 'on-init 'on-create))
         (type-create-action (if init-scan 'on-init-first 'on-create-first)))
     (dolist (pending skroad--buf-indices-pending)
@@ -829,8 +834,8 @@ If `DISABLE-ACTIONS` is t, do not perform any type actions at all."
 ;; (setq skroad--buf-indices-pending skroad--buf-indices)
 ;; skroad--buf-indices
 ;; skroad--buf-indices-pending
-;; (skroad--buf-index-pending-update 'fooz "xyz2" nil)
-;; (skroad--buf-index-pending-update 'foox "xyz1" nil)
+;; (skroad--buf-index-pending-delta 'fooz "xyz2" t)
+;; (skroad--buf-index-pending-delta 'foox "xyz1" nil)
 
 ;;;;;;;;
 
