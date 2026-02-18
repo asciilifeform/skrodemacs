@@ -753,12 +753,10 @@ call the action with ARGS."
 
 ;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar skroad--text-types-indexed nil "Text types that are indexed.")
-
-(defvar skroad--buf-indices nil
+(defvar-local skroad--buf-indices nil
   "Text type indices for the current buffer.")
 
-(defvar skroad--buf-indices-pending nil
+(defvar-local skroad--buf-pending-changes nil
   "Pending changes to the text type indices for the current buffer.")
 
 (defmacro skroad--ensure-index (indices text-type)
@@ -766,6 +764,14 @@ call the action with ARGS."
   `(or (alist-get ,text-type ,indices)
        (cdar (push (cons ,text-type (make-hash-table :test 'equal))
                    ,indices))))
+
+(defun skroad--buf-index-of-type (text-type)
+  "Obtain the index for TEXT-TYPE in the current buffer."
+  (skroad--ensure-index skroad--buf-indices text-type))
+
+(defun skroad--buf-pending-changes-of-type (text-type)
+  "Obtain the pending changes index for TEXT-TYPE in the current buffer."
+  (skroad--ensure-index skroad--buf-pending-changes text-type))
 
 (defun skroad--index-delta (index payload delta &optional final create destroy)
   "Update the count of PAYLOAD in INDEX by DELTA.
@@ -776,11 +782,12 @@ If FINAL is t, the count sum going below zero will signal an error."
          (sum (+ delta had-prev)))
     (if (zerop sum)
         (unless had-none (remhash payload index) destroy)
-      (if (and final (< sum 0)) (error "Index underflow!")
-        (puthash payload sum index)
-        (when had-none create)))))
+      (puthash payload sum index)
+      (if (> sum 0)
+          (when had-none create)
+        (when final (error "Index underflow!"))))))
 
-(defun skroad--buf-indices-update (&optional init-scan disable-actions)
+(defun skroad--buf-indices-update (&optional disable-actions init-scan)
   "Apply pending update to the text type indices in the current buffer.
 Type actions (perform for given text type, unless `DISABLE-ACTIONS` is t) :
 `on-create`: a particular payload of this type first appeared in the buffer.
@@ -792,10 +799,10 @@ Secondary type actions (run after a primary action has ran, if applicable) :
 `on-destroy-last`: the last payload of this type was removed from the buffer."
   (let ((create-action (if init-scan 'on-init 'on-create))
         (type-create-action (if init-scan 'on-init-first 'on-create-first)))
-    (dolist (pending skroad--buf-indices-pending)
+    (dolist (pending skroad--buf-pending-changes)
       (let* ((text-type (car pending))
-             (pending-index (cdr pending))
-             (buf-index (skroad--ensure-index skroad--buf-indices text-type))
+             (changes (cdr pending))
+             (buf-index (skroad--buf-index-of-type text-type))
              (none-before (zerop (hash-table-count buf-index))))
         (maphash
          #'(lambda (payload count)
@@ -804,8 +811,8 @@ Secondary type actions (run after a primary action has ran, if applicable) :
                                          t create-action 'on-destroy)))
                (unless (or (null action) disable-actions)
                  (skroad--type-action text-type action text-type payload))))
-         pending-index)
-        (clrhash pending-index) ;; Empty the pending change index for this type
+         changes)
+        (clrhash changes) ;; Empty the pending change index for this type
         ;; Created the first or destroyed the last item of this type?
         (let* ((none-after (zerop (hash-table-count buf-index)))
                (type-appeared (and none-before (not none-after)))
@@ -816,115 +823,58 @@ Secondary type actions (run after a primary action has ran, if applicable) :
             (skroad--type-action text-type action text-type)))
         t))))
 
-(defun skroad--buf-index-pending-delta (text-type payload delta)
-  "Update pending DELTA for PAYLOAD of TEXT-TYPE in current buffer."
-  (skroad--index-delta
-   (skroad--ensure-index skroad--buf-indices-pending text-type) payload delta))
-
-;; (skroad--buf-indices-update)
-;; (setq skroad--buf-indices nil)
-;; (setq skroad--buf-indices-pending skroad--buf-indices)
-;; skroad--buf-indices
-;; skroad--buf-indices-pending
+(defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
 (skroad--deftype skroad--text-mixin-indexed
-  :doc "Finalization mixin for indexed text types."
+  :doc "Mixin for indexed text types."
   :mixin t
   :require 'for-all-in-region-forward
   :index-scan-region
-  '(lambda (changes start end delta)
+  '(lambda (start end delta)
      (funcall
       for-all-in-region-forward start end
       #'(lambda (payload)
-          (let* ((key (cons type-name payload))
-                 (count (+ delta (or (gethash key changes) 0)))) ;; inc/dec
-            (if (zerop count) ;; if both added and removed since last update.
-                (remhash key changes) ;; ...discard item from changes table.
-              (puthash key count changes)))))) ;; otherwise, update.
+          (skroad--index-delta
+           (skroad--buf-pending-changes-of-type type-name) payload delta))))
   :register 'skroad--text-types-indexed)
 
-(defun skroad--index-scan-region (changes start end delta)
-  "Apply DELTA (must be 1 or -1) to each indexed item found in START ... END,
-updating the hash table CHANGES;  `skroad--index-update` must be called on
-it to finalize all pending changes when no further ones are expected."
-  (dolist (text-type skroad--text-types-indexed) ;; walk all indexed types
-    (funcall (get text-type 'index-scan-region) changes start end delta)))
+(defvar-local skroad--buf-indices-scan-enable t "Toggle index scanning.")
 
-;; TODO: separate index for each type, in alist
-(defun skroad--index-update (index pending &optional init-scan disable-actions)
-  "Update INDEX by applying all PENDING changes, running appropriate actions.
-If `INIT-SCAN` is t, run a text type's `on-init` rather than `on-create`
-action for created entries; an `on-destroy` action runs for destroyed ones.
-If `DISABLE-ACTIONS` is t, do not perform any type actions at all."
-  (let ((create-action (if init-scan 'on-init 'on-create)))
-    (maphash
-     #'(lambda (key delta) ;; key and count delta in pending changes table
-         (let* ((prior (or (gethash key index) 0)) ;; copies we already had
-                (create (zerop prior)) ;; t if we had no copies of this item
-                (count (+ prior delta)) ;; net change in number of copies
-                (destroy (zerop count)) ;; t if change will destroy all copies
-                (action ;; text type action to invoke, if any. nil if none.
-                 (cond (create create-action)
-                       (destroy (remhash key index) 'on-destroy))))
-           (unless destroy (puthash key count index)) ;; update index if remains
-           (unless disable-actions
-             (let ((text-type (car key)) (payload (cdr key))) ;; args for action
-               (skroad--type-action text-type action text-type payload)))))
-     pending))
-  t)
+(defun skroad--index-scan-region (start end delta)
+  "Apply DELTA (must be 1 or -1) to each indexed item found in START ... END
+to the pending changes in the buffer;  `skroad--buf-indices-update` must be
+called to finalize all pending changes when no further ones are expected.
+If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
+  (when skroad--buf-indices-scan-enable
+    (skroad--with-whole-lines start end
+      (dolist (text-type skroad--text-types-indexed) ;; walk all indexed types
+        (funcall (get text-type 'index-scan-region)
+                 start-expanded end-expanded delta)))))
 
-(defvar-local skroad--buf-index nil "Text type index for current buffer.")
-(defvar-local skroad--buf-pending-changes nil "Pending index changes.")
-
-;; TODO: scan enable rather than update?
-(defvar-local skroad--buf-index-update-enable t "Toggle for index updates.")
-
-(defun skroad--init-buf-index ()
-  "Ensure buffer-local indices exist, and populate them from current buffer."
-  (when (null skroad--buf-index) ;; Only if this buffer doesn't have one yet
-    (setq-local skroad--buf-index (make-hash-table
-                                   :test 'equal ;; TODO: custom equal?
-                                   :size (line-number-at-pos (point-max) t)))
-    ;; Populate while dispatching `on-init`s
-    (let ((init-populate
-           (make-hash-table :test 'equal
-                            :size (hash-table-count skroad--buf-index))))
-      (skroad--index-scan-region init-populate (point-min) (point-max) 1)
-      (skroad--index-update skroad--buf-index init-populate t))))
-
-;; TODO: unwind protect?
-(defun skroad--update-buf-index (&optional disable-actions)
-  "Apply all pending changes queued for the buffer-local index.
-If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
-  (when (and skroad--buf-index-update-enable skroad--buf-pending-changes)
-    (skroad--index-update
-     skroad--buf-index skroad--buf-pending-changes nil disable-actions)
-    (setq-local skroad--buf-pending-changes nil)))
+(defun skroad--init-buf-indices ()
+  "Populate the current buffer's text type indices, dispatching init actions."
+  (setq-local skroad--buf-indices nil
+              skroad--buf-pending-changes nil)
+  (skroad--index-scan-region (point-min) (point-max) 1) ;; Initial scan
+  (skroad--buf-indices-update nil t))
 
 (defun skroad--before-change-function (start end)
-  "Triggers prior to a change in a skroad buffer in region START...END."
-  ;; (message (format "before change: %s %s" start end))
-  (when (null skroad--buf-pending-changes)
-    (setq-local skroad--buf-pending-changes (make-hash-table :test 'equal)))
-  (skroad--with-whole-lines start end
-    (skroad--index-scan-region
-     skroad--buf-pending-changes start-expanded end-expanded -1)))
+  "Triggers prior to a change in the buffer in region START...END."
+  (skroad--index-scan-region start end -1))
 
 (defun skroad--after-change-function (start end length)
-  "Triggers following a change in a skroad buffer in region START...END."
-  ;; (message (format "after change: %s %s %s" start end length))
-  (skroad--with-whole-lines start end
-    (skroad--index-scan-region
-     skroad--buf-pending-changes start-expanded end-expanded 1)))
+  "Triggers following a change in the buffer in region START...END."
+  (skroad--index-scan-region start end 1))
 
 (defun skroad--install-change-hooks ()
   "Install the skroad change hooks (index updaters) in the current buffer."
   (add-hook 'before-change-functions 'skroad--before-change-function nil t)
   (add-hook 'after-change-functions 'skroad--after-change-function nil t))
 
-(defun skroad--indexed-type-payload-exists-p (type payload)
-  "Find if a PAYLOAD of TYPE currently exists in the buffer-local index."
-  (gethash (cons type payload) skroad--buf-index))
+;; TODO
+;; (defun skroad--indexed-type-payload-exists-p (type payload)
+;;   "Find if a PAYLOAD of TYPE currently exists in the buffer-local index."
+;;   (gethash (cons type payload) skroad--buf-index))
 
 ;; (defun skroad--for-all-indexed-of-type (type fn &rest other-args)
 ;;   "Apply FN to all payloads of TYPE currently in the buffer-local index."
@@ -1133,7 +1083,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
     (skroad--suspend-font-lock)
     (skroad--deactivate-mark)
     (skroad--snapshot-prepare)
-    (setq-local skroad--buf-index-update-enable nil
+    (setq-local skroad--buf-indices-scan-enable nil
                 cursor-type t
                 skroad--buf-renamer-original
                 (skroad--prop-at 'data start))
@@ -1156,7 +1106,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
     (skroad--unhide-text)
     (skroad--resume-font-lock)
     (skroad--refontify-current-line)
-    (setq-local skroad--buf-index-update-enable t
+    (setq-local skroad--buf-indices-scan-enable t
                 skroad--buf-renamer-original nil
                 skroad--buf-renamer-valid nil)))
 
@@ -1389,13 +1339,15 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   "Insert a live link to NODE into the current buffer at the current point."
   (insert (funcall (get 'skroad--text-link-node-live 'make-text) node)))
 
+;; TODO?
 (defun skroad--link-live-exists-p (node)
   "Determine whether a live link to NODE exists in the current buffer."
-  (or (and (skroad--mode-p) ;; If we're in skroad mode, use fast path:
-           (null skroad--buf-pending-changes) ;; ... no pending changes
-           (skroad--indexed-type-payload-exists-p
-            'skroad--text-link-node-live node)) ;; ... query the index.
-      (funcall (get 'skroad--text-link-node-live 'have-payload-p) node)))
+  (or
+   ;; (and (skroad--mode-p) ;; If we're in skroad mode, use fast path:
+   ;;      (null skroad--buf-pending-changes) ;; ... no pending changes
+   ;;      (skroad--indexed-type-payload-exists-p
+   ;;       'skroad--text-link-node-live node)) ;; ... query the index.
+   (funcall (get 'skroad--text-link-node-live 'have-payload-p) node)))
 
 ;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1585,7 +1537,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   (skroad--refontify-current-line)
   (skroad--motion skroad--buf-pre-command-point-state)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
-  (skroad--update-buf-index) ;; TODO: do it in save hook?
+  (skroad--buf-indices-update) ;; TODO: do it in save hook?
   (when (buffer-modified-p)
     (skroad--renamer-validate-if-active))
   (unless mark-active (setq-local mouse-highlight t)))
@@ -1646,7 +1598,7 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
   "Open a skroad node."
   (face-remap-set-base 'header-line 'skroad--title-face)
   (skroad--init-font-lock)
-  (skroad--async-dispatch #'skroad--init-buf-index) ;; move this to enabler
+  (skroad--async-dispatch #'skroad--init-buf-indices) ;; move this to enabler
   )
 
 (defun skroad--reboot ()
@@ -1672,11 +1624,11 @@ If `DISABLE-ACTIONS` is t, do not perform type actions while updating."
        (progn
          (skroad--when-in-mode
            (skroad--renamer-deactivate) ;; Cancel renamer to prevent rollback
-           (skroad--update-buf-index)) ;; Apply pending updates, firing actions
+           (skroad--buf-indices-update)) ;; Apply pending updates, firing actions
          (save-mark-and-excursion
            (atomic-change-group ,@body)))
      (skroad--when-in-mode ;; Only if buffer is actually in skroad mode:
-       (skroad--update-buf-index t)) ;; Update index but don't fire any actions
+       (skroad--buf-indices-update t)) ;; Update index but don't fire any actions
      (save-buffer)))
 
 (defmacro skroad--with-file (node-path &rest body)
