@@ -22,13 +22,13 @@
   (file-name-concat skroad--data-directory "orphans")
   "Subdirectory for storing orphan (i.e. fully-unlinked) nodes.")
 
-(defconst skroad--stub-list-file
-  (file-name-concat skroad--data-directory "stubs.txt")
-  "List of nodes that are currently stubs.")
+;; (defconst skroad--stub-list-file
+;;   (file-name-concat skroad--data-directory "stubs.txt")
+;;   "List of nodes that are currently stubs.")
 
-(defconst skroad--stub-removal-list-file
-  (file-name-concat skroad--data-directory "stubs-to-remove.txt")
-  "List of stubs queued for removal from the stubs list.")
+;; (defconst skroad--stub-removal-list-file
+;;   (file-name-concat skroad--data-directory "stubs-to-remove.txt")
+;;   "List of stubs queued for removal from the stubs list.")
 
 ;;; Fonts. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -287,18 +287,18 @@ If OVERWRITE is t, allow overwriting.  Return success."
     (maphash #'(lambda (k v) (push k list)) hset)
     list))
 
-(defun skroad--hashset-load (file)
-  "Return a hashset constructed from the lines (without endings) in FILE.
-If FILE does not exist, an empty hashset is returned."
-  (let ((hset (skroad--make-hash-set)))
-    (skroad--file-lines-foreach
-     file #'(lambda (line) (skroad--hashset-add line hset)))
-    hset))
+;; (defun skroad--hashset-load (file)
+;;   "Return a hashset constructed from the lines (without endings) in FILE.
+;; If FILE does not exist, an empty hashset is returned."
+;;   (let ((hset (skroad--make-hash-set)))
+;;     (skroad--file-lines-foreach
+;;      file #'(lambda (line) (skroad--hashset-add line hset)))
+;;     hset))
 
-(defun skroad--hashset-save (hset file)
-  "Create or overwrite FILE with a dump of HSET, one element per line."
-  (with-temp-file file
-    (skroad--hashset-foreach #'(lambda (k) (insert k) (newline)) hset)))
+;; (defun skroad--hashset-save (hset file)
+;;   "Create or overwrite FILE with a dump of HSET, one element per line."
+;;   (with-temp-file file
+;;     (skroad--hashset-foreach #'(lambda (k) (insert k) (newline)) hset)))
 
 ;; Node title cache and autocomplete support. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -354,57 +354,57 @@ If FILE does not exist, an empty hashset is returned."
 
 ;; Stub nodes tracker. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar skroad--stub-cache nil "Set of nodes currently considered stubs.")
-(defvar skroad--stub-removal-cache nil "Set of stubs queued for removal.")
+;; (defvar skroad--stub-cache nil "Set of nodes currently considered stubs.")
+;; (defvar skroad--stub-removal-cache nil "Set of stubs queued for removal.")
 
-(defun skroad--stub-removal-cache-save ()
-  "Save to disk the set of stubs queued for removal during this session."
-  (when skroad--stub-removal-cache
-    (skroad--hashset-save ;; Stays reasonably small, so won't pound disk
-     skroad--stub-removal-cache skroad--stub-removal-list-file)))
+;; (defun skroad--stub-removal-cache-save ()
+;;   "Save to disk the set of stubs queued for removal during this session."
+;;   (when skroad--stub-removal-cache
+;;     (skroad--hashset-save ;; Stays reasonably small, so won't pound disk
+;;      skroad--stub-removal-cache skroad--stub-removal-list-file)))
 
-(defun skroad--stub-queued-for-removal-p (node)
-  "Return t iff NODE is queued for removal from the stub list on disk."
-  (when skroad--stub-removal-cache
-    (skroad--hashset-member-p node skroad--stub-removal-cache)))
+;; (defun skroad--stub-queued-for-removal-p (node)
+;;   "Return t iff NODE is queued for removal from the stub list on disk."
+;;   (when skroad--stub-removal-cache
+;;     (skroad--hashset-member-p node skroad--stub-removal-cache)))
 
-(defun skroad--stub-cache-ensure-init ()
-  "Populate the stub nodes cache from disk, if empty and the file was found.
-If a stub removal list was also found, process and delete it."
-  (unless skroad--stub-cache
-    (setq skroad--stub-cache
-          (skroad--hashset-load skroad--stub-list-file))
-    (when (file-exists-p skroad--stub-removal-list-file) ;; Removal list exists?
-      (skroad--file-lines-foreach ;; Evict each stub queued for removal
-       skroad--stub-removal-list-file
-       #'(lambda (node) (skroad--hashset-remove node skroad--stub-cache)))
-      (skroad--hashset-save ;; Update the stubs list on disk to the current one
-       skroad--stub-cache skroad--stub-list-file)
-      (setq skroad--stub-removal-cache (skroad--make-hash-set)) ;; Make new set
-      (delete-file skroad--stub-removal-list-file))) ;; Delete removals list
-  t)
+;; (defun skroad--stub-cache-ensure-init ()
+;;   "Populate the stub nodes cache from disk, if empty and the file was found.
+;; If a stub removal list was also found, process and delete it."
+;;   (unless skroad--stub-cache
+;;     (setq skroad--stub-cache
+;;           (skroad--hashset-load skroad--stub-list-file))
+;;     (when (file-exists-p skroad--stub-removal-list-file) ;; Removal list exists?
+;;       (skroad--file-lines-foreach ;; Evict each stub queued for removal
+;;        skroad--stub-removal-list-file
+;;        #'(lambda (node) (skroad--hashset-remove node skroad--stub-cache)))
+;;       (skroad--hashset-save ;; Update the stubs list on disk to the current one
+;;        skroad--stub-cache skroad--stub-list-file)
+;;       (setq skroad--stub-removal-cache (skroad--make-hash-set)) ;; Make new set
+;;       (delete-file skroad--stub-removal-list-file))) ;; Delete removals list
+;;   t)
 
-(defun skroad--stub-interned-p (node)
-  "Return t iff NODE is currently interned in the stub nodes cache."
-  (skroad--stub-cache-ensure-init)
-  (skroad--hashset-member-p node skroad--stub-cache))
+;; (defun skroad--stub-interned-p (node)
+;;   "Return t iff NODE is currently interned in the stub nodes cache."
+;;   (skroad--stub-cache-ensure-init)
+;;   (skroad--hashset-member-p node skroad--stub-cache))
 
-(defun skroad--stub-intern (node)
-  "Intern NODE in the stub nodes cache and add it to the stub list on disk."
-  (unless (skroad--stub-interned-p node) ;; Do nothing if already interned
-    (skroad--hashset-add node skroad--stub-cache) ;; Intern it
-    (skroad--append-to-file skroad--stub-list-file node) ;; Save it ASAP
-    (when (skroad--stub-queued-for-removal-p node) ;; If queued for removal:
-      (skroad--hashset-remove node skroad--stub-removal-cache) ;; Unqueue it
-      (skroad--stub-removal-cache-save)))) ;; Save modified removal list
+;; (defun skroad--stub-intern (node)
+;;   "Intern NODE in the stub nodes cache and add it to the stub list on disk."
+;;   (unless (skroad--stub-interned-p node) ;; Do nothing if already interned
+;;     (skroad--hashset-add node skroad--stub-cache) ;; Intern it
+;;     (skroad--append-to-file skroad--stub-list-file node) ;; Save it ASAP
+;;     (when (skroad--stub-queued-for-removal-p node) ;; If queued for removal:
+;;       (skroad--hashset-remove node skroad--stub-removal-cache) ;; Unqueue it
+;;       (skroad--stub-removal-cache-save)))) ;; Save modified removal list
 
-(defun skroad--stub-evict (node)
-  "Evict NODE from the stub nodes cache and add it to the removal list on disk."
-  (when (skroad--stub-interned-p node) ;; Do nothing if already gone
-    (skroad--hashset-remove node skroad--stub-cache) ;; Unintern it
-    (unless (skroad--stub-queued-for-removal-p node) ;; If not yet queued:
-      (skroad--hashset-add node skroad--stub-removal-cache) ;; Queue for removal
-      (skroad--stub-removal-cache-save)))) ;; Save modified removal list
+;; (defun skroad--stub-evict (node)
+;;   "Evict NODE from the stub nodes cache and add it to the removal list on disk."
+;;   (when (skroad--stub-interned-p node) ;; Do nothing if already gone
+;;     (skroad--hashset-remove node skroad--stub-cache) ;; Unintern it
+;;     (unless (skroad--stub-queued-for-removal-p node) ;; If not yet queued:
+;;       (skroad--hashset-add node skroad--stub-removal-cache) ;; Queue for removal
+;;       (skroad--stub-removal-cache-save)))) ;; Save modified removal list
 
 ;; Skroad text type mechanism and basic types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -753,6 +753,7 @@ call the action with ARGS."
 
 ;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: cache these globally?
 (defvar-local skroad--buf-indices nil
   "Text type indices for the current buffer.")
 
@@ -773,6 +774,7 @@ call the action with ARGS."
   "Obtain the pending changes index for TEXT-TYPE in the current buffer."
   (skroad--ensure-index skroad--buf-pending-changes text-type))
 
+;; TODO: fix?
 (defun skroad--index-delta (index payload delta &optional final create destroy)
   "Update the count of PAYLOAD in INDEX by DELTA.
 Return `create` if introduced PAYLOAD; `destroy` if removed last copy; else nil.
@@ -829,13 +831,6 @@ Secondary type actions (run after a primary action has ran, if applicable) :
   :doc "Mixin for indexed text types."
   :mixin t
   :require 'for-all-in-region-forward
-  :index-scan-region
-  '(lambda (start end delta)
-     (funcall
-      for-all-in-region-forward start end
-      #'(lambda (payload)
-          (skroad--index-delta
-           (skroad--buf-pending-changes-of-type type-name) payload delta))))
   :register 'skroad--text-types-indexed)
 
 (defvar-local skroad--buf-indices-scan-enable t "Toggle index scanning.")
@@ -848,8 +843,11 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (when skroad--buf-indices-scan-enable
     (skroad--with-whole-lines start end
       (dolist (text-type skroad--text-types-indexed) ;; walk all indexed types
-        (funcall (get text-type 'index-scan-region)
-                 start-expanded end-expanded delta)))))
+        (let ((pending-index (skroad--buf-pending-changes-of-type text-type)))
+          (funcall (get text-type 'for-all-in-region-forward)
+                   start-expanded end-expanded
+                   #'(lambda (payload)
+                       (skroad--index-delta pending-index payload delta))))))))
 
 (defun skroad--init-buf-indices ()
   "Populate the current buffer's text type indices, dispatching init actions."
@@ -1304,6 +1302,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
       (search-forward "//" end)
       (insert " "))))
 
+;; TODO: require whitespace or start/end of line delimiters
 (skroad--deftype skroad-text-url-link
   :doc "URL."
   :kbd-doc "<return> go|<t> textify|<del> delete|<spc> prepend space"
