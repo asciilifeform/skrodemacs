@@ -774,7 +774,6 @@ call the action with ARGS."
   "Obtain the pending changes index for TEXT-TYPE in the current buffer."
   (skroad--ensure-index skroad--buf-pending-changes text-type))
 
-;; TODO: fix?
 (defun skroad--index-delta (index payload delta &optional final create destroy)
   "Update the count of PAYLOAD in INDEX by DELTA.
 Return `create` if introduced PAYLOAD; `destroy` if removed last copy; else nil.
@@ -1428,6 +1427,14 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (skroad--link-deaden node)) ;; Deaden any live links found.
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defconst skroad--special-node-prefix "#"
+  "Title prefix denoting special (auto-generated, non-editable) nodes.")
+
+(defun skroad--node-special-p (&optional node)
+  "Return t if NODE (if given) or the current node (if not) is a special node."
+  (string-prefix-p
+   skroad--special-node-prefix (or node (skroad--current-buffer-node))))
 
 (defun skroad--get-title-from-buffer ()
   "Get the current node title from the buffer."
