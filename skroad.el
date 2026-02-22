@@ -180,20 +180,6 @@ If OVERWRITE is t, allow overwriting.  Return success."
             (set-visited-file-name new-file t t))))
       t)))
 
-;; (defun skroad--append-to-file (file string)
-;;   "Silently append STRING to FILE, which is created if it did not exist."
-;;   (write-region (concat string "\n") nil file t 0))
-
-;; (defun skroad--file-lines-foreach (file fn)
-;;   "Evaluate (for side effects) FN on each line in FILE (if it exists)."
-;;   (when (file-exists-p file)
-;;     (with-temp-buffer
-;;       (insert-file-contents file t nil nil t)
-;;       (while (not (eobp))
-;;         (funcall fn (buffer-substring-no-properties
-;;                      (line-beginning-position) (line-end-position)))
-;;         (forward-line 1)))))
-
 (defun skroad--ensure-directory (dir)
   "Ensure that DIR exists, and return t on succeess."
   (or (file-accessible-directory-p dir)
