@@ -636,7 +636,7 @@ If FINAL is t, the count sum going below zero will signal an error."
 
 (defun skroad--buf-indices-update (&optional disable-actions)
   "Apply pending update to the cached text type indices of the current node.
-If no valid cache entry found, perform initial scan (reindex buffer contents.)
+If it has no cached indices, perform initial scan (reindex buffer contents.)
 Type actions (perform for given text type, unless `DISABLE-ACTIONS` is t) :
 `on-create`: a particular payload of this type first appeared in the buffer.
 `on-init`: same as above, but during initial scan.
@@ -651,7 +651,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
          (create-action (if init-scan 'on-init 'on-create))
          (type-create-action (if init-scan 'on-init-first 'on-create-first))
          (changed-any nil))
-    (when init-scan ;; No valid cache entry: rebuild indices from this buffer
+    (when init-scan ;; If no cached indices found for this node, rebuild:
       (setq-local skroad--buf-pending-changes nil)
       (skroad--index-scan-region (point-min) (point-max) 1))
     (dolist (pending skroad--buf-pending-changes)
