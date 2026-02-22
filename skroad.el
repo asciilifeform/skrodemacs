@@ -649,8 +649,9 @@ Secondary type actions (run after a primary action has ran, if applicable) :
          (indices (skroad--cache-fetch node))
          (init-scan (null indices))
          (create-action (if init-scan 'on-init 'on-create))
-         (type-create-action (if init-scan 'on-init-first 'on-create-first)))
-    (when init-scan ;; Rebuild indices
+         (type-create-action (if init-scan 'on-init-first 'on-create-first))
+         (changed-any nil))
+    (when init-scan ;; No valid cache entry: rebuild indices from this buffer
       (setq-local skroad--buf-pending-changes nil)
       (skroad--index-scan-region (point-min) (point-max) 1))
     (dolist (pending skroad--buf-pending-changes)
@@ -660,6 +661,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
              (none-before (zerop (hash-table-count buf-type-index))))
         (maphash
          #'(lambda (payload count)
+             (setq changed-any t)
              (let ((action
                     (skroad--index-delta buf-type-index payload count
                                          t create-action 'on-destroy)))
@@ -675,9 +677,10 @@ Secondary type actions (run after a primary action has ran, if applicable) :
                              (type-disappeared 'on-destroy-last))))
           (unless (or (null action) disable-actions)
             (skroad--type-action text-type action text-type))
-          (when none-after ;; Remove the type's index if it is now empty
+          (when none-after ;; Remove the type's index if it is empty
             (setq indices (assq-delete-all text-type indices))))))
-    (skroad--cache-write node indices))) ;; Rewrite the node cache
+    (when changed-any
+      (skroad--cache-write node indices)))) ;; Rewrite the node cache
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
