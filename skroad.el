@@ -650,8 +650,8 @@ If FINAL is t, the count sum going below zero will signal an error."
         (when final (error "Index underflow!"))))))
 
 (defun skroad--buf-indices-update (&optional disable-actions)
-  "Apply pending update to the cached text type indices of the current node.
-If it has no cached indices, perform initial scan (reindex buffer contents.)
+  "Initialize or (apply pending update to) the current node's text type indices.
+If there are no cached indices, perform initial scan (reindex buffer contents.)
 Type actions (perform for given text type, unless `DISABLE-ACTIONS` is t) :
 `on-create`: a particular payload of this type first appeared in the buffer.
 `on-init`: same as above, but during initial scan.
