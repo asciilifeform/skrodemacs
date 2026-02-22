@@ -674,7 +674,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
              (none-before (zerop (hash-table-count type-index))))
         (maphash
          #'(lambda (payload count)
-             (setq changed-any (or changed-any (not (zerop count))))
+             (setq changed-any t)
              (let ((action
                     (skroad--index-delta type-index payload count
                                          t create-action 'on-destroy)))
