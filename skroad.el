@@ -455,22 +455,6 @@ call the action with ARGS."
   :finder-regex-backward #'skroad--finder-regex-backward-non-title
   :use 'skroad--text-mixin-findable)
 
-;; TODO: broken
-;; (defun skroad--finder-regex-forward-non-title-single (r)
-;;   "Exactly like `skroad--finder-regex-forward-non-title`, but find one R."
-;;   (lambda (limit)
-;;     (when (bobp)
-;;       (funcall (skroad--finder-regex-forward-non-title r) limit))))
-
-;; (skroad--deftype skroad--text-mixin-delimited-non-title-single
-;;   :doc "Mixin for single delimited text types excluded from the node title."
-;;   :mixin t
-;;   :use 'skroad--text-mixin-delimited
-;;   :finder-regex-forward #'skroad--finder-regex-forward-non-title-single
-;;   :finder-regex-backward #'skroad--finder-regex-backward-non-title
-;;   :use 'skroad--text-mixin-findable
-;;   )
-
 ;; Font lock rendered text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--text-types-rendered nil "Text types for use with font-lock.")
@@ -1201,34 +1185,15 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 
 ;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (defun skroad--tail-marker-init (text-type payload)
-;;   "First instance of PAYLOAD of TEXT-TYPE was found in the buffer during load."
-;;   (message (format "Tail-Marker init: type=%s payload='%s'" text-type payload))
-;;   )
-
-;; (defun skroad--tail-marker-create (text-type payload)
-;;   "First instance of PAYLOAD of TEXT-TYPE was introduced into the buffer."
-;;   (message (format "Tail-Marker create: type=%s payload='%s'" text-type payload))
-;;   )
-
-;; (defun skroad--tail-marker-destroy (text-type payload)
-;;   "Last instance of PAYLOAD of TEXT-TYPE was removed from the buffer."
-;;   (message (format "Tail-Marker destroy: type=%s payload='%s'" text-type payload))
-;;   )
-
 (skroad--deftype skroad--text-node-tail
   :doc "Node tail."
   :kbd-doc "Auto-backlinks inserted below this marker; throws inserted above it."
   :use 'skroad--text-atomic
-  ;; :on-init #'skroad--tail-marker-init
-  ;; :on-create #'skroad--tail-marker-create
-  ;; :on-destroy #'skroad--tail-marker-destroy
   :face 'skroad--node-tail-face
   :help-echo "Node tail."
   :payload-regex "^\\(@@@\\)$"
   :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-render-delimited-zoned
-  ;; :use 'skroad--text-mixin-indexed
   )
 
 (defconst skroad--node-tail "@@@" "Node tail marker.")
