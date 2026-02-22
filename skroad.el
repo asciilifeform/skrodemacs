@@ -615,6 +615,20 @@ call the action with ARGS."
 (defvar-local skroad--buf-pending-changes nil
   "Pending changes to the text type indices for the current buffer.")
 
+(defvar-local skroad--buf-indices-table nil
+  "Cached text type indices for the current buffer.
+Do not access directly; use `skroad--buf-indices`.")
+
+(defun skroad--buf-indices (&optional update)
+  "Obtain (or set to UPDATE, if given) the current node's text type indices."
+  (cond (update
+         (setq-local skroad--buf-indices-table update)
+         (skroad--cache-write (skroad--current-node) update))
+        ((null skroad--buf-indices-table)
+         (setq-local skroad--buf-indices-table
+                     (skroad--cache-fetch (skroad--current-node)))))
+  skroad--buf-indices-table)
+
 (defmacro skroad--ensure-index (indices text-type)
   "Retrieve or create the index for TEXT-TYPE in INDICES."
   `(or (alist-get ,text-type ,indices)
@@ -633,20 +647,6 @@ If FINAL is t, the count sum going below zero will signal an error."
       (if (> sum 0)
           (when had-none create)
         (when final (error "Index underflow!"))))))
-
-(defvar-local skroad--buf-indices-table nil
-  "Cached text type indices for the current buffer.
-Do not access directly; use `skroad--buf-indices`.")
-
-(defun skroad--buf-indices (&optional update)
-  "Obtain (or set to UPDATE, if given) the current node's text type indices."
-  (cond (update
-         (setq-local skroad--buf-indices-table update)
-         (skroad--cache-write (skroad--current-node) update))
-        ((null skroad--buf-indices-table)
-         (setq-local skroad--buf-indices-table
-                     (skroad--cache-fetch (skroad--current-node)))))
-  skroad--buf-indices-table)
 
 (defun skroad--buf-indices-update (&optional disable-actions)
   "Apply pending update to the cached text type indices of the current node.
