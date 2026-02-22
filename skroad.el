@@ -634,6 +634,20 @@ If FINAL is t, the count sum going below zero will signal an error."
           (when had-none create)
         (when final (error "Index underflow!"))))))
 
+(defvar-local skroad--buf-indices-table nil
+  "Cached text type indices for the current buffer.
+Do not access directly; use `skroad--buf-indices`.")
+
+(defun skroad--buf-indices (&optional update)
+  "Obtain (or set to UPDATE, if given) the current node's text type indices."
+  (cond (update
+         (setq-local skroad--buf-indices-table update)
+         (skroad--cache-write (skroad--current-node) update))
+        ((null skroad--buf-indices-table)
+         (setq-local skroad--buf-indices-table
+                     (skroad--cache-fetch (skroad--current-node)))))
+  skroad--buf-indices-table)
+
 (defun skroad--buf-indices-update (&optional disable-actions)
   "Apply pending update to the cached text type indices of the current node.
 If it has no cached indices, perform initial scan (reindex buffer contents.)
@@ -645,12 +659,11 @@ Secondary type actions (run after a primary action has ran, if applicable) :
 `on-create-first`: the first payload of this type has appeared in the buffer.
 `on-init-first`: same as above, but during initial scan.
 `on-destroy-last`: the last payload of this type was removed from the buffer."
-  (let* ((node (skroad--current-node))
-         (indices (skroad--cache-fetch node))
+  (let* ((indices (skroad--buf-indices))
          (init-scan (null indices))
          (create-action (if init-scan 'on-init 'on-create))
          (type-create-action (if init-scan 'on-init-first 'on-create-first))
-         (changed-any nil))
+         (changed-any init-scan))
     (when init-scan ;; If no cached indices found for this node, rebuild:
       (setq-local skroad--buf-pending-changes nil)
       (skroad--index-scan-region (point-min) (point-max) 1))
@@ -679,8 +692,8 @@ Secondary type actions (run after a primary action has ran, if applicable) :
             (skroad--type-action text-type action text-type))
           (when none-after ;; Remove the type's index if it is empty
             (setq indices (assq-delete-all text-type indices))))))
-    (when changed-any
-      (skroad--cache-write node indices)))) ;; Rewrite the node cache
+    (when changed-any ;; Writeback if changed anything:
+      (skroad--buf-indices indices))))
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
