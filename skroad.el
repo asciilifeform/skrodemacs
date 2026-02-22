@@ -226,7 +226,7 @@ If OVERWRITE is t, allow overwriting.  Return success."
 ;; Cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--cache-table nil
-  "Skroad node cache.  (Do not use directly: access via `skroad--cache`.)
+  "Skroad node cache.  (Do not access directly: call `skroad--cache`.)
 Key is node title.  Value is `t` (not indexed yet) or the node's indices.")
 
 (defun skroad--cache ()
@@ -617,7 +617,7 @@ call the action with ARGS."
 
 (defvar-local skroad--buf-indices-table nil
   "Cached text type indices for the current buffer.
-Do not access directly; use `skroad--buf-indices`.")
+Do not access directly; call `skroad--buf-indices`.")
 
 (defun skroad--buf-indices (&optional update)
   "Obtain (or set to UPDATE, if given) the current node's text type indices."
