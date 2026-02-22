@@ -634,28 +634,29 @@ If FINAL is t, the count sum going below zero will signal an error."
           (when had-none create)
         (when final (error "Index underflow!"))))))
 
-(defun skroad--buf-indices-update (&optional disable-actions init-scan)
+(defun skroad--buf-indices-update (&optional disable-actions)
   "Apply pending update to the text type indices of the current node.
-When `INIT-SCAN` is t, rebuild the indices using the current buffer contents.
+When not cached, perform initial scan (rebuild indices using buffer contents.)
 Type actions (perform for given text type, unless `DISABLE-ACTIONS` is t) :
 `on-create`: a particular payload of this type first appeared in the buffer.
-`on-init`: same as above, but during initial scan (`INIT-SCAN` is t.)
+`on-init`: same as above, but during initial scan.
 `on-destroy`: a particular payload of this type no longer appears in the buffer.
 Secondary type actions (run after a primary action has ran, if applicable) :
 `on-create-first`: the first payload of this type has appeared in the buffer.
-`on-init-first`: same as above, but during initial scan (`INIT-SCAN` is t.)
+`on-init-first`: same as above, but during initial scan.
 `on-destroy-last`: the last payload of this type was removed from the buffer."
-  (when init-scan ;; Rebuild indices, discarding any existing contents
-    (setq-local skroad--buf-pending-changes nil)
-    (skroad--index-scan-region (point-min) (point-max) 1))
-  (let* ((current-node (skroad--current-node))
-         (node-indices (skroad--cache-fetch current-node))
+  (let* ((node (skroad--current-node))
+         (indices (skroad--cache-fetch node))
+         (init-scan (null indices))
          (create-action (if init-scan 'on-init 'on-create))
          (type-create-action (if init-scan 'on-init-first 'on-create-first)))
+    (when init-scan ;; Rebuild indices
+      (setq-local skroad--buf-pending-changes nil)
+      (skroad--index-scan-region (point-min) (point-max) 1))
     (dolist (pending skroad--buf-pending-changes)
       (let* ((text-type (car pending))
              (type-changes (cdr pending))
-             (buf-type-index (skroad--ensure-index node-indices text-type))
+             (buf-type-index (skroad--ensure-index indices text-type))
              (none-before (zerop (hash-table-count buf-type-index))))
         (maphash
          #'(lambda (payload count)
@@ -673,8 +674,10 @@ Secondary type actions (run after a primary action has ran, if applicable) :
                (action (cond (type-appeared type-create-action)
                              (type-disappeared 'on-destroy-last))))
           (unless (or (null action) disable-actions)
-            (skroad--type-action text-type action text-type)))))
-    (skroad--cache-write current-node node-indices)))
+            (skroad--type-action text-type action text-type))
+          (when none-after ;; Remove the type's index if it is now empty
+            (setq indices (assq-delete-all text-type indices))))))
+    (skroad--cache-write node indices))) ;; Rewrite the node cache
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
@@ -703,7 +706,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 
 (defun skroad--init-buf-indices ()
   "Populate the current buffer's text type indices, dispatching init actions."
-  (skroad--buf-indices-update nil t))
+  (skroad--buf-indices-update))
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in the buffer in region START...END."
