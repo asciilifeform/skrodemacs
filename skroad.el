@@ -146,6 +146,7 @@
 
 (defconst skroad--time-epsilon 0.01 "Short idle interval for async dispatch.")
 
+;; TODO: restore factual readonly
 (defun skroad--async-dispatch (fn &rest args)
   "Dispatch FN with ARGS asynchronously; buffer is read-only until completed."
   (setq-local buffer-read-only t)
@@ -719,10 +720,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
                    start-expanded end-expanded
                    #'(lambda (payload)
                        (skroad--index-delta pending-index payload delta))))))))
-
-(defun skroad--init-buf-indices ()
-  "Populate the current buffer's text type indices, dispatching init actions."
-  (skroad--buf-indices-update))
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in the buffer in region START...END."
@@ -1473,7 +1470,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   "Open a skroad node."
   (face-remap-set-base 'header-line 'skroad--title-face)
   (skroad--init-font-lock)
-  (skroad--async-dispatch #'skroad--init-buf-indices) ;; move this to enabler
+  (skroad--async-dispatch #'skroad--buf-indices-update) ;; move this to enabler
   )
 
 (defun skroad--reboot ()
