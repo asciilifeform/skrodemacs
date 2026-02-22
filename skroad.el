@@ -657,20 +657,20 @@ Secondary type actions (run after a primary action has ran, if applicable) :
     (dolist (pending skroad--buf-pending-changes)
       (let* ((text-type (car pending))
              (type-changes (cdr pending))
-             (buf-type-index (skroad--ensure-index indices text-type))
-             (none-before (zerop (hash-table-count buf-type-index))))
+             (type-index (skroad--ensure-index indices text-type))
+             (none-before (zerop (hash-table-count type-index))))
         (maphash
          #'(lambda (payload count)
              (setq changed-any (or changed-any (not (zerop count))))
              (let ((action
-                    (skroad--index-delta buf-type-index payload count
+                    (skroad--index-delta type-index payload count
                                          t create-action 'on-destroy)))
                (unless (or (null action) disable-actions)
                  (skroad--type-action text-type action text-type payload))))
          type-changes)
         (clrhash type-changes) ;; Empty the pending change index for this type
         ;; Created the first or destroyed the last item of this type?
-        (let* ((none-after (zerop (hash-table-count buf-type-index)))
+        (let* ((none-after (zerop (hash-table-count type-index)))
                (type-appeared (and none-before (not none-after)))
                (type-disappeared (and (not none-before) none-after))
                (action (cond (type-appeared type-create-action)
