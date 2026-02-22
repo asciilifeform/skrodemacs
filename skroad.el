@@ -234,11 +234,11 @@ Key is node title.  Value is `t` (not indexed yet) or the node's indices.")
   (unless skroad--cache-table
     (skroad--storage-ensure)
     (setq skroad--cache-table (make-hash-table :test 'equal))
-    (mapc #'skroad--cache-intern (skroad--storage-list-nodes)))
+    (mapc #'skroad--cache-write (skroad--storage-list-nodes)))
   skroad--cache-table)
 
-(defun skroad--cache-intern (node &optional data)
-  "Intern (or update) NODE with DATA (or `t`, if not given) in the cache."
+(defun skroad--cache-write (node &optional data)
+  "Intern or update NODE with DATA (or `t`, if not given) in the cache."
   (puthash node (or data t) (skroad--cache)))
 
 (defun skroad--cache-peek (node)
@@ -255,13 +255,13 @@ Key is node title.  Value is `t` (not indexed yet) or the node's indices.")
 
 (defun skroad--cache-invalidate (node)
   "If NODE is in the cache, mark it as invalid.  Otherwise, do nothing."
-  (when (skroad--cache-peek node) (skroad--cache-intern node)))
+  (when (skroad--cache-peek node) (skroad--cache-write node)))
 
 (defun skroad--cache-rename (node new-node)
   "Reintern NODE as NEW-NODE in the cache.  Return t when succeeded."
   (let ((data (skroad--cache-peek node)))
     (when (and data (null (skroad--cache-peek new-node)))
-      (skroad--cache-intern new-node data)
+      (skroad--cache-write new-node data)
       (skroad--cache-evict node)
       t)))
 
@@ -612,10 +612,6 @@ call the action with ARGS."
 
 ;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: cache these globally?
-(defvar-local skroad--buf-indices nil
-  "Text type indices for the current buffer.")
-
 (defvar-local skroad--buf-pending-changes nil
   "Pending changes to the text type indices for the current buffer.")
 
@@ -623,14 +619,6 @@ call the action with ARGS."
   "Retrieve or create the index for TEXT-TYPE in INDICES."
   `(or (alist-get ,text-type ,indices)
        (setf (alist-get ,text-type ,indices) (make-hash-table :test 'equal))))
-
-(defun skroad--buf-index-of-type (text-type)
-  "Obtain the index for TEXT-TYPE in the current buffer."
-  (skroad--ensure-index skroad--buf-indices text-type))
-
-(defun skroad--buf-pending-changes-of-type (text-type)
-  "Obtain the pending changes index for TEXT-TYPE in the current buffer."
-  (skroad--ensure-index skroad--buf-pending-changes text-type))
 
 (defun skroad--index-delta (index payload delta &optional final create destroy)
   "Update the count of PAYLOAD in INDEX by DELTA.
@@ -647,7 +635,7 @@ If FINAL is t, the count sum going below zero will signal an error."
         (when final (error "Index underflow!"))))))
 
 (defun skroad--buf-indices-update (&optional disable-actions init-scan)
-  "Apply pending update to the text type indices of the current buffer.
+  "Apply pending update to the text type indices of the current node.
 When `INIT-SCAN` is t, rebuild the indices using the current buffer contents.
 Type actions (perform for given text type, unless `DISABLE-ACTIONS` is t) :
 `on-create`: a particular payload of this type first appeared in the buffer.
@@ -658,33 +646,35 @@ Secondary type actions (run after a primary action has ran, if applicable) :
 `on-init-first`: same as above, but during initial scan (`INIT-SCAN` is t.)
 `on-destroy-last`: the last payload of this type was removed from the buffer."
   (when init-scan ;; Rebuild indices, discarding any existing contents
-      (setq-local skroad--buf-pending-changes nil)
-      (skroad--index-scan-region (point-min) (point-max) 1))
-  (let ((create-action (if init-scan 'on-init 'on-create))
-        (type-create-action (if init-scan 'on-init-first 'on-create-first)))
+    (setq-local skroad--buf-pending-changes nil)
+    (skroad--index-scan-region (point-min) (point-max) 1))
+  (let* ((current-node (skroad--current-node))
+         (node-indices (skroad--cache-fetch current-node))
+         (create-action (if init-scan 'on-init 'on-create))
+         (type-create-action (if init-scan 'on-init-first 'on-create-first)))
     (dolist (pending skroad--buf-pending-changes)
       (let* ((text-type (car pending))
-             (changes (cdr pending))
-             (buf-index (skroad--buf-index-of-type text-type))
-             (none-before (zerop (hash-table-count buf-index))))
+             (type-changes (cdr pending))
+             (buf-type-index (skroad--ensure-index node-indices text-type))
+             (none-before (zerop (hash-table-count buf-type-index))))
         (maphash
          #'(lambda (payload count)
              (let ((action
-                    (skroad--index-delta buf-index payload count
+                    (skroad--index-delta buf-type-index payload count
                                          t create-action 'on-destroy)))
                (unless (or (null action) disable-actions)
                  (skroad--type-action text-type action text-type payload))))
-         changes)
-        (clrhash changes) ;; Empty the pending change index for this type
+         type-changes)
+        (clrhash type-changes) ;; Empty the pending change index for this type
         ;; Created the first or destroyed the last item of this type?
-        (let* ((none-after (zerop (hash-table-count buf-index)))
+        (let* ((none-after (zerop (hash-table-count buf-type-index)))
                (type-appeared (and none-before (not none-after)))
                (type-disappeared (and (not none-before) none-after))
                (action (cond (type-appeared type-create-action)
                              (type-disappeared 'on-destroy-last))))
           (unless (or (null action) disable-actions)
-            (skroad--type-action text-type action text-type)))
-        t))))
+            (skroad--type-action text-type action text-type)))))
+    (skroad--cache-write current-node node-indices)))
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
@@ -704,7 +694,8 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (when skroad--buf-indices-scan-enable
     (skroad--with-whole-lines start end
       (dolist (text-type skroad--text-types-indexed) ;; walk all indexed types
-        (let ((pending-index (skroad--buf-pending-changes-of-type text-type)))
+        (let ((pending-index
+               (skroad--ensure-index skroad--buf-pending-changes text-type)))
           (funcall (get text-type 'for-all-in-region-forward)
                    start-expanded end-expanded
                    #'(lambda (payload)
