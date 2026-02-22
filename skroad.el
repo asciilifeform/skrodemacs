@@ -663,7 +663,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
          (init-scan (null indices))
          (create-action (if init-scan 'on-init 'on-create))
          (type-create-action (if init-scan 'on-init-first 'on-create-first))
-         (changed-any init-scan))
+         (changed-any nil))
     (when init-scan ;; If no cached indices found for this node, rebuild:
       (setq-local skroad--buf-pending-changes nil)
       (skroad--index-scan-region (point-min) (point-max) 1))
