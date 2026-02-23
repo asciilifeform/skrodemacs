@@ -633,8 +633,6 @@ Secondary type actions (run after a primary action has ran, if applicable) :
 `on-destroy-last`: the last payload of this type was removed from the buffer."
   (let* ((indices (skroad--buf-indices))
          (init-scan (null indices))
-         (create-action (if init-scan 'on-init 'on-create))
-         (type-create-action (if init-scan 'on-init-first 'on-create-first))
          (changed-any init-scan)) ;; Init scan always denulls indices
     (when init-scan ;; If no cached indices found for this node, rebuild:
       (setq-local skroad--buf-pending-changes nil)
@@ -643,7 +641,10 @@ Secondary type actions (run after a primary action has ran, if applicable) :
       (let* ((text-type (car pending))
              (type-changes (cdr pending))
              (type-index (skroad--ensure-index indices text-type))
-             (none-before (zerop (hash-table-count type-index))))
+             (none-before (zerop (hash-table-count type-index)))
+             (create-action (if init-scan 'on-init 'on-create))
+             (type-create-action
+              (if init-scan 'on-init-first 'on-create-first)))
         (maphash
          #'(lambda (payload count)
              (setq changed-any t)
@@ -656,10 +657,9 @@ Secondary type actions (run after a primary action has ran, if applicable) :
         (clrhash type-changes) ;; Empty the pending change index for this type
         ;; Created the first or destroyed the last item of this type?
         (let* ((none-after (zerop (hash-table-count type-index)))
-               (type-appeared (and none-before (not none-after)))
-               (type-disappeared (and (not none-before) none-after))
-               (action (cond (type-appeared type-create-action)
-                             (type-disappeared 'on-destroy-last))))
+               (action
+                (cond ((and none-before (not none-after)) type-create-action)
+                      ((and (not none-before) none-after) 'on-destroy-last))))
           (unless (or (null action) disable-actions)
             (skroad--type-action text-type action text-type))
           (when none-after ;; Don't waste cache space on empty indices
@@ -705,16 +705,15 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (add-hook 'before-change-functions 'skroad--before-change-function nil t)
   (add-hook 'after-change-functions 'skroad--after-change-function nil t))
 
-(defun skroad--has-text-type-payload-p (text-type payload)
+(defun skroad--node-has-p (text-type payload)
   "Determine whether a PAYLOAD of TEXT-TYPE exists in the current node."
   (let ((index (alist-get text-type (skroad--buf-indices))))
     (when index (gethash payload index))))
 
-(defun skroad--for-all-payloads-of-text-type (text-type fn &rest other-args)
+(defun skroad--node-foreach (text-type fn &rest other-args)
   "Apply FN to all payloads of TEXT-TYPE in the current node."
-  (maphash
-   #'(lambda (key val) (apply fn (cons key other-args)))
-   (alist-get text-type (skroad--buf-indices))))
+  (maphash #'(lambda (key val) (apply fn (cons key other-args)))
+           (alist-get text-type (skroad--buf-indices))))
 
 ;; Top-level keymap for the major mode. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
