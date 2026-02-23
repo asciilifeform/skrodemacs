@@ -705,17 +705,16 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (add-hook 'before-change-functions 'skroad--before-change-function nil t)
   (add-hook 'after-change-functions 'skroad--after-change-function nil t))
 
-;; TODO
-;; (defun skroad--indexed-type-payload-exists-p (type payload)
-;;   "Find if a PAYLOAD of TYPE currently exists in the buffer-local index."
-;;   (gethash (cons type payload) skroad--buf-index))
+(defun skroad--has-text-type-payload-p (text-type payload)
+  "Determine whether a PAYLOAD of TEXT-TYPE exists in the current node."
+  (let ((index (alist-get text-type (skroad--buf-indices))))
+    (when index (gethash payload index))))
 
-;; (defun skroad--for-all-indexed-of-type (type fn &rest other-args)
-;;   "Apply FN to all payloads of TYPE currently in the buffer-local index."
-;;   (maphash
-;;    #'(lambda (key val)
-;;        (when (eq type (car key)) (apply fn (cons (cdr key) other-args))))
-;;    skroad--buf-index))
+(defun skroad--for-all-payloads-of-text-type (text-type fn &rest other-args)
+  "Apply FN to all payloads of TEXT-TYPE in the current node."
+  (maphash
+   #'(lambda (key val) (apply fn (cons key other-args)))
+   (alist-get text-type (skroad--buf-indices))))
 
 ;; Top-level keymap for the major mode. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
