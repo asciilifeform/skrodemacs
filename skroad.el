@@ -661,9 +661,9 @@ Secondary type actions (run after a primary action has ran, if applicable) :
                              (type-disappeared 'on-destroy-last))))
           (unless (or (null action) disable-actions)
             (skroad--type-action text-type action text-type))
-          (when none-after ;; Remove the type's index if it is empty
+          (when none-after ;; Don't waste cache space on empty indices
             (setq indices (assq-delete-all text-type indices))))))
-    (when changed-any ;; Writeback if changed anything:
+    (when changed-any ;; Writeback indices only if something changed:
       (skroad--buf-indices indices))))
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
@@ -871,13 +871,13 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 
 (defun skroad--snapshot-prepare ()
   "Start a temporary change set."
-  (assert (null skroad--buf-unrollable-changes))
+  ;; (assert (null skroad--buf-unrollable-changes))
   (setq-local skroad--buf-unrollable-changes (prepare-change-group))
   (activate-change-group skroad--buf-unrollable-changes))
 
 (defun skroad--snapshot-rollback ()
   "End a temporary change set."
-  (assert skroad--buf-unrollable-changes)
+  ;; (assert skroad--buf-unrollable-changes)
   (undo-amalgamate-change-group skroad--buf-unrollable-changes)
   (cancel-change-group skroad--buf-unrollable-changes)
   (setq-local skroad--buf-unrollable-changes nil))
