@@ -1168,6 +1168,21 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
    node
    'skroad--text-link-node-live))
 
+(defun skroad--ensure-link (node)
+  "Ensure that the current node has at least one live link to NODE."
+  (or (skroad--has-live-link-to-p node) ;; Already has a live link to node?
+      (and (skroad--has-dead-link-to-p node) ;; If not, any dead links to it?
+           (skroad--link-liven node)) ;; Try livening the dead links
+      (skroad--tail-put-live-link node))) ;; If neither: emplace a new one.
+
+;; TODO: if we zap the last live link, current node is now orphaned
+(defun skroad--ensure-unlink (node)
+  "Ensure that the current node does NOT have any live links to NODE."
+  (and (skroad--has-live-link-to-p node) ;; Actually has any live links to it?
+       (skroad--link-deaden node))) ;; Deaden any live links found.
+
+;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun skroad--cmd-url-comment ()
   "Turn the URL at point into plain text by placing a space after the prefix."
   (interactive)
@@ -1239,21 +1254,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (ensure-empty-lines 1)
   (insert text)
   (ensure-empty-lines 1))
-
-;; Linking and unlinking nodes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun skroad--ensure-link (node)
-  "Ensure that the current node has at least one live link to NODE."
-  (or (skroad--has-live-link-to-p node) ;; Already has a live link to node?
-      (and (skroad--has-dead-link-to-p node) ;; If not, any dead links to it?
-           (skroad--link-liven node)) ;; Try livening the dead links
-      (skroad--tail-put-live-link node))) ;; If neither: emplace a new one.
-
-;; TODO: if we zap the last live link, current node is now orphaned
-(defun skroad--ensure-unlink (node)
-  "Ensure that the current node does NOT have any live links to NODE."
-  (and (skroad--has-live-link-to-p node) ;; Actually has any live links to it?
-       (skroad--link-deaden node))) ;; Deaden any live links found.
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
