@@ -1083,9 +1083,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (defun skroad--browse-skroad-link (data)
   (message (format "Live link pushed: '%s'" data)))
 
-;; TODO: maintain count of live links and give predicate for when not zero
-;; TODO: these should be for live links strictly
-
 (defun skroad--link-init (text-type payload)
   "First instance of PAYLOAD of TEXT-TYPE was found in the buffer during load."
   ;; (message (format "Link init: type=%s payload='%s'" text-type payload))
@@ -1161,6 +1158,8 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
    node
    'skroad--text-link-node-dead))
 
+;; TODO: skroad--link-zap
+
 (defun skroad--link-liven (node)
   "Transform all dead links to NODE in the current node to live links."
   (funcall
@@ -1175,7 +1174,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
            (skroad--link-liven node)) ;; Try livening the dead links
       (skroad--tail-put-live-link node))) ;; If neither: emplace a new one.
 
-;; TODO: if we zap the last live link, current node is now orphaned
+;; TODO: if we remove the last live link, current node is now orphaned
 (defun skroad--link-disconnect (node)
   "Ensure that the current node does NOT have any live links to NODE."
   (and (skroad--has-live-link-to-p node) ;; Actually has any live links to it?
