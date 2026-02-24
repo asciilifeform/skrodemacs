@@ -210,48 +210,6 @@ If OVERWRITE is t, allow overwriting.  Return success."
   (mapcar #'skroad--filename-to-node
           (file-expand-wildcards (skroad--node-path "*"))))
 
-;; Cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defvar skroad--cache-table nil
-  "Skroad node cache.  (Do not access directly: call `skroad--cache`.)
-Key is node title.  Value is `t` (not indexed yet) or the node's indices.")
-
-(defun skroad--cache ()
-  "Access the (populated from disk at warmup) node cache."
-  (unless skroad--cache-table
-    (skroad--storage-ensure)
-    (setq skroad--cache-table (make-hash-table :test 'equal))
-    (mapc #'skroad--cache-write (skroad--storage-list-nodes)))
-  skroad--cache-table)
-
-(defun skroad--cache-write (node &optional data)
-  "Intern or update NODE with DATA (or `t`, if not given) in the cache."
-  (puthash node (or data t) (skroad--cache)))
-
-(defun skroad--cache-peek (node)
-  "Return the value associated with NODE in the cache.  Return nil if none."
-  (gethash node (skroad--cache)))
-
-(defun skroad--cache-evict (node)
-  "Evict NODE from the cache."
-  (remhash node (skroad--cache)))
-
-(defun skroad--cache-fetch (node)
-  "Return valid data associated with NODE in the cache; nil if there is none."
-  (let ((data (skroad--cache-peek node))) (when (not (eq data t)) data)))
-
-(defun skroad--cache-invalidate (node)
-  "If NODE is in the cache, mark it as invalid.  Otherwise, do nothing."
-  (when (skroad--cache-peek node) (skroad--cache-write node)))
-
-(defun skroad--cache-rename (node new-node)
-  "Reintern NODE as NEW-NODE in the cache.  Return t when succeeded."
-  (let ((data (skroad--cache-peek node)))
-    (when (and data (null (skroad--cache-peek new-node)))
-      (skroad--cache-write new-node data)
-      (skroad--cache-evict node)
-      t)))
-
 ;; Skroad text type mechanism and basic types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmacro skroad--deftype (name &rest properties)
@@ -581,6 +539,57 @@ call the action with ARGS."
   :payload-regex "^##\s*\\([^\n\r\f\t\s]+[^\n\r\f\t]*\\)"
   :use 'skroad--text-mixin-render-delimited-decorative)
 
+;; Cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defvar skroad--cache-table nil
+  "Skroad node cache.  (Do not access directly: call `skroad--cache`.)
+Key is the node title.  Value is `index-me` (this node was not indexed yet);
+or the node's indices, if it has been indexed; or `empty` (indices are null).")
+
+(defun skroad--cache ()
+  "Access the (populated from disk at warmup) node cache."
+  (unless skroad--cache-table
+    (skroad--storage-ensure)
+    (setq skroad--cache-table (make-hash-table :test 'equal))
+    (mapc #'skroad--cache-intern-unindexed (skroad--storage-list-nodes)))
+  skroad--cache-table)
+
+(defun skroad--cache-intern-unindexed (node)
+  "Intern NODE in the cache with a mark indicating that it needs indexing."
+  (skroad--cache-write node 'index-me))
+
+(defun skroad--cache-write (node data)
+  "Update NODE with DATA (using `empty` to represent nil) in the cache."
+  (puthash node (or data 'empty) (skroad--cache)))
+
+(defun skroad--cache-peek (node)
+  "Return the raw value associated with NODE in the cache; nil if not interned."
+  (gethash node (skroad--cache)))
+
+(defun skroad--cache-fetch (node)
+  "Return cache data for NODE; or `index-me` if not indexed; or nil if empty."
+  (let ((data (skroad--cache-peek node))) (when (not (eq data 'empty)) data)))
+
+(defun skroad--cache-intern (node)
+  "If NODE is in the cache, do nothing.  Otherwise, intern it in the cache."
+  (unless (skroad--cache-peek node) (skroad--cache-intern-unindexed node)))
+
+(defun skroad--cache-invalidate (node)
+  "If NODE is in the cache, mark it as invalid.  Otherwise, do nothing."
+  (when (skroad--cache-peek node) (skroad--cache-intern-unindexed node)))
+
+(defun skroad--cache-evict (node)
+  "Evict NODE from the cache."
+  (remhash node (skroad--cache)))
+
+(defun skroad--cache-rename (node new-node)
+  "Reintern NODE as NEW-NODE in the cache, preserving data.  Return success."
+  (let ((data (skroad--cache-peek node)))
+    (when (and data (null (skroad--cache-peek new-node)))
+      (skroad--cache-write new-node data)
+      (skroad--cache-evict node)
+      t)))
+
 ;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar-local skroad--buf-pending-changes nil
@@ -622,7 +631,7 @@ If FINAL is t, the count sum going below zero will signal an error."
 
 (defun skroad--buf-indices-update (&optional disable-actions)
   "Initialize or (apply pending update to) the current node's text type indices.
-If there are no cached indices, perform initial scan (reindex buffer contents.)
+If the node was not yet indexed, perform initial scan (reindex buffer contents.)
 Type actions (perform for given text type, unless `DISABLE-ACTIONS` is t) :
 `on-create`: a particular payload of this type first appeared in the buffer.
 `on-init`: same as above, but during initial scan.
@@ -632,9 +641,10 @@ Secondary type actions (run after a primary action has ran, if applicable) :
 `on-init-first`: same as above, but during initial scan.
 `on-destroy-last`: the last payload of this type was removed from the buffer."
   (let* ((indices (skroad--buf-indices))
-         (init-scan (null indices))
+         (init-scan (eq indices 'index-me))
          (changed-any init-scan)) ;; Init scan always denulls indices
     (when init-scan ;; If no cached indices found for this node, rebuild:
+      (setq indices nil)
       (setq-local skroad--buf-pending-changes nil)
       (skroad--index-scan-region (point-min) (point-max) 1))
     (dolist (pending skroad--buf-pending-changes)
