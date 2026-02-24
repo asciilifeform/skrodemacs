@@ -1208,34 +1208,34 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 
 (defconst skroad--node-tail "@@@" "Node tail marker.")
 
-(defun skroad--find-node-tail ()
+(defun skroad--tail-find ()
   "Go to the node tail, if one exists, in the current node."
   (funcall (get 'skroad--text-node-tail 'find-any-first)))
 
-(defun skroad--put-node-tail () ;; TODO: smart, rather than point-max ?
+(defun skroad--tail-emplace () ;; TODO: smart, rather than point-max ?
   "Emplace a node tail in the current node."
   (goto-char (point-max))
   (ensure-empty-lines 1)
   (insert skroad--node-tail))
 
-(defun skroad--goto-below-node-tail ()
+(defun skroad--tail-jump-below ()
   "Find or create the node tail in the current node; set point below it."
-  (or (skroad--find-node-tail) (skroad--put-node-tail)))
+  (or (skroad--tail-find) (skroad--tail-emplace)))
 
-(defun skroad--goto-node-tail ()
+(defun skroad--tail-jump-to ()
   "Find or create the node tail in the current node; set point at it."
-  (skroad--goto-below-node-tail)
+  (skroad--tail-jump-below)
   (goto-char (line-beginning-position)))
 
-(defun skroad--put-live-link (node)
+(defun skroad--tail-put-live-link (node)
   "Emplace a live link to NODE below the node tail in the current node."
-  (skroad--goto-below-node-tail)
+  (skroad--tail-jump-below)
   (ensure-empty-lines 1)
   (skroad--link-insert-live node))
 
-(defun skroad--put-text (text)
+(defun skroad--tail-throw-text (text)
   "Emplace given TEXT above the node tail in the current node."
-  (skroad--goto-node-tail)
+  (skroad--tail-jump-to)
   (ensure-empty-lines 1)
   (insert text)
   (ensure-empty-lines 1))
@@ -1247,7 +1247,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (or (skroad--has-live-link-to-p node) ;; Already has a live link to node?
       (and (skroad--has-dead-link-to-p node) ;; If not, any dead links to it?
            (skroad--link-liven node)) ;; Try livening the dead links
-      (skroad--put-live-link node))) ;; If neither: emplace a new one.
+      (skroad--tail-put-live-link node))) ;; If neither: emplace a new one.
 
 ;; TODO: if we zap the last live link, current node is now orphaned
 (defun skroad--ensure-unlink (node)
@@ -1485,14 +1485,14 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 ;; (skroad--with-file
 ;;  "~/skrode/k.skroad"
 ;;  (save-mark-and-excursion
-;;    (skroad--put-live-link "new node3")
+;;    (skroad--tail-put-live-link "new node3")
 ;;    ))
 
 ;; (skroad--with-file
 ;;  "~/skrode/k.skroad"
 ;;  (save-mark-and-excursion
-;;    ;; (skroad--put-text "")
-;;    (skroad--put-text "foo123")
+;;    ;; (skroad--tail-throw-text "")
+;;    (skroad--tail-throw-text "foo123")
 ;;    ))
 
 ;; (defun skroad--activate-node (node)
