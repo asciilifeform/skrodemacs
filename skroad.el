@@ -642,7 +642,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
 `on-destroy-last`: the last payload of this type was removed from the buffer."
   (let* ((indices (skroad--buf-indices))
          (init-scan (eq indices 'index-me))
-         (changed-any init-scan)) ;; Init scan always denulls indices
+         (changed-any init-scan))
     (when init-scan ;; If no cached indices found for this node, rebuild:
       (setq indices nil)
       (setq-local skroad--buf-pending-changes nil)
