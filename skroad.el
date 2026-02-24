@@ -612,7 +612,7 @@ or the node's indices, if it has been indexed; or `empty` (indices are null).")
 (defun skroad--buf-indices-writeback (val)
   "Set the current node's text type indices to VAL, writing back to cache."
   (setq-local skroad--buf-indices-table val)
-  (skroad--cache-write (skroad--current-node) skroad--buf-indices-table))
+  (skroad--cache-write (skroad--current-node) val))
 
 (defmacro skroad--ensure-index (indices text-type)
   "Retrieve or create the index for TEXT-TYPE in INDICES."
