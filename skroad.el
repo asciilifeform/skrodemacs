@@ -1168,7 +1168,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
    node
    'skroad--text-link-node-live))
 
-(defun skroad--ensure-link (node)
+(defun skroad--link-ensure-live (node)
   "Ensure that the current node has at least one live link to NODE."
   (or (skroad--has-live-link-to-p node) ;; Already has a live link to node?
       (and (skroad--has-dead-link-to-p node) ;; If not, any dead links to it?
@@ -1176,7 +1176,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
       (skroad--tail-put-live-link node))) ;; If neither: emplace a new one.
 
 ;; TODO: if we zap the last live link, current node is now orphaned
-(defun skroad--ensure-unlink (node)
+(defun skroad--link-ensure-no-live (node)
   "Ensure that the current node does NOT have any live links to NODE."
   (and (skroad--has-live-link-to-p node) ;; Actually has any live links to it?
        (skroad--link-deaden node))) ;; Deaden any live links found.
