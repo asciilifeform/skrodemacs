@@ -1126,6 +1126,10 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :use 'skroad--text-mixin-render-delimited-zoned
   :use 'skroad--text-mixin-indexed)
 
+(defun skroad--has-live-link-to-p (node)
+  "Determine whether the current node has at least one live link to NODE."
+  (skroad--node-has-p 'skroad--text-link-node-live node))
+
 (defun skroad--link-insert-live (node)
   "Insert a live link to NODE into the current node at the current point."
   (insert (funcall (get 'skroad--text-link-node-live 'make-text) node)))
@@ -1146,6 +1150,10 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :use 'skroad--text-mixin-render-delimited-zoned
   :use 'skroad--text-mixin-indexed)
 
+(defun skroad--has-dead-link-to-p (node)
+  "Determine whether the current node has at least one dead link to NODE."
+  (skroad--node-has-p 'skroad--text-link-node-dead node))
+
 (defun skroad--link-deaden (node)
   "Transform all live links to NODE in the current node to dead links."
   (funcall
@@ -1159,14 +1167,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
    (get 'skroad--text-link-node-dead 'payload-change-type)
    node
    'skroad--text-link-node-live))
-
-(defun skroad--has-live-link-to-p (node)
-  "Determine whether the current node has at least one live link to NODE."
-  (skroad--node-has-p 'skroad--text-link-node-live node))
-
-(defun skroad--has-dead-link-to-p (node)
-  "Determine whether the current node has at least one dead link to NODE."
-  (skroad--node-has-p 'skroad--text-link-node-dead node))
 
 (defun skroad--cmd-url-comment ()
   "Turn the URL at point into plain text by placing a space after the prefix."
