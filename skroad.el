@@ -575,7 +575,7 @@ or the node's indices, if it has been indexed; or `empty` (indices are null).")
   (let ((data (skroad--cache-peek node))) (when (not (eq data 'empty)) data)))
 
 (defun skroad--cache-intern (node)
-  "If NODE is in the cache, do nothing.  Otherwise, intern it in the cache."
+  "If NODE is already in the cache, do nothing.  Otherwise, intern it."
   (unless (skroad--cache-peek node) (skroad--cache-intern-unindexed node)))
 
 (defun skroad--cache-invalidate (node)
@@ -622,7 +622,7 @@ or the node's indices, if it has been indexed; or `empty` (indices are null).")
 (defun skroad--index-delta (index payload delta &optional final create destroy)
   "Update the count of PAYLOAD in INDEX by DELTA.
 Return `create` if introduced PAYLOAD; `destroy` if removed last copy; else nil.
-If FINAL is t, the count sum going below zero will signal an error."
+If FINAL is t, the count sum going negative will signal an error."
   (let* ((had-prev (gethash payload index 0))
          (had-none (zerop had-prev))
          (sum (+ delta had-prev)))
