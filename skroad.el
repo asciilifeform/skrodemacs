@@ -649,9 +649,8 @@ Secondary type actions (run after a primary action has ran, if applicable) :
       (skroad--index-scan-region (point-min) (point-max) 1))
     (dolist (pending skroad--buf-pending-changes)
       (let* ((text-type (car pending))
-             (type-changes (cdr pending))
-             (type-has-changes (not (zerop (hash-table-count type-changes)))))
-        (when type-has-changes
+             (type-changes (cdr pending)))
+        (when (not (zerop (hash-table-count type-changes)))
           (setq changed-any t)
           (let* ((type-index (skroad--ensure-index indices text-type))
                  (none-before (zerop (hash-table-count type-index)))
