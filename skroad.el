@@ -85,6 +85,10 @@
      ,@body
      (message "%.06f" (float-time (time-since time)))))
 
+(defmacro hash-empty-p (hash)
+  "Return t if HASH is empty."
+  `(zerop (hash-table-count ,hash)))
+
 (defun skroad--nop (&rest args)
   "Placeholder function, simply eats its ARGS and does absolutely nothing."
   ())
@@ -649,10 +653,10 @@ Secondary type actions (run after a primary action has ran, if applicable) :
       (skroad--index-scan-region (point-min) (point-max) 1))
     (dolist (pending skroad--buf-pending-changes)
       (let ((text-type (car pending)) (type-changes (cdr pending)))
-        (when (not (zerop (hash-table-count type-changes)))
+        (when (not (hash-empty-p type-changes))
           (setq changed-any t)
           (let* ((type-index (skroad--ensure-index indices text-type))
-                 (none-before (zerop (hash-table-count type-index)))
+                 (none-before (hash-empty-p type-index))
                  (create-action (if init-scan 'on-init 'on-create))
                  (type-create-action
                   (if init-scan 'on-init-first 'on-create-first)))
@@ -667,7 +671,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
             (clrhash type-changes) ;; Empty the type's pending change index
             ;; Created the first or destroyed the last item of this type?
             (let*
-                ((none-after (zerop (hash-table-count type-index)))
+                ((none-after (hash-empty-p type-index))
                  (action
                   (cond ((and none-before (not none-after)) type-create-action)
                         ((and (not none-before) none-after) 'on-destroy-last))))
