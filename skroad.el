@@ -650,30 +650,33 @@ Secondary type actions (run after a primary action has ran, if applicable) :
     (dolist (pending skroad--buf-pending-changes)
       (let* ((text-type (car pending))
              (type-changes (cdr pending))
-             (type-index (skroad--ensure-index indices text-type))
-             (none-before (zerop (hash-table-count type-index)))
-             (create-action (if init-scan 'on-init 'on-create))
-             (type-create-action
-              (if init-scan 'on-init-first 'on-create-first)))
-        (maphash
-         #'(lambda (payload count)
-             (setq changed-any t)
-             (let ((action
-                    (skroad--index-delta type-index payload count
-                                         t create-action 'on-destroy)))
-               (unless (or (null action) disable-actions)
-                 (skroad--type-action text-type action text-type payload))))
-         type-changes)
-        (clrhash type-changes) ;; Empty the pending change index for this type
-        ;; Created the first or destroyed the last item of this type?
-        (let* ((none-after (zerop (hash-table-count type-index)))
-               (action
-                (cond ((and none-before (not none-after)) type-create-action)
-                      ((and (not none-before) none-after) 'on-destroy-last))))
-          (unless (or (null action) disable-actions)
-            (skroad--type-action text-type action text-type))
-          (when none-after ;; Don't waste cache space on empty indices
-            (setq indices (assq-delete-all text-type indices))))))
+             (type-has-changes (not (zerop (hash-table-count type-changes)))))
+        (when type-has-changes
+          (setq changed-any t)
+          (let* ((type-index (skroad--ensure-index indices text-type))
+                 (none-before (zerop (hash-table-count type-index)))
+                 (create-action (if init-scan 'on-init 'on-create))
+                 (type-create-action
+                  (if init-scan 'on-init-first 'on-create-first)))
+            (maphash
+             #'(lambda (payload count)
+                 (let ((action
+                        (skroad--index-delta type-index payload count
+                                             t create-action 'on-destroy)))
+                   (unless (or (null action) disable-actions)
+                     (skroad--type-action text-type action text-type payload))))
+             type-changes)
+            (clrhash type-changes) ;; Empty the type's pending change index
+            ;; Created the first or destroyed the last item of this type?
+            (let*
+                ((none-after (zerop (hash-table-count type-index)))
+                 (action
+                  (cond ((and none-before (not none-after)) type-create-action)
+                        ((and (not none-before) none-after) 'on-destroy-last))))
+              (unless (or (null action) disable-actions)
+                (skroad--type-action text-type action text-type))
+              (when none-after ;; Don't waste cache space on empty indices
+                (setq indices (assq-delete-all text-type indices))))))))
     (when changed-any ;; Writeback indices only if something changed:
       (skroad--buf-indices-writeback indices))))
 
