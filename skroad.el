@@ -1078,39 +1078,39 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :keymap (define-keymap "t" #'skroad--cmd-link-comment))
 
 ;; TODO: ensure and open the node
-(defun skroad--browse-skroad-link (data)
+(defun skroad--action-open-link (data)
   (message (format "Live link pushed: '%s'" data)))
 
 ;; TODO: lint action?
-(defun skroad--link-indexed (node)
+(defun skroad--action-linked-init (node)
   "The first instance of a live link to NODE was found during indexing."
   )
 
-(defun skroad--link-gained (node)
+(defun skroad--action-linked (node)
   "The first instance of a live link to NODE was introduced."
   (message "Link create: node='%s'" node)
   )
 
-(defun skroad--link-lost (node)
+(defun skroad--action-unlinked (node)
   "The last instance of a live link to NODE was removed."
   (message "Link destroy: node='%s'" node)
   )
 
 ;; TODO: lint action?
-(defun skroad--links-indexed ()
+(defun skroad--action-unorphaned-init ()
   "A live link was found for the first time during indexing."
   (message "Link init first")
   )
 
 ;; TODO: deorphan the node
-(defun skroad--links-gained-first ()
+(defun skroad--action-unorphaned ()
   "A live link was introduced, where there were none before."
   (message "Link create first")
   )
 
 ;; TODO: orphan the node (if not stub)
 ;; TODO: if stub, delete the node (1st close any buffer where it is open)
-(defun skroad--links-lost-last ()
+(defun skroad--action-orphaned ()
   "The last live link was removed."
   (message "Link destroy last")
   )
@@ -1125,13 +1125,13 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :kbd-doc "<return> go|<r> rename|<l> deaden|<t> textify|<del> delete|<spc> prepend space"
   :use 'skroad--text-link-node
-  :on-init #'skroad--link-indexed
-  :on-create #'skroad--link-gained
-  :on-destroy #'skroad--link-lost
-  :on-init-first #'skroad--links-indexed
-  :on-create-first #'skroad--links-gained-first
-  :on-destroy-last #'skroad--links-lost-last
-  :on-activate #'skroad--browse-skroad-link
+  :on-init #'skroad--action-linked-init
+  :on-create #'skroad--action-linked
+  :on-destroy #'skroad--action-unlinked
+  :on-init-first #'skroad--action-unorphaned-init
+  :on-create-first #'skroad--action-unorphaned
+  :on-destroy-last #'skroad--action-orphaned
+  :on-activate #'skroad--action-open-link
   :mouse-face 'highlight
   :start-delim "[[" :end-delim "]]"
   :keymap (define-keymap
