@@ -1079,18 +1079,18 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (defun skroad--browse-skroad-link (data)
   (message (format "Live link pushed: '%s'" data)))
 
-(defun skroad--live-link-init (payload)
-  "First instance of live link PAYLOAD was found in the buffer during load."
+(defun skroad--live-link-init (node)
+  "First instance of live link to NODE was found in the buffer during load."
   )
 
-(defun skroad--live-link-create (payload)
-  "First instance of live link PAYLOAD was introduced into the buffer."
-  (message (format "Link create: payload='%s'" payload))
+(defun skroad--live-link-create (node)
+  "First instance of live link to NODE was introduced into the buffer."
+  (message (format "Link create: node='%s'" node))
   )
 
-(defun skroad--live-link-destroy (payload)
-  "Last instance of live link PAYLOAD was removed from the buffer."
-  (message (format "Link destroy: payload='%s'" payload))
+(defun skroad--live-link-destroy (node)
+  "Last instance of live link to NODE was removed from the buffer."
+  (message (format "Link destroy: node='%s'" node))
   )
 
 (defun skroad--live-link-init-first ()
