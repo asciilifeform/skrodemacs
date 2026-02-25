@@ -1184,7 +1184,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (or (skroad--connected-p node) ;; Already has a live link to node?
       (and (skroad--reconnectable-p node) ;; If not, any dead links to it?
            (skroad--reconnect node)) ;; Try livening the dead links
-      (skroad--tail-inject-live-link node))) ;; If neither: create the link.
+      (skroad--tail-put-live-link node))) ;; If neither: create the link.
 
 ;; TODO: if we remove the last live link, current node is now orphaned
 ;; TODO: if this node is a stub, zap the link, rather than deaden
@@ -1246,14 +1246,14 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (or (funcall (get 'skroad--text-node-tail 'find-any-first))
       (skroad--tail-emplace)))
 
-(defun skroad--tail-inject-live-link (node)
+(defun skroad--tail-put-live-link (node)
   "Emplace a live link to NODE under the node tail in the current node."
   (skroad--tail-jump-after)
   (ensure-empty-lines 1)
   (insert (funcall (get 'skroad--text-link-node-live 'make-text) node)))
 
-(defun skroad--tail-inject-text (text)
-  "Emplace given TEXT above the node tail in the current node."
+(defun skroad--tail-put-text (text)
+  "Emplace TEXT above the node tail in the current node."
   (skroad--tail-jump-after)
   (goto-char (line-beginning-position))
   (ensure-empty-lines 1)
@@ -1478,14 +1478,14 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 ;; (skroad--with-file
 ;;  "~/skrode/k.skroad"
 ;;  (save-mark-and-excursion
-;;    (skroad--tail-inject-live-link "new node3")
+;;    (skroad--tail-put-live-link "new node3")
 ;;    ))
 
 ;; (skroad--with-file
 ;;  "~/skrode/k.skroad"
 ;;  (save-mark-and-excursion
-;;    ;; (skroad--tail-inject-text "")
-;;    (skroad--tail-inject-text "foo123")
+;;    ;; (skroad--tail-put-text "")
+;;    (skroad--tail-put-text "foo123")
 ;;    ))
 
 ;; (defun skroad--activate-node (node)
