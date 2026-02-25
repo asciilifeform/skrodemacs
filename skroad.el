@@ -628,10 +628,13 @@ If FINAL is t, the count sum going negative will signal an error."
           (when had-none create)
         (when final (error "Index underflow!"))))))
 
-(defun skroad--buf-indices-update (&optional disable-actions)
+(defvar skroad--disable-index-actions nil
+  "When t, node indices update does not execute text type actions.")
+
+(defun skroad--buf-indices-update ()
   "Initialize or (apply pending update to) the current node's text type indices.
 If the node was not yet indexed, perform initial scan (reindex buffer contents.)
-Type actions (perform for given text type, unless `DISABLE-ACTIONS` is t) :
+Type actions (run where defined, unless `skroad--disable-index-actions` is t) :
 `on-create`: a particular payload of this type first appeared in the buffer.
 `on-init`: same as above, but during initial scan.
 `on-destroy`: a particular payload of this type no longer appears in the buffer.
@@ -660,7 +663,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
                  (let ((action
                         (skroad--index-delta type-index payload count
                                              t create-action 'on-destroy)))
-                   (unless (or (null action) disable-actions)
+                   (unless (or (null action) skroad--disable-index-actions)
                      (skroad--type-action text-type action payload))))
              type-changes)
             (clrhash type-changes) ;; Empty the type's pending change index
@@ -670,7 +673,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
                  (action
                   (cond ((and none-before (not none-after)) type-create-action)
                         ((and (not none-before) none-after) 'on-destroy-last))))
-              (unless (or (null action) disable-actions)
+              (unless (or (null action) skroad--disable-index-actions)
                 (skroad--type-action text-type action))
               (when none-after ;; Don't waste cache space on empty indices
                 (setq indices (assq-delete-all text-type indices))))))))
