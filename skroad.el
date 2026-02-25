@@ -538,15 +538,15 @@ call the action with ARGS."
   :payload-regex "^##\s*\\([^\n\r\f\t\s]+[^\n\r\f\t]*\\)"
   :use 'skroad--text-mixin-render-delimited-decorative)
 
-;; Cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Node indices cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--cache-table nil
-  "Skroad node cache.  (Do not access directly: call `skroad--cache`.)
+  "Skroad node indices cache.  (Do not access directly: call `skroad--cache`.)
 Key is the node title.  Value is `index-me` (this node was not indexed yet);
 or the node's indices, if it has been indexed; or `empty` (indices are null).")
 
 (defun skroad--cache ()
-  "Access the (populated from disk at warmup) node cache."
+  "Access the node indices cache.  Populate it from disk on first access."
   (unless skroad--cache-table
     (skroad--storage-ensure)
     (setq skroad--cache-table (make-hash-table :test 'equal))
@@ -554,7 +554,7 @@ or the node's indices, if it has been indexed; or `empty` (indices are null).")
   skroad--cache-table)
 
 (defun skroad--cache-intern-unindexed (node)
-  "Intern NODE in the cache with a mark indicating that it needs indexing."
+  "Intern NODE in the cache with a marker indicating that it needs indexing."
   (skroad--cache-write node 'index-me))
 
 (defun skroad--cache-write (node data)
@@ -566,7 +566,7 @@ or the node's indices, if it has been indexed; or `empty` (indices are null).")
   (gethash node (skroad--cache)))
 
 (defun skroad--cache-fetch (node)
-  "Return cache data for NODE; or `index-me` if not indexed; or nil if empty."
+  "Return indices for NODE; or `index-me` if not indexed; or nil if empty."
   (let ((data (skroad--cache-peek node))) (when (not (eq data 'empty)) data)))
 
 (defun skroad--cache-intern (node)
@@ -1081,6 +1081,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (defun skroad--browse-skroad-link (data)
   (message (format "Live link pushed: '%s'" data)))
 
+;; TODO: lint action?
 (defun skroad--live-link-init (node)
   "The first instance of a live link to NODE was found during indexing."
   )
@@ -1095,6 +1096,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (message "Link destroy: node='%s'" node)
   )
 
+;; TODO: lint action?
 (defun skroad--live-link-init-first ()
   "The first time any live link was found during indexing."
   (message "Link init first")
