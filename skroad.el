@@ -1082,35 +1082,35 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (message (format "Live link pushed: '%s'" data)))
 
 ;; TODO: lint action?
-(defun skroad--live-link-init (node)
+(defun skroad--link-indexed (node)
   "The first instance of a live link to NODE was found during indexing."
   )
 
-(defun skroad--live-link-create (node)
+(defun skroad--link-gained (node)
   "The first instance of a live link to NODE was introduced."
   (message "Link create: node='%s'" node)
   )
 
-(defun skroad--live-link-destroy (node)
+(defun skroad--link-lost (node)
   "The last instance of a live link to NODE was removed."
   (message "Link destroy: node='%s'" node)
   )
 
 ;; TODO: lint action?
-(defun skroad--live-link-init-first ()
+(defun skroad--links-indexed ()
   "The first time any live link was found during indexing."
   (message "Link init first")
   )
 
 ;; TODO: deorphan the node
-(defun skroad--live-link-create-first ()
+(defun skroad--links-gained-first ()
   "A live link was introduced, where there were none before."
   (message "Link create first")
   )
 
 ;; TODO: orphan the node (if not stub)
 ;; TODO: if stub, delete the node (1st close any buffer where it is open)
-(defun skroad--live-link-destroy-last ()
+(defun skroad--links-lost-last ()
   "The last live link was removed."
   (message "Link destroy last")
   )
@@ -1125,12 +1125,12 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :kbd-doc "<return> go|<r> rename|<l> deaden|<t> textify|<del> delete|<spc> prepend space"
   :use 'skroad--text-link-node
-  :on-init #'skroad--live-link-init
-  :on-create #'skroad--live-link-create
-  :on-destroy #'skroad--live-link-destroy
-  :on-init-first #'skroad--live-link-init-first
-  :on-create-first #'skroad--live-link-create-first
-  :on-destroy-last #'skroad--live-link-destroy-last
+  :on-init #'skroad--link-indexed
+  :on-create #'skroad--link-gained
+  :on-destroy #'skroad--link-lost
+  :on-init-first #'skroad--links-indexed
+  :on-create-first #'skroad--links-gained-first
+  :on-destroy-last #'skroad--links-lost-last
   :on-activate #'skroad--browse-skroad-link
   :mouse-face 'highlight
   :start-delim "[[" :end-delim "]]"
