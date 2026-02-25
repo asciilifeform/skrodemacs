@@ -757,7 +757,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
     "<tab>" #'skroad--cmd-top-jump-to-next-live-link
     "C-<tab>" #'skroad--cmd-top-jump-to-prev-live-link
-    "<f13>" #'skroad--reboot
     )
   "Top-level keymap for the skroad major mode.")
 
@@ -1448,18 +1447,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (skroad--init-font-lock)
   (skroad--async-dispatch #'skroad--buf-indices-update) ;; move this to enabler
   )
-
-(defun skroad--reboot ()
-  "Reboot skroad mode. (FOR DEVELOPMENT USE ONLY)."
-  (interactive)
-  (message "Rebooting skroad!")
-  (setq skroad--font-lock-keywords nil)
-  (with-temp-buffer
-    (setq byte-compile-warnings nil)
-    (insert-file-contents (locate-library "skroad.el"))
-    (eval-buffer))
-  (revert-buffer t t)
-  (skroad--init-font-lock))
 
 
 ;; (file-has-changed-p (skroad--node-path "k") 'skroad)
