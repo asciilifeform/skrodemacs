@@ -1098,7 +1098,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 
 ;; TODO: lint action?
 (defun skroad--links-indexed ()
-  "The first time any live link was found during indexing."
+  "A live link was found for the first time during indexing."
   (message "Link init first")
   )
 
