@@ -1123,13 +1123,9 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :use 'skroad--text-mixin-render-delimited-zoned
   :use 'skroad--text-mixin-indexed)
 
-(defun skroad--has-live-link-to-p (node)
+(defun skroad--connected-p (node)
   "Determine whether the current node has at least one live link to NODE."
   (skroad--node-has-p 'skroad--text-link-node-live node))
-
-(defun skroad--link-insert-live (node)
-  "Insert a live link to NODE into the current node at the current point."
-  (insert (funcall (get 'skroad--text-link-node-live 'make-text) node)))
 
 (skroad--deftype skroad--text-link-node-dead
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
@@ -1147,7 +1143,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :use 'skroad--text-mixin-render-delimited-zoned
   :use 'skroad--text-mixin-indexed)
 
-(defun skroad--has-dead-link-to-p (node)
+(defun skroad--reconnectable-p (node)
   "Determine whether the current node has at least one dead link to NODE."
   (skroad--node-has-p 'skroad--text-link-node-dead node))
 
@@ -1160,24 +1156,25 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 
 ;; TODO: skroad--link-zap
 
-(defun skroad--link-liven (node)
+(defun skroad--reconnect (node)
   "Transform all dead links to NODE in the current node to live links."
   (funcall
    (get 'skroad--text-link-node-dead 'payload-change-type)
    node
    'skroad--text-link-node-live))
 
-(defun skroad--link-connect (node)
+(defun skroad--connect (node)
   "Ensure that the current node has at least one live link to NODE."
-  (or (skroad--has-live-link-to-p node) ;; Already has a live link to node?
-      (and (skroad--has-dead-link-to-p node) ;; If not, any dead links to it?
-           (skroad--link-liven node)) ;; Try livening the dead links
-      (skroad--tail-put-live-link node))) ;; If neither: emplace a new one.
+  (or (skroad--connected-p node) ;; Already has a live link to node?
+      (and (skroad--reconnectable-p node) ;; If not, any dead links to it?
+           (skroad--reconnect node)) ;; Try livening the dead links
+      (skroad--tail-inject-live-link node))) ;; If neither: create the link.
 
 ;; TODO: if we remove the last live link, current node is now orphaned
-(defun skroad--link-disconnect (node)
+;; TODO: if this node is a stub, zap the link, rather than deaden
+(defun skroad--disconnect (node)
   "Ensure that the current node does NOT have any live links to NODE."
-  (and (skroad--has-live-link-to-p node) ;; Actually has any live links to it?
+  (and (skroad--connected-p node) ;; Actually has any live links to it?
        (skroad--link-deaden node))) ;; Deaden any live links found.
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1241,13 +1238,13 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (skroad--tail-jump-below)
   (goto-char (line-beginning-position)))
 
-(defun skroad--tail-put-live-link (node)
+(defun skroad--tail-inject-live-link (node)
   "Emplace a live link to NODE below the node tail in the current node."
   (skroad--tail-jump-below)
   (ensure-empty-lines 1)
-  (skroad--link-insert-live node))
+  (insert (funcall (get 'skroad--text-link-node-live 'make-text) node)))
 
-(defun skroad--tail-throw-text (text)
+(defun skroad--tail-inject-text (text)
   "Emplace given TEXT above the node tail in the current node."
   (skroad--tail-jump-to)
   (ensure-empty-lines 1)
@@ -1484,14 +1481,14 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 ;; (skroad--with-file
 ;;  "~/skrode/k.skroad"
 ;;  (save-mark-and-excursion
-;;    (skroad--tail-put-live-link "new node3")
+;;    (skroad--tail-inject-live-link "new node3")
 ;;    ))
 
 ;; (skroad--with-file
 ;;  "~/skrode/k.skroad"
 ;;  (save-mark-and-excursion
-;;    ;; (skroad--tail-throw-text "")
-;;    (skroad--tail-throw-text "foo123")
+;;    ;; (skroad--tail-inject-text "")
+;;    (skroad--tail-inject-text "foo123")
 ;;    ))
 
 ;; (defun skroad--activate-node (node)
