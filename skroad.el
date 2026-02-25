@@ -661,7 +661,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
                         (skroad--index-delta type-index payload count
                                              t create-action 'on-destroy)))
                    (unless (or (null action) disable-actions)
-                     (skroad--type-action text-type action text-type payload))))
+                     (skroad--type-action text-type action payload))))
              type-changes)
             (clrhash type-changes) ;; Empty the type's pending change index
             ;; Created the first or destroyed the last item of this type?
@@ -671,7 +671,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
                   (cond ((and none-before (not none-after)) type-create-action)
                         ((and (not none-before) none-after) 'on-destroy-last))))
               (unless (or (null action) disable-actions)
-                (skroad--type-action text-type action text-type))
+                (skroad--type-action text-type action))
               (when none-after ;; Don't waste cache space on empty indices
                 (setq indices (assq-delete-all text-type indices))))))))
     (when changed-any ;; Writeback indices only if something changed:
@@ -1062,7 +1062,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
         (delete-region start end)
         (insert text)))))
 
-;; TODO: preview linked node
+;; TODO: preview linked node, or "Stub node" if stub
 (defun skroad--link-mouseover (window buf position)
   "User is mousing over a link in WINDOW, BUF, at POSITION."
   (with-current-buffer buf
@@ -1075,37 +1075,40 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :payload-regex skroad--node-title-regex
   :keymap (define-keymap "t" #'skroad--cmd-link-comment))
 
+;; TODO: ensure and open the node
 (defun skroad--browse-skroad-link (data)
   (message (format "Live link pushed: '%s'" data)))
 
-(defun skroad--live-link-init (text-type payload)
-  "First instance of PAYLOAD of TEXT-TYPE was found in the buffer during load."
-  ;; (message (format "Link init: type=%s payload='%s'" text-type payload))
+(defun skroad--live-link-init (payload)
+  "First instance of live link PAYLOAD was found in the buffer during load."
   )
 
-(defun skroad--live-link-create (text-type payload)
-  "First instance of PAYLOAD of TEXT-TYPE was introduced into the buffer."
-  (message (format "Link create: type=%s payload='%s'" text-type payload))
+(defun skroad--live-link-create (payload)
+  "First instance of live link PAYLOAD was introduced into the buffer."
+  (message (format "Link create: payload='%s'" payload))
   )
 
-(defun skroad--live-link-destroy (text-type payload)
-  "Last instance of PAYLOAD of TEXT-TYPE was removed from the buffer."
-  (message (format "Link destroy: type=%s payload='%s'" text-type payload))
+(defun skroad--live-link-destroy (payload)
+  "Last instance of live link PAYLOAD was removed from the buffer."
+  (message (format "Link destroy: payload='%s'" payload))
   )
 
-(defun skroad--live-link-init-first (text-type)
-  "First instance of TEXT-TYPE was found in the buffer during load."
-  (message (format "Link init first: type=%s" text-type))
+(defun skroad--live-link-init-first ()
+  "First instance of a live link was found in the buffer during load."
+  (message (format "Link init first"))
   )
 
-(defun skroad--live-link-create-first (text-type)
-  "First instance of TEXT-TYPE was introduced into the buffer."
-  (message (format "Link create first: type=%s" text-type))
+;; TODO: deorphan the node
+(defun skroad--live-link-create-first ()
+  "First instance of a live link was introduced into the buffer."
+  (message (format "Link create first"))
   )
 
-(defun skroad--live-link-destroy-last (text-type)
-  "Last instance of TEXT-TYPE was removed from the buffer."
-  (message (format "Link destroy last: type=%s" text-type))
+;; TODO: orphan the node (if not stub)
+;; TODO: if stub, delete the node (1st close any buffer where it is open)
+(defun skroad--live-link-destroy-last ()
+  "Last instance of a live link was removed from the buffer."
+  (message (format "Link destroy last"))
   )
 
 (skroad--deftype skroad--text-renamer-indirect
