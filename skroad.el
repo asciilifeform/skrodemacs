@@ -1235,34 +1235,27 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 
 (defconst skroad--node-tail "@@@" "Node tail marker.")
 
-(defun skroad--tail-find ()
-  "Go to the node tail, if one exists, in the current node."
-  (funcall (get 'skroad--text-node-tail 'find-any-first)))
-
 (defun skroad--tail-emplace () ;; TODO: smart, rather than point-max ?
   "Emplace a node tail in the current node."
   (goto-char (point-max))
   (ensure-empty-lines 1)
   (insert skroad--node-tail))
 
-(defun skroad--tail-jump-below ()
-  "Find or create the node tail in the current node; set point below it."
-  (or (skroad--tail-find) (skroad--tail-emplace)))
-
-(defun skroad--tail-jump-to ()
-  "Find or create the node tail in the current node; set point at it."
-  (skroad--tail-jump-below)
-  (goto-char (line-beginning-position)))
+(defun skroad--tail-jump-after ()
+  "Find or create the node tail in the current node; set point after it."
+  (or (funcall (get 'skroad--text-node-tail 'find-any-first))
+      (skroad--tail-emplace)))
 
 (defun skroad--tail-inject-live-link (node)
-  "Emplace a live link to NODE below the node tail in the current node."
-  (skroad--tail-jump-below)
+  "Emplace a live link to NODE under the node tail in the current node."
+  (skroad--tail-jump-after)
   (ensure-empty-lines 1)
   (insert (funcall (get 'skroad--text-link-node-live 'make-text) node)))
 
 (defun skroad--tail-inject-text (text)
   "Emplace given TEXT above the node tail in the current node."
-  (skroad--tail-jump-to)
+  (skroad--tail-jump-after)
+  (goto-char (line-beginning-position))
   (ensure-empty-lines 1)
   (insert text)
   (ensure-empty-lines 1))
