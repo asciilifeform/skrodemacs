@@ -342,11 +342,6 @@ call the action with ARGS."
        (goto-char start)
        (while (funcall find-any-forward end)
          (funcall f (match-string-no-properties match-number)))))
-  :have-payload-p
-  '(lambda (payload)
-     (save-mark-and-excursion
-       (goto-char (point-min))
-       (funcall find-payload-forward (point-max) payload)))
   :replace-payload-all ;; TODO: use replace-regexp-in-region ???
   '(lambda (payload payload-new)
      (let ((found-any nil))
@@ -1083,19 +1078,34 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (defun skroad--browse-skroad-link (data)
   (message (format "Live link pushed: '%s'" data)))
 
-(defun skroad--link-init (text-type payload)
+(defun skroad--live-link-init (text-type payload)
   "First instance of PAYLOAD of TEXT-TYPE was found in the buffer during load."
   ;; (message (format "Link init: type=%s payload='%s'" text-type payload))
   )
 
-(defun skroad--link-create (text-type payload)
+(defun skroad--live-link-create (text-type payload)
   "First instance of PAYLOAD of TEXT-TYPE was introduced into the buffer."
   (message (format "Link create: type=%s payload='%s'" text-type payload))
   )
 
-(defun skroad--link-destroy (text-type payload)
+(defun skroad--live-link-destroy (text-type payload)
   "Last instance of PAYLOAD of TEXT-TYPE was removed from the buffer."
   (message (format "Link destroy: type=%s payload='%s'" text-type payload))
+  )
+
+(defun skroad--live-link-init-first (text-type)
+  "First instance of TEXT-TYPE was found in the buffer during load."
+  (message (format "Link init first: type=%s" text-type))
+  )
+
+(defun skroad--live-link-create-first (text-type)
+  "First instance of TEXT-TYPE was introduced into the buffer."
+  (message (format "Link create first: type=%s" text-type))
+  )
+
+(defun skroad--live-link-destroy-last (text-type)
+  "Last instance of TEXT-TYPE was removed from the buffer."
+  (message (format "Link destroy last: type=%s" text-type))
   )
 
 (skroad--deftype skroad--text-renamer-indirect
@@ -1108,9 +1118,12 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :kbd-doc "<return> go|<r> rename|<l> deaden|<t> textify|<del> delete|<spc> prepend space"
   :use 'skroad--text-link-node
-  :on-init #'skroad--link-init
-  :on-create #'skroad--link-create
-  :on-destroy #'skroad--link-destroy
+  :on-init #'skroad--live-link-init
+  :on-create #'skroad--live-link-create
+  :on-destroy #'skroad--live-link-destroy
+  :on-init-first #'skroad--live-link-init-first
+  :on-create-first #'skroad--live-link-create-first
+  :on-destroy-last #'skroad--live-link-destroy-last
   :on-activate #'skroad--browse-skroad-link
   :mouse-face 'highlight
   :start-delim "[[" :end-delim "]]"
@@ -1131,9 +1144,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
   :kbd-doc "<l> liven|<t> textify|<del> delete|<spc> prepend space"
   :use 'skroad--text-link-node
-  :on-init #'skroad--link-init
-  :on-create #'skroad--link-create
-  :on-destroy #'skroad--link-destroy
   :start-delim "[-[" :end-delim "]-]"
   :face 'skroad--dead-link-face
   :keymap (define-keymap
