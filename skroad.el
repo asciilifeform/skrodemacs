@@ -1080,35 +1080,35 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (message (format "Live link pushed: '%s'" data)))
 
 (defun skroad--live-link-init (node)
-  "First instance of live link to NODE was found in the buffer during load."
+  "The first instance of a live link to NODE was found during indexing."
   )
 
 (defun skroad--live-link-create (node)
-  "First instance of live link to NODE was introduced into the buffer."
-  (message (format "Link create: node='%s'" node))
+  "The first instance of a live link to NODE was introduced."
+  (message "Link create: node='%s'" node)
   )
 
 (defun skroad--live-link-destroy (node)
-  "Last instance of live link to NODE was removed from the buffer."
-  (message (format "Link destroy: node='%s'" node))
+  "The last instance of a live link to NODE was removed."
+  (message "Link destroy: node='%s'" node)
   )
 
 (defun skroad--live-link-init-first ()
-  "First instance of a live link was found in the buffer during load."
-  (message (format "Link init first"))
+  "The first time any live link was found during indexing."
+  (message "Link init first")
   )
 
 ;; TODO: deorphan the node
 (defun skroad--live-link-create-first ()
-  "First instance of a live link was introduced into the buffer."
-  (message (format "Link create first"))
+  "A live link was introduced, where there were none before."
+  (message "Link create first")
   )
 
 ;; TODO: orphan the node (if not stub)
 ;; TODO: if stub, delete the node (1st close any buffer where it is open)
 (defun skroad--live-link-destroy-last ()
-  "Last instance of a live link was removed from the buffer."
-  (message (format "Link destroy last"))
+  "The last live link was removed."
+  (message "Link destroy last")
   )
 
 (skroad--deftype skroad--text-renamer-indirect
@@ -1176,6 +1176,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
    node
    'skroad--text-link-node-live))
 
+;; TODO: don't bother trying to reconnect if this is a stub
 (defun skroad--connect (node)
   "Ensure that the current node has at least one live link to NODE."
   (or (skroad--connected-p node) ;; Already has a live link to node?
