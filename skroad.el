@@ -631,6 +631,7 @@ If FINAL is t, the count sum going negative will signal an error."
 (defvar skroad--disable-index-actions nil
   "When t, node indices update does not execute text type actions.")
 
+;; TODO: do we want a `none-found` action?
 (defun skroad--buf-indices-update ()
   "Initialize or (apply pending update to) the current node's text type indices.
 If the node was not yet indexed, perform initial scan (reindex buffer contents.)
@@ -1082,35 +1083,35 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (message (format "Live link pushed: '%s'" data)))
 
 ;; TODO: lint action?
-(defun skroad--action-linked-init (node)
+(defun skroad--action-index-linked-init (node)
   "The first instance of a live link to NODE was found during indexing."
   )
 
-(defun skroad--action-linked (node)
+(defun skroad--action-index-linked (node)
   "The first instance of a live link to NODE was introduced."
   (message "Link create: node='%s'" node)
   )
 
-(defun skroad--action-unlinked (node)
+(defun skroad--action-index-unlinked (node)
   "The last instance of a live link to NODE was removed."
   (message "Link destroy: node='%s'" node)
   )
 
 ;; TODO: lint action?
-(defun skroad--action-unorphaned-init ()
+(defun skroad--action-index-unorphaned-init ()
   "A live link was found for the first time during indexing."
   (message "Link init first")
   )
 
 ;; TODO: deorphan the node
-(defun skroad--action-unorphaned ()
+(defun skroad--action-index-unorphaned ()
   "A live link was introduced, where there were none before."
   (message "Link create first")
   )
 
 ;; TODO: orphan the node (if not stub)
 ;; TODO: if stub, delete the node (1st close any buffer where it is open)
-(defun skroad--action-orphaned ()
+(defun skroad--action-index-orphaned ()
   "The last live link was removed."
   (message "Link destroy last")
   )
@@ -1125,12 +1126,12 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :kbd-doc "<return> go|<r> rename|<l> deaden|<t> textify|<del> delete|<spc> prepend space"
   :use 'skroad--text-link-node
-  :on-init #'skroad--action-linked-init
-  :on-create #'skroad--action-linked
-  :on-destroy #'skroad--action-unlinked
-  :on-init-first #'skroad--action-unorphaned-init
-  :on-create-first #'skroad--action-unorphaned
-  :on-destroy-last #'skroad--action-orphaned
+  :on-init #'skroad--action-index-linked-init
+  :on-create #'skroad--action-index-linked
+  :on-destroy #'skroad--action-index-unlinked
+  :on-init-first #'skroad--action-index-unorphaned-init
+  :on-create-first #'skroad--action-index-unorphaned
+  :on-destroy-last #'skroad--action-index-orphaned
   :on-activate #'skroad--action-open-link
   :mouse-face 'highlight
   :start-delim "[[" :end-delim "]]"
