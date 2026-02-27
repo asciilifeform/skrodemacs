@@ -11,12 +11,21 @@
 (unless skroad--debug
   (setq byte-compile-warnings nil))
 
-;;; User data directories. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; User data and Special Nodes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defconst skroad--data-directory "~/skrode" "All user data is found here.")
 
 (defconst skroad--file-extension "skroad"
   "File extension denoting a skroad node.")
+
+(defconst skroad--orphans "#Orphans"
+  "Title of the special node which tracks known orphans.")
+
+(defconst skroad--stubs "#Stubs"
+  "Title of the special node which tracks known stubs.")
+
+(defconst skroad--log "#Log"
+  "Title of the special node containing the operations log.")
 
 ;;; Fonts. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1144,6 +1153,10 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :use 'skroad--text-mixin-render-delimited-zoned
   :use 'skroad--text-mixin-indexed)
 
+(defun skroad--generate-live-link (node)
+  "Return a string containing a live link to NODE."
+  (funcall (get 'skroad--text-link-node-live 'make-text) node))
+
 (defun skroad--connected-p (node)
   "Determine whether the current node has at least one live link to NODE."
   (skroad--node-has-p 'skroad--text-link-node-live node))
@@ -1253,7 +1266,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   "Emplace a live link to NODE under the node tail in the current node."
   (skroad--tail-jump-after)
   (ensure-empty-lines 1)
-  (insert (funcall (get 'skroad--text-link-node-live 'make-text) node)))
+  (insert (skroad--generate-live-link node)))
 
 (defun skroad--tail-put-text (text)
   "Emplace TEXT above the node tail in the current node."
@@ -1264,14 +1277,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (ensure-empty-lines 1))
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defconst skroad--special-node-prefix "#"
-  "Title prefix denoting special (auto-generated, non-editable) nodes.")
-
-(defun skroad--node-special-p (&optional node)
-  "Return t if NODE (if given) or the current node (if not) is a special node."
-  (string-prefix-p
-   skroad--special-node-prefix (or node (skroad--current-node))))
 
 (defun skroad--get-title-from-buffer ()
   "Get the current node title from the buffer."
@@ -1491,23 +1496,58 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 ;;    (skroad--tail-put-text "foo123")
 ;;    ))
 
-;; (defun skroad--activate-node (node)
-;;   "Find, reactivate, or create NODE; ensure that it is interned in the cache."
-;;   (or (skroad--node-interned-p node) ;; Do nothing if node is already active
-;;       (and
-;;        (let ((node-path (skroad--node-path node))) ;; Path where node belongs
-;;          (or
-;;           (file-exists-p node-path) ;; Found on disk, but needs internment
-;;           (skroad--mv-file ;; May be an orphan, so try reactivating it:
-;;            (skroad--node-orphan-path node) node-path)
-;;           (and ;; Node does not exist on disk, so create it:
-;;            (file-writable-p node-path)
-;;            (progn ;; Initialize the new node, with only the title at first
-;;              (write-region (concat node "\n") nil node-path nil 0)
-;;              ;; (skroad--stub-intern node) ;; Register the node as a stub
-;;              (file-readable-p node-path)))))
-;;        (skroad--node-intern node)) ;; Node is on disk, now intern it
-;;       (error "Could not activate node '%s'!" node)))
+(defun skroad--node-ensure (node)
+  "Find or create NODE, and ensure that it is interned in the cache."
+  (unless (skroad--cache-peek node) ;; Do nothing if node is already active
+    (let ((node-path (skroad--node-path node))) ;; Path where it would exist
+      (cond
+       ((file-exists-p node-path) ;; Found on disk, but needs internment
+        (skroad--cache-intern-unindexed node)) ;; Intern, index on demand
+       ((file-writable-p node-path) ;; Not found on disk, but can be made:
+        (write-region (concat node "\n") nil node-path nil 0) ;; only title
+        (skroad--cache-write node nil) ;; Intern with an empty index
+        (unless (skroad--special-node-p node)
+          ;; TODO: mark as stub and write journal entry
+          ))
+       (t (error "Could not activate node '%s'!" node))))))
+
+(defvar skroad--special-nodes nil
+  "List of all defined special nodes.  These nodes exist at all times;
+contain only mechanically-generated content; and cannot be renamed, deleted,
+or directly edited by the user.  A special node may contain links to ordinary
+nodes, and vice-versa, but such links do not trigger automatic back-linkage.")
+
+(defmacro skroad--define-special-node (handle node &rest legend)
+  "Define a special NODE; store title in HANDLE."
+  (declare (indent defun))
+  `(progn
+     (defconst ,handle ,node ,@legend)
+     (add-to-list 'skroad--special-nodes ,node)))
+
+(defun skroad--special-node-p (&optional node)
+  "Return t if NODE (if given) or the current node (if not) is a special node."
+  (member (or node (skroad--current-node)) skroad--special-nodes))
+
+(skroad--define-special-node skroad--special-node-orphans skroad--orphans
+  "A node with links to all known orphans (non-specials without live links.)
+Orphan nodes are deletion candidates, and only an orphan may be deleted.")
+
+(skroad--define-special-node skroad--special-node-stubs skroad--stubs
+  "A node with links to all known stubs (non-specials containing only links.)
+Any node found to be both a stub and an orphan is deleted automatically.")
+
+(skroad--define-special-node skroad--special-node-log skroad--log
+  "Operation log.")
+
+;; TODO: force immediate indexing
+(defun skroad--special-nodes-ensure-all ()
+  "Ensure that all special nodes exist."
+  (mapc #'skroad--node-ensure skroad--special-nodes))
+
+(skroad--special-nodes-ensure-all)
+
+
+
 
 ;; ;; TODO: handle stub
 ;; (defun skroad--deactivate-node (node)
@@ -1528,11 +1568,11 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 ;;     (error "Could not rename node '%s' to '%s'!" node node-new))
 ;;   t)
 
-;; (skroad--activate-node "crap")
+;; (skroad--node-ensure "crap")
 ;; (skroad--deactivate-node "crap")
 ;; (skroad--rename-node "crap" "zcrap")
 ;; (skroad--deactivate-node "zcrap")
-;; (skroad--activate-node "zcrap")
+;; (skroad--node-ensure "zcrap")
 
 (define-derived-mode skroad-mode text-mode "Skroad"
   ;; Prohibit change hooks firing when only text properties have changed:
