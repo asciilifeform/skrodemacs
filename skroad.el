@@ -106,9 +106,9 @@
   "Determine whether skroad mode is currently active."
   (derived-mode-p 'skroad-mode))
 
-(defmacro skroad--when-in-mode (&rest body)
-  "Evaluate BODY only when skroad mode is active in the current buffer."
-  `(when (skroad--mode-p) ,@body))
+;; (defmacro skroad--when-in-mode (&rest body)
+;;   "Evaluate BODY only when skroad mode is active in the current buffer."
+;;   `(when (skroad--mode-p) ,@body))
 
 (defun skroad--keyword-to-symbol (exp)
   "If EXP is a keyword, convert it to a symbol. If not, return it as-is."
@@ -606,6 +606,7 @@ or the node's indices, if it has been indexed; or `empty` (indices are null).")
 (defvar-local skroad--buf-indices-table 'fetch-me
   "Cached text type indices for the current node.  Do not access directly.")
 
+;; TODO: fetch or intern?
 (defun skroad--buf-indices ()
   "Obtain the current node's text type indices."
   (when (eq skroad--buf-indices-table 'fetch-me) ;; Fetch from cache?
@@ -641,6 +642,7 @@ If FINAL is t, the count sum going negative will signal an error."
   "When t, node indices update does not execute text type actions.")
 
 ;; TODO: do we want a `none-found` action?
+;; TODO: no actions in special nodes?
 (defun skroad--buf-indices-update ()
   "Initialize or (apply pending update to) the current node's text type indices.
 If the node was not yet indexed, perform initial scan (reindex buffer contents.)
@@ -1483,18 +1485,32 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 ;;          (insert-file-contents ,node-path t nil nil t)
 ;;          (skroad--do-external ,@body)))))
 
-;; (skroad--with-file
-;;  "~/skrode/k.skroad"
-;;  (save-mark-and-excursion
-;;    (skroad--tail-put-live-link "new node3")
-;;    ))
+(defun skroad--with-node (node fn &rest args)
+  "Apply FN to ARGS, operating on NODE."
+  (let* ((node-path (skroad--node-path node))
+         (visiting-buffer (find-buffer-visiting node-path)))
+    (if visiting-buffer ;; When a buffer is visiting this node, use it:
+        (with-current-buffer visiting-buffer
+          (save-mark-and-excursion
+            (atomic-change-group
+              (apply fn args)
+              )))
+      (with-temp-buffer ;; When no buffer is visiting, make a temporary one:
+        (insert-file-contents node-path t nil nil t) ;; force to unmodified
+        (skroad--buf-indices-update)
+        (skroad--install-change-hooks)
+        (prog1
+            (apply fn args)
+          (skroad--buf-indices-update)
+          (save-buffer))
+        ))))
 
-;; (skroad--with-file
-;;  "~/skrode/k.skroad"
-;;  (save-mark-and-excursion
-;;    ;; (skroad--tail-put-text "")
-;;    (skroad--tail-put-text "foo123")
-;;    ))
+;; (skroad--with-node "xyz" #'skroad--connected-p "xxx")
+;; (skroad--with-node "xyz" #'(lambda () skroad--buf-indices-table))
+;; (skroad--with-node "xyz1" #'(lambda () skroad--buf-indices-table))
+;; (skroad--node-ensure "xyz1")
+;; skroad--cache-table
+
 
 (defun skroad--node-ensure (node)
   "Find or create NODE, and ensure that it is interned in the cache."
@@ -1529,12 +1545,11 @@ nodes, and vice-versa, but such links do not trigger automatic back-linkage.")
   (member (or node (skroad--current-node)) skroad--special-nodes))
 
 (skroad--define-special-node skroad--special-node-orphans skroad--orphans
-  "A node with links to all known orphans (non-specials without live links.)
-Orphan nodes are deletion candidates, and only an orphan may be deleted.")
+  "A node with links to all known orphans (non-specials without any live links.)
+Orphan nodes are candidates for deletion; and only an orphan may be deleted.")
 
 (skroad--define-special-node skroad--special-node-stubs skroad--stubs
-  "A node with links to all known stubs (non-specials containing only links.)
-Any node found to be both a stub and an orphan is deleted automatically.")
+  "A node with links to all known stubs (non-specials containing only links.)")
 
 (skroad--define-special-node skroad--special-node-log skroad--log
   "Operation log.")
@@ -1550,16 +1565,6 @@ Any node found to be both a stub and an orphan is deleted automatically.")
 
 
 ;; ;; TODO: handle stub
-;; (defun skroad--deactivate-node (node)
-;;   "Deactivate (i.e. mark as orphan) NODE and evict it from the cache.
-;; If an orphan of NODE already exists in the orphans dir, overwrite it."
-;;   (when (skroad--node-evict node) ;; Do nothing if already inactive
-;;     (unless (skroad--mv-file
-;;              (skroad--node-path node) (skroad--node-orphan-path node) t)
-;;       (error "Could not deactivate node '%s'!" node)))
-;;   t)
-
-;; ;; TODO: handle stub
 ;; (defun skroad--rename-node (node node-new) ;; TODO: proper renamer
 ;;   "Rename NODE to NODE-NEW."
 ;;   (unless (and (skroad--node-cache-rename node node-new)
@@ -1567,12 +1572,6 @@ Any node found to be both a stub and an orphan is deleted automatically.")
 ;;                 (skroad--node-path node) (skroad--node-path node-new)))
 ;;     (error "Could not rename node '%s' to '%s'!" node node-new))
 ;;   t)
-
-;; (skroad--node-ensure "crap")
-;; (skroad--deactivate-node "crap")
-;; (skroad--rename-node "crap" "zcrap")
-;; (skroad--deactivate-node "zcrap")
-;; (skroad--node-ensure "zcrap")
 
 (define-derived-mode skroad-mode text-mode "Skroad"
   ;; Prohibit change hooks firing when only text properties have changed:
