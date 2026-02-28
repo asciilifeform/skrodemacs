@@ -614,6 +614,11 @@ If FINAL is t, the count sum going negative will signal an error."
           (when had-none create)
         (when final (error "Index underflow!"))))))
 
+(defmacro skroad--ensure-index (indices text-type)
+  "Retrieve or create the index for TEXT-TYPE in INDICES."
+  `(or (alist-get ,text-type ,indices)
+       (setf (alist-get ,text-type ,indices) (make-hash-table :test 'equal))))
+
 (defun skroad--indices-update (indices changes &optional no-actions init-scan)
   "Apply a set of pending CHANGES to INDICES.  Return the updated INDICES.
 The tables in CHANGES are emptied out after being applied to the INDICES.
@@ -672,11 +677,6 @@ Secondary type actions (run after a primary action has ran, if applicable) :
   "Set the current node's text type indices to VAL, writing back to cache."
   (setq-local skroad--buf-indices-table val)
   (skroad--cache-write (skroad--current-node) val))
-
-(defmacro skroad--ensure-index (indices text-type)
-  "Retrieve or create the index for TEXT-TYPE in INDICES."
-  `(or (alist-get ,text-type ,indices)
-       (setf (alist-get ,text-type ,indices) (make-hash-table :test 'equal))))
 
 (defun skroad--buf-indices-ensure (&optional no-actions)
   "Initialize the current node's text type indices, if they do not yet exist.
