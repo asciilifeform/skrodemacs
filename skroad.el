@@ -1563,6 +1563,19 @@ Orphan nodes are candidates for deletion; and only an orphan may be deleted.")
     (mapc #'(lambda (node) (skroad--with-node node t)) skroad--special-nodes)
     (setq skroad--special-nodes-ready t)))
 
+(defun skroad--special-linked-p (node special-node)
+  "Return t when NODE is currently registered in SPECIAL-NODE."
+  (skroad--special-nodes-ensure-all)
+  (skroad--node-has-p 'skroad--text-link-node-live node special-node))
+
+(defun skroad--node-stub-p (node)
+  "Return t when NODE is currently known to be a stub."
+  (skroad--special-linked-p node skroad--special-node-stubs))
+
+(defun skroad--node-orphan-p (node)
+  "Return t when NODE is currently known to be an orphan."
+  (skroad--special-linked-p node skroad--special-node-orphans))
+
 
 
 ;; ;; TODO: handle stub
