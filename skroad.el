@@ -1511,15 +1511,18 @@ Return the path where the node is found on disk."
 (defmacro skroad--with-node (node no-actions &rest body)
   "If NODE does not exist, it is created as a stub and interned in the cache.
 NODE's indices are synced with any pending changes (or, if absent, created.)
-BODY is evaluated with NODE buffer; any resulting changes are synced and saved.
+Optional BODY is evaluated with NODE buffer; any changes are synced and saved.
 When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
   `(skroad--with-file (skroad--node-ensure ,node)
      (skroad--buf-indices-sync)
-     (skroad--buf-indices-install-tracker)
-     (unwind-protect ,@body
-       (when (buffer-modified-p)
-         (skroad--buf-indices-sync ,no-actions)
-         (save-buffer)))))
+     ,(if body
+          `(progn
+             (skroad--buf-indices-install-tracker)
+             (unwind-protect ,@body
+               (when (buffer-modified-p)
+                 (skroad--buf-indices-sync ,no-actions)
+                 (save-buffer))))
+        t)))
 
 (defvar skroad--special-nodes nil
   "List of all defined special nodes.  These nodes exist at all times;
