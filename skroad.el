@@ -168,7 +168,6 @@
 
 (defconst skroad--time-epsilon 0.01 "Short idle interval for async dispatch.")
 
-;; TODO: restore factual readonly
 (defun skroad--async-dispatch (fn &rest args)
   "Dispatch FN with ARGS asynchronously; buffer is read-only until completed."
   (setq-local buffer-read-only t)
