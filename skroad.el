@@ -627,6 +627,7 @@ If FINAL is t, the count sum going negative will signal an error."
   `(or (alist-get ,text-type ,indices)
        (setf (alist-get ,text-type ,indices) (make-hash-table :test 'equal))))
 
+;; TODO: not-found action?
 (defun skroad--indices-update (indices changes &optional no-actions init-scan)
   "Apply a set of pending CHANGES to INDICES.  Return the updated INDICES.
 The tables in CHANGES are emptied out after being applied to the INDICES.
@@ -1472,7 +1473,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   "Open a skroad node."
   (face-remap-set-base 'header-line 'skroad--title-face)
   (skroad--init-font-lock)
-  (skroad--set-writability)
+  (skroad--set-writability) ;; If special node, open it as read-only
   (skroad--cache-intern (skroad--current-node))
   (skroad--async-dispatch #'skroad--buf-indices-sync) ;; move this to enabler
   )
