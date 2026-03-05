@@ -106,9 +106,18 @@
   "Determine whether skroad mode is currently active."
   (derived-mode-p 'skroad-mode))
 
-;; (defmacro skroad--when-in-mode (&rest body)
-;;   "Evaluate BODY only when skroad mode is active in the current buffer."
-;;   `(when (skroad--mode-p) ,@body))
+(defmacro skroad--with-file (file &rest body)
+  "Evaluate BODY, operating on FILE (must exist).  Use existing buffer, if any."
+  (declare (indent defun))
+  (let ((visiting-buffer (make-symbol "visiting-buffer")))
+    `(let ((,visiting-buffer (find-buffer-visiting ,file)))
+       (if ,visiting-buffer ;; If a buffer is visiting this file, use it:
+           (with-current-buffer ,visiting-buffer
+             (save-mark-and-excursion
+               (atomic-change-group ,@body)))
+         (with-temp-buffer ;; No visiting buffer, so make one:
+           (insert-file-contents ,file t nil nil t) ;; set as unmodified
+           ,@body)))))
 
 (defun skroad--keyword-to-symbol (exp)
   "If EXP is a keyword, convert it to a symbol. If not, return it as-is."
@@ -169,7 +178,7 @@
      (lambda ()
        (with-current-buffer here
          (apply fn args)
-         (setq-local buffer-read-only nil))))))
+         (skroad--set-writability))))))
 
 (defun skroad--canonical-title (s)
   "Return a canonicalized node title from string S."
@@ -678,16 +687,16 @@ Secondary type actions (run after a primary action has ran, if applicable) :
   (setq-local skroad--buf-indices-table val)
   (skroad--cache-write (skroad--current-node) val))
 
-(defun skroad--buf-indices-ensure (&optional no-actions)
+(defun skroad--buf-indices-ensure ()
   "Initialize the current node's text type indices, if they do not yet exist.
-If NO-ACTIONS is true, do not execute type actions."
+If the current node is a special node, do not execute init type actions."
   (when (eq (skroad--buf-indices) 'index-me)
     (setq-local skroad--buf-indices-pending nil)
     (skroad--index-scan-region (point-min) (point-max) 1)
     (let ((indices nil))
       (skroad--buf-indices-writeback
        (skroad--indices-update
-        indices skroad--buf-indices-pending no-actions t)))))
+        indices skroad--buf-indices-pending (skroad--special-node-p) t)))))
 
 (defun skroad--buf-indices-update (&optional no-actions)
   "Apply all pending changes to the current node's text type indices.
@@ -736,18 +745,29 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   "Triggers following a change in the buffer in region START...END."
   (skroad--index-scan-region start end 1))
 
-(defun skroad--install-change-hooks ()
-  "Install the skroad change hooks (index updaters) in the current buffer."
+(defun skroad--buf-indices-install-tracker ()
+  "Install the skroad change hooks in the current buffer."
   (add-hook 'before-change-functions 'skroad--before-change-function nil t)
   (add-hook 'after-change-functions 'skroad--after-change-function nil t))
 
-(defun skroad--node-has-p (text-type payload)
-  "Determine whether a PAYLOAD of TEXT-TYPE exists in the current node."
-  (let ((index (alist-get text-type (skroad--buf-indices))))
+(defun skroad--indices-has-p (text-type payload indices)
+  "Test whether a PAYLOAD of TEXT-TYPE exists in INDICES."
+  (let ((index (alist-get text-type indices)))
     (when index (gethash payload index))))
 
-(defun skroad--node-foreach (text-type fn &rest other-args)
-  "Apply FN to all payloads of TEXT-TYPE in the current node."
+(defun skroad--node-has-p (text-type payload node)
+  "Test whether a PAYLOAD of TEXT-TYPE exists in NODE's indices."
+  (let ((indices (skroad--cache-fetch node)))
+    (unless (listp indices)
+      (error "Tried to query unindexed node!"))
+    (skroad--indices-has-p text-type payload indices)))
+
+(defun skroad--current-node-has-p (text-type payload)
+  "Test whether a PAYLOAD of TEXT-TYPE exists in the current node's indices."
+  (skroad--indices-has-p text-type payload (skroad--buf-indices)))
+
+(defun skroad--current-node-foreach (text-type fn &rest other-args)
+  "Apply FN to all payloads of TEXT-TYPE in the current node's indices."
   (maphash #'(lambda (key val) (apply fn (cons key other-args)))
            (alist-get text-type (skroad--buf-indices))))
 
@@ -1166,13 +1186,13 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :use 'skroad--text-mixin-render-delimited-zoned
   :use 'skroad--text-mixin-indexed)
 
-(defun skroad--generate-live-link (node)
-  "Return a string containing a live link to NODE."
-  (funcall (get 'skroad--text-link-node-live 'make-text) node))
+(defun skroad--insert-live-link (node)
+  "Insert a live link to NODE at the current point."
+  (insert (funcall (get 'skroad--text-link-node-live 'make-text) node)))
 
 (defun skroad--connected-p (node)
   "Determine whether the current node has at least one live link to NODE."
-  (skroad--node-has-p 'skroad--text-link-node-live node))
+  (skroad--current-node-has-p 'skroad--text-link-node-live node))
 
 (skroad--deftype skroad--text-link-node-dead
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
@@ -1189,7 +1209,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 
 (defun skroad--reconnectable-p (node)
   "Determine whether the current node has at least one dead link to NODE."
-  (skroad--node-has-p 'skroad--text-link-node-dead node))
+  (skroad--current-node-has-p 'skroad--text-link-node-dead node))
 
 (defun skroad--link-deaden (node)
   "Transform all live links to NODE in the current node to dead links."
@@ -1278,8 +1298,8 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (defun skroad--tail-put-live-link (node)
   "Emplace a live link to NODE under the node tail in the current node."
   (skroad--tail-jump-after)
-  (ensure-empty-lines 1)
-  (insert (skroad--generate-live-link node)))
+  (newline)
+  (skroad--insert-live-link node))
 
 (defun skroad--tail-put-text (text)
   "Emplace TEXT above the node tail in the current node."
@@ -1287,7 +1307,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (goto-char (line-beginning-position))
   (ensure-empty-lines 1)
   (insert text)
-  (ensure-empty-lines 1))
+  (newline 2))
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1298,9 +1318,9 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (defun skroad--cmd-title-kill-ring-save ()
   "Save the current node's title, transformed to a live link, to the kill ring."
   (interactive)
-  (let ((title (skroad--get-title-from-buffer)))
+  (let ((node (skroad--get-title-from-buffer)))
     (with-temp-buffer
-      (insert (funcall (get 'skroad--text-link-node-live 'make-text) title))
+      (skroad--insert-live-link node)
       (copy-region-as-kill (point-min) (point-max)))))
 
 (skroad--deftype skroad--text-renamer-direct
@@ -1327,21 +1347,11 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :read-only "Title must be changed via rename command!"
   :renamer-overlay-type 'skroad--text-renamer-direct
   :use 'skroad--text-mixin-renameable
-  :find-any-forward
-  '(lambda (limit) (when (bobp) (goto-char (skroad--node-body-start)) t))
-  :render
-  '(lambda ()
-     (set-text-properties
-      (point-min) (skroad--node-body-start)
-      (list 'category type-name
-            'zone type-name ;; there can only be one
-            'face face
-            'data (skroad--get-title-from-buffer))))
-  :use 'skroad--text-mixin-rendered)
-
-;;   :use 'skroad--text-mixin-delimited-anywhere
-;;   :use 'skroad--text-mixin-render-delimited-zoned
-;; :payload-regex "\\`[[:print:]]+$"
+  :match-number 0
+  :payload-regex "\\`[^\n]*\n"
+  :use 'skroad--text-mixin-delimited-anywhere
+  :use 'skroad--text-mixin-render-delimited-zoned
+  )
 
 ;; Cursor motion, mark, and floating title handling. ;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1455,78 +1465,36 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   "Filter any STRING that enters the kill ring."
   (substring-no-properties string))
 
+(defun skroad--set-writability ()
+  "If the current node is a special node, interactive editing is prohibited."
+  (setq-local buffer-read-only (skroad--special-node-p)))
+
 (defun skroad--open-node ()
   "Open a skroad node."
   (face-remap-set-base 'header-line 'skroad--title-face)
   (skroad--init-font-lock)
+  (skroad--set-writability)
   (skroad--async-dispatch #'skroad--buf-indices-ensure) ;; move this to enabler
   )
 
-
 ;; (file-has-changed-p (skroad--node-path "k") 'skroad)
-
 
 ;; Back-end. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: do initial update in the save hook ?
-;; TODO: thrown text should perform actions
-;; TODO: there should be only one renamer, so we won't need to cancel it here
-;; (defmacro skroad--do-external (&rest body)
-;;   "Evaluate BODY, and then save the current buffer."
-;;   `(unwind-protect
-;;        (progn
-;;          (skroad--when-in-mode
-;;            (skroad--renamer-deactivate) ;; Cancel renamer to prevent rollback
-;;            (skroad--buf-indices-update)) ;; Apply pending updates, firing actions
-;;          (save-mark-and-excursion
-;;            (atomic-change-group ,@body)))
-;;      (skroad--when-in-mode ;; Only if buffer is actually in skroad mode:
-;;        (skroad--buf-indices-update t)) ;; Update index but don't fire any actions
-;;      (save-buffer)))
-
-;; (defmacro skroad--with-file (node-path &rest body)
-;;   "Evaluate BODY, operating on the node at NODE-PATH."
-;;   `(let ((visiting-buffer (find-buffer-visiting ,node-path)))
-;;      (if visiting-buffer ;; A buffer is visiting this node, so use it:
-;;          (if (eq visiting-buffer (current-buffer))
-;;              (error "May not be called on current buffer!")
-;;            (with-current-buffer visiting-buffer
-;;              (skroad--do-external ,@body)))
-;;        (with-temp-buffer ;; No visiting buffer, so make one:
-;;          (insert-file-contents ,node-path t nil nil t)
-;;          (skroad--do-external ,@body)))))
-
-;; (defun skroad--with-node (node fn &rest args)
-;;   "Apply FN to ARGS, operating on NODE."
-;;   (let* ((node-path (skroad--node-path node))
-;;          (visiting-buffer (find-buffer-visiting node-path)))
-;;     (if visiting-buffer ;; When a buffer is visiting this node, use it:
-;;         (with-current-buffer visiting-buffer
-;;           (save-mark-and-excursion
-;;             (atomic-change-group
-;;               (apply fn args)
-;;               )))
-;;       (with-temp-buffer ;; When no buffer is visiting, make a temporary one:
-;;         (insert-file-contents node-path t nil nil t) ;; force to unmodified
-;;         (skroad--buf-indices-update)
-;;         (skroad--install-change-hooks)
-;;         (prog1
-;;             (apply fn args)
-;;           (skroad--buf-indices-update)
-;;           (save-buffer))
-;;         ))))
-
-;; (skroad--with-node "xyz" #'skroad--connected-p "xxx")
-;; (skroad--with-node "xyz" #'(lambda () skroad--buf-indices-table))
-;; (skroad--with-node "xyz1" #'(lambda () skroad--buf-indices-table))
-;; (skroad--node-ensure "xyz1")
-;; skroad--cache-table
-
+;; (skroad--with-node "xyz" nil (skroad--connected-p "xxx"))
+;; (skroad--with-node "xyz" nil (skroad--connect "xxx1"))
+;; (skroad--with-node "xyz" nil (skroad--disconnect "xxx1"))
+;; (skroad--with-node "xyz" t (skroad--connect "xxx1"))
+;; (skroad--with-node "xyz" t (skroad--disconnect "xxx1"))
+;; (skroad--with-node "qqxyz" nil (skroad--connect "xxx1"))
+;; (skroad--with-node "xyz" (skroad--tail-put-text "foo2"))
+;; (skroad--with-node "crapz" (skroad--tail-put-text "foo2"))
 
 (defun skroad--node-ensure (node)
-  "Find or create NODE, and ensure that it is interned in the cache."
-  (unless (skroad--cache-peek node) ;; Do nothing if node is already active
-    (let ((node-path (skroad--node-path node))) ;; Path where it would exist
+  "Find or create NODE, and ensure that it is interned in the cache.
+Return the path where the node is found on disk."
+  (let ((node-path (skroad--node-path node))) ;; Path where it would exist
+    (unless (skroad--cache-peek node) ;; Do nothing if node is already active
       (cond
        ((file-exists-p node-path) ;; Found on disk, but needs internment
         (skroad--cache-intern-unindexed node)) ;; Intern, index on demand
@@ -1536,7 +1504,18 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
         (unless (skroad--special-node-p node)
           ;; TODO: mark as stub and write journal entry
           ))
-       (t (error "Could not activate node '%s'!" node))))))
+       (t (error "Could not activate node '%s'!" node))))
+    node-path))
+
+(defmacro skroad--with-node (node no-actions &rest body)
+  "Evaluate BODY, operating on NODE.  If NODE does not exist yet, it is created.
+If NO-ACTIONS is t, do not run text type actions when updating the indices."
+  `(skroad--with-file (skroad--node-ensure ,node)
+     (skroad--buf-indices-ensure)
+     (skroad--buf-indices-install-tracker)
+     (unwind-protect ,@body
+       (skroad--buf-indices-update ,no-actions)
+       (save-buffer))))
 
 (defvar skroad--special-nodes nil
   "List of all defined special nodes.  These nodes exist at all times;
@@ -1552,8 +1531,12 @@ nodes, and vice-versa, but such links do not trigger automatic back-linkage.")
      (add-to-list 'skroad--special-nodes ,node)))
 
 (defun skroad--special-node-p (&optional node)
-  "Return t if NODE (if given) or the current node (if not) is a special node."
+  "Return t if NODE (if given; else the current node) is a special node."
   (member (or node (skroad--current-node)) skroad--special-nodes))
+
+(defun skroad--regular-node-p (&optional node)
+  "Return t if NODE (if given; else the current node) is NOT a special node."
+  (not (skroad--special-node-p node)))
 
 (skroad--define-special-node skroad--special-node-orphans skroad--orphans
   "A node with links to all known orphans (non-specials without any live links.)
@@ -1603,7 +1586,7 @@ Orphan nodes are candidates for deletion; and only an orphan may be deleted.")
   ;; Buffer-local hooks:
   
   ;; TODO: allow these in temp mode?
-  (skroad--install-change-hooks)
+  (skroad--buf-indices-install-tracker)
   
   (add-hook 'pre-command-hook 'skroad--pre-command-hook nil t)
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
