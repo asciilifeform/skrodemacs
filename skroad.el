@@ -1555,13 +1555,13 @@ Orphan nodes are candidates for deletion; and only an orphan may be deleted.")
 (skroad--define-special-node skroad--special-node-log skroad--log
   "Operation log.")
 
-;; TODO: force immediate indexing
+(defvar skroad--special-nodes-ready nil "T when all special nodes are ready.")
+
 (defun skroad--special-nodes-ensure-all ()
-  "Ensure that all special nodes exist."
-  (mapc #'skroad--node-ensure skroad--special-nodes))
-
-(skroad--special-nodes-ensure-all)
-
+  "Ensure that all special nodes exist, have been interned, and indexed."
+  (unless skroad--special-nodes-ready
+    (mapc #'(lambda (node) (skroad--with-node node t)) skroad--special-nodes)
+    (setq skroad--special-nodes-ready t)))
 
 
 
