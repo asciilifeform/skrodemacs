@@ -876,8 +876,11 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :on-enter '(lambda (pos-from auto)
                (skroad--selector-activate-here)
                (goto-char (skroad--zone-start)) ;; point can only sit on start
-               (let ((kbd-doc (skroad--prop-at 'kbd-doc)))
-                 (when kbd-doc (message kbd-doc)))) ;; TODO: kbd-doc-readonly?
+               (let ((kbd-doc
+                      (skroad--prop-at
+                       (if buffer-read-only 'kbd-doc-readonly 'kbd-doc))))
+                 (when kbd-doc
+                   (message kbd-doc))))
   :on-leave '(lambda (pos-from auto) (skroad--selector-deactivate))
   :on-move '(lambda (pos-from auto)
               (goto-char ;; if went forward, jump to the end; else, to the start.
@@ -1162,6 +1165,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :kbd-doc "<return> go|<r> rename|<l> deaden|<t> textify|<del> delete|<spc> prepend space"
+  :kbd-doc-readonly "<return> go"
   :use 'skroad--text-link-node
   :on-init #'skroad--action-index-linked-init
   :on-create #'skroad--action-index-linked
@@ -1252,6 +1256,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (skroad--deftype skroad-text-url-link
   :doc "URL."
   :kbd-doc "<return> go|<t> textify|<del> delete|<spc> prepend space"
+  :kbd-doc-readonly "<return> go"
   :use 'skroad--text-link
   :mouse-face 'highlight
   :help-echo "External link."
@@ -1504,7 +1509,7 @@ Return the path where the node is found on disk."
     node-path))
 
 (defmacro skroad--with-node (node no-actions &rest body)
-  "If NODE does not exist, it is created and interned into the cache.
+  "If NODE does not exist, it is created as a stub and interned into the cache.
 If NODE had not been indexed yet, it is indexed.  Pending changes are synced.
 Next, BODY is evaluated, operating on NODE; any resulting changes are synced.
 Changes made in BODY may produce text type actions, unless NO-ACTIONS is t."
