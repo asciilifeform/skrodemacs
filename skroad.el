@@ -1509,10 +1509,10 @@ Return the path where the node is found on disk."
     node-path))
 
 (defmacro skroad--with-node (node no-actions &rest body)
-  "If NODE does not exist, it is created as a stub and interned into the cache.
-If NODE had not been indexed yet, it is indexed.  Pending changes are synced.
-Next, BODY is evaluated, operating on NODE; any resulting changes are synced.
-Changes made in BODY may produce text type actions, unless NO-ACTIONS is t."
+  "If NODE does not exist, it is created as a stub and interned in the cache.
+NODE's indices are synced with any pending changes (or, if absent, created.)
+BODY is evaluated with NODE buffer; any resulting changes are synced and saved.
+When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
   `(skroad--with-file (skroad--node-ensure ,node)
      (skroad--buf-indices-sync)
      (skroad--buf-indices-install-tracker)
