@@ -681,7 +681,6 @@ Secondary type actions (run after a primary action has ran, if applicable) :
 (defvar-local skroad--buf-indices-table 'fetch-me
   "Cached text type indices for the current node.  Do not access directly.")
 
-;; TODO: fetch or intern?
 (defun skroad--buf-indices ()
   "Obtain the current node's text type indices."
   (when (eq skroad--buf-indices-table 'fetch-me) ;; Fetch from cache?
@@ -690,7 +689,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
   skroad--buf-indices-table)
 
 (defun skroad--buf-indices-sync (&optional no-actions)
-  "If the current node has not been indexed yet, create its text-type indices.
+  "If the current node has not been indexed yet, create its text type indices.
 Otherwise, apply any pending changes.  Then write the indices back to the cache.
 Runs text type actions, unless NO-ACTIONS is t or the current node is special."
   (let* ((indices (skroad--buf-indices))
@@ -1470,6 +1469,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (face-remap-set-base 'header-line 'skroad--title-face)
   (skroad--init-font-lock)
   (skroad--set-writability)
+  (skroad--cache-intern (skroad--current-node))
   (skroad--async-dispatch #'skroad--buf-indices-sync) ;; move this to enabler
   )
 
