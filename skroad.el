@@ -688,19 +688,18 @@ Secondary type actions (run after a primary action has ran, if applicable) :
   (skroad--cache-write (skroad--current-node) val))
 
 (defun skroad--buf-indices-ensure ()
-  "Initialize the current node's text type indices, if they do not yet exist.
-If the current node is a special node, do not execute init type actions."
+  "Initialize the current node's text type indices, if they do not yet exist."
   (when (eq (skroad--buf-indices) 'index-me)
     (setq-local skroad--buf-indices-pending nil)
     (skroad--index-scan-region (point-min) (point-max) 1)
     (let ((indices nil))
       (skroad--buf-indices-writeback
        (skroad--indices-update
-        indices skroad--buf-indices-pending (skroad--special-node-p) t)))))
+        indices skroad--buf-indices-pending nil t)))))
 
 (defun skroad--buf-indices-update (&optional no-actions)
   "Apply all pending changes to the current node's text type indices.
-If NO-ACTIONS is true, do not execute type actions."
+If NO-ACTIONS is true or this is a special node, do not execute type actions."
   (unless ;; Skip if there are no pending changes
       (seq-every-p
        #'(lambda (pending) (skroad--hash-empty-p (cdr pending)))
@@ -710,7 +709,8 @@ If NO-ACTIONS is true, do not execute type actions."
         (error "Tried to update unindexed node!"))
       (skroad--buf-indices-writeback
        (skroad--indices-update
-        indices skroad--buf-indices-pending no-actions)))))
+        indices skroad--buf-indices-pending
+        (or no-actions (skroad--special-node-p)))))))
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
