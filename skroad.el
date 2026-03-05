@@ -671,6 +671,13 @@ Secondary type actions (run after a primary action has ran, if applicable) :
 (defvar-local skroad--buf-indices-pending nil
   "Pending changes to the text type indices for the current node.")
 
+(defun skroad--buf-indices-have-pending-p ()
+  "Return t if the current node's text type indices have pending changes."
+  (not (or (null skroad--buf-indices-pending)
+           (seq-every-p
+            #'(lambda (pending) (skroad--hash-empty-p (cdr pending)))
+            skroad--buf-indices-pending))))
+
 (defvar-local skroad--buf-indices-table 'fetch-me
   "Cached text type indices for the current node.  Do not access directly.")
 
@@ -682,35 +689,24 @@ Secondary type actions (run after a primary action has ran, if applicable) :
                 (skroad--cache-fetch (skroad--current-node))))
   skroad--buf-indices-table)
 
-(defun skroad--buf-indices-writeback (val)
-  "Set the current node's text type indices to VAL, writing back to cache."
-  (setq-local skroad--buf-indices-table val)
-  (skroad--cache-write (skroad--current-node) val))
-
-(defun skroad--buf-indices-ensure ()
-  "Initialize the current node's text type indices, if they do not yet exist."
-  (when (eq (skroad--buf-indices) 'index-me)
-    (setq-local skroad--buf-indices-pending nil)
-    (skroad--index-scan-region (point-min) (point-max) 1)
-    (let ((indices nil))
-      (skroad--buf-indices-writeback
-       (skroad--indices-update
-        indices skroad--buf-indices-pending nil t)))))
-
-(defun skroad--buf-indices-update (&optional no-actions)
-  "Apply all pending changes to the current node's text type indices.
-If NO-ACTIONS is true or this is a special node, do not execute type actions."
-  (unless ;; Skip if there are no pending changes
-      (seq-every-p
-       #'(lambda (pending) (skroad--hash-empty-p (cdr pending)))
-       skroad--buf-indices-pending)
-    (let ((indices (skroad--buf-indices)))
-      (unless (listp indices)
-        (error "Tried to update unindexed node!"))
-      (skroad--buf-indices-writeback
-       (skroad--indices-update
-        indices skroad--buf-indices-pending
-        (or no-actions (skroad--special-node-p)))))))
+(defun skroad--buf-indices-sync (&optional no-actions)
+  "If the current node has not been indexed yet, create its text-type indices.
+Otherwise, apply any pending changes.  Then write the indices back to the cache.
+Runs text type actions, unless NO-ACTIONS is t or the current node is special."
+  (let* ((indices (skroad--buf-indices))
+         (init (eq indices 'index-me))
+         (have-changes (skroad--buf-indices-have-pending-p)))
+    (when init
+      (when have-changes (error "Tried to apply changes to unindexed node!"))
+      (skroad--index-scan-region (point-min) (point-max) 1)
+      (setq have-changes t)
+      (setq indices nil))
+    (when have-changes
+      (setq indices (skroad--indices-update
+                     indices skroad--buf-indices-pending
+                     (or no-actions (skroad--special-node-p)) init))
+      (setq-local skroad--buf-indices-table indices)
+      (skroad--cache-write (skroad--current-node) indices))))
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
@@ -724,7 +720,7 @@ If NO-ACTIONS is true or this is a special node, do not execute type actions."
 
 (defun skroad--index-scan-region (start end delta)
   "Apply DELTA (must be 1 or -1) to each indexed item found in START ... END
-to the pending changes in the buffer;  `skroad--buf-indices-update` must be
+to the pending changes in the buffer;  `skroad--buf-indices-sync` must be
 called to finalize all pending changes when no further ones are expected.
 If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (when skroad--buf-indices-scan-enable
@@ -1408,7 +1404,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (skroad--refontify-current-line)
   (skroad--motion skroad--buf-pre-command-point-state)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
-  (skroad--buf-indices-update) ;; TODO: do it in save hook?
+  (skroad--buf-indices-sync) ;; TODO: do it in save hook?
   (when (buffer-modified-p)
     (skroad--renamer-validate-if-active))
   (unless mark-active (setq-local mouse-highlight t)))
@@ -1474,7 +1470,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (face-remap-set-base 'header-line 'skroad--title-face)
   (skroad--init-font-lock)
   (skroad--set-writability)
-  (skroad--async-dispatch #'skroad--buf-indices-ensure) ;; move this to enabler
+  (skroad--async-dispatch #'skroad--buf-indices-sync) ;; move this to enabler
   )
 
 ;; (file-has-changed-p (skroad--node-path "k") 'skroad)
@@ -1511,10 +1507,10 @@ Return the path where the node is found on disk."
   "Evaluate BODY, operating on NODE.  If NODE does not exist yet, it is created.
 If NO-ACTIONS is t, do not run text type actions when updating the indices."
   `(skroad--with-file (skroad--node-ensure ,node)
-     (skroad--buf-indices-ensure)
+     (skroad--buf-indices-sync)
      (skroad--buf-indices-install-tracker)
      (unwind-protect ,@body
-       (skroad--buf-indices-update ,no-actions)
+       (skroad--buf-indices-sync ,no-actions)
        (save-buffer))))
 
 (defvar skroad--special-nodes nil
