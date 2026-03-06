@@ -1267,6 +1267,15 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
     (let ((target-node (or target (skroad--current-node))))
       (skroad--with-node node t (skroad--disconnect target-node)))))
 
+(defun skroad--throw-text-to (node text)
+  "Throw TEXT into NODE (created if not exists) and sync indices (with actions.)
+Do nothing if NODE is a special node or if TEXT is empty or blank.
+If NODE had been a stub, it loses stub status."
+  (unless (or (skroad--node-special-p node) (string-blank-p text))
+    (skroad--with-node node nil
+      (skroad--tail-put-text text)
+      (skroad--node-set-stub nil))))
+
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--cmd-url-comment ()
