@@ -644,6 +644,7 @@ If FINAL is t, the count sum going negative will signal an error."
        (setf (alist-get ,text-type ,indices) (make-hash-table :test 'equal))))
 
 ;; TODO: not-found action?
+;; TODO: secondary actions should always execute, unless this is a special node
 (defun skroad--indices-update (indices changes &optional no-actions init-scan)
   "Apply a set of pending CHANGES to INDICES.  Return the updated INDICES.
 The tables in CHANGES are emptied out after being applied to the INDICES.
@@ -1253,14 +1254,14 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
          (skroad--link-deaden node)))) ;; ... otherwise, deaden.
 
 (defun skroad--connect-from (node &optional target allow-special)
-  "Ensure that NODE has a live link to TARGET (if not given: current node).
+  "Ensure that NODE exists, and has a live link to TARGET (nil: current node).
 If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
   (when (or allow-special (not (skroad--node-special-p node)))
     (let ((target-node (or target (skroad--current-node))))
       (skroad--with-node node t (skroad--connect target-node)))))
 
 (defun skroad--disconnect-from (node &optional target allow-special)
-  "Ensure that NODE has NO live links to TARGET (if not given: current node).
+  "Ensure that NODE exists, and has NO live links to TARGET (nil: current node).
 If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
   (when (or allow-special (not (skroad--node-special-p node)))
     (let ((target-node (or target (skroad--current-node))))
@@ -1519,7 +1520,7 @@ Return the path where the node is found on disk."
         (write-region (concat node "\n") nil node-path nil 0) ;; only title
         (skroad--cache-write node nil) ;; Intern with an empty index
         (unless (skroad--node-special-p node)
-          (skroad--node-set-stub t node)
+          (skroad--node-set-stub t node) ;; Mark the new node as a stub
           ;; TODO: write journal entry
           ))
        (t (error "Could not activate node '%s'!" node))))
