@@ -1190,8 +1190,9 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :keymap (define-keymap
             "l" #'(lambda () (interactive)
                     (skroad--transform-at 'skroad--text-link-node-dead))
-            "<remap> <yank>" #'(lambda (&rest args) (interactive) ;; tele-yank
-                                 (skroad--yank-to (skroad--prop-at 'data) args))
+            "<remap> <yank>"
+            #'(lambda (&rest args) (interactive) ;; tele-yank
+                (skroad--yank-to (skroad--prop-at 'data) args))
             )
   :renamer-overlay-type 'skroad--text-renamer-indirect
   :use 'skroad--text-mixin-renameable
@@ -1276,7 +1277,7 @@ Do nothing if NODE is a special node.  NODE may lose stub status if a stub.
 YANK-ARGS (optional) are passed to yank."
   (unless (skroad--node-special-p node)
     (skroad--with-node node nil
-      (skroad--above-tail (yank yank-args))
+      (skroad--above-tail (apply #'yank yank-args))
       (when (buffer-modified-p) (skroad--node-set-stub nil)))))
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1622,7 +1623,7 @@ If the SPECIAL node does not exist yet, it is created."
   "Set orphan STATUS of NODE (if given; else the current node) to STATUS."
   (skroad--set-special-status skroad--special-node-orphans status node))
 
-;; ;;helloworld
+;;helloworld
 
 (skroad--yank-to "crapz")
 
