@@ -1189,7 +1189,10 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :start-delim "[[" :end-delim "]]"
   :keymap (define-keymap
             "l" #'(lambda () (interactive)
-                    (skroad--transform-at 'skroad--text-link-node-dead)))
+                    (skroad--transform-at 'skroad--text-link-node-dead))
+            "<remap> <yank>" #'(lambda (&rest args) (interactive) ;; tele-yank
+                                 (skroad--yank-to (skroad--prop-at 'data) args))
+            )
   :renamer-overlay-type 'skroad--text-renamer-indirect
   :use 'skroad--text-mixin-renameable
   :use 'skroad--text-mixin-delimited-non-title
@@ -1244,7 +1247,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (or (skroad--connected-p node) ;; Already has a live link to node?
       (and (skroad--reconnectable-p node) ;; If not, any dead links to it?
            (skroad--reconnect node)) ;; Try livening the dead links
-      (skroad--tail-put-live-link node))) ;; If neither: create the link.
+      (skroad--below-tail (skroad--insert-live-link node)))) ;; or create it.
 
 (defun skroad--disconnect (node)
   "Ensure that the current node does NOT have any live links to NODE."
@@ -1267,14 +1270,14 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
     (let ((target-node (or target (skroad--current-node))))
       (skroad--with-node node t (skroad--disconnect target-node)))))
 
-(defun skroad--throw-text-to (node text)
-  "Throw TEXT into NODE (created if not exists) and sync indices (with actions.)
-Do nothing if NODE is a special node or if TEXT is empty or blank.
-If NODE had been a stub, it loses stub status."
-  (unless (or (skroad--node-special-p node) (string-blank-p text))
+(defun skroad--yank-to (node &rest yank-args)
+  "Yank into NODE (created if not exists) and sync indices (with actions.)
+Do nothing if NODE is a special node.  NODE may lose stub status if a stub.
+YANK-ARGS (optional) are passed to yank."
+  (unless (skroad--node-special-p node)
     (skroad--with-node node nil
-      (skroad--tail-put-text text)
-      (skroad--node-set-stub nil))))
+      (skroad--above-tail (yank yank-args))
+      (when (buffer-modified-p) (skroad--node-set-stub nil)))))
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1330,19 +1333,22 @@ If NODE had been a stub, it loses stub status."
   (or (funcall (get 'skroad--text-node-tail 'find-any-first))
       (skroad--tail-emplace)))
 
-(defun skroad--tail-put-live-link (node)
-  "Emplace a live link to NODE under the node tail in the current node."
-  (skroad--tail-jump-after)
-  (newline)
-  (skroad--insert-live-link node))
+(defmacro skroad--below-tail (&rest body)
+  "Execute BODY with point under the tail in the current node."
+  `(progn
+     (skroad--tail-jump-after)
+     (newline)
+     ,@body))
 
-(defun skroad--tail-put-text (text)
-  "Emplace TEXT above the node tail in the current node."
-  (skroad--tail-jump-after)
-  (goto-char (line-beginning-position))
-  (ensure-empty-lines 1)
-  (insert text)
-  (newline 2))
+(defmacro skroad--above-tail (&rest body)
+  "Execute BODY with point above the tail in the current node."
+  `(progn
+     (skroad--tail-jump-after)
+     (goto-char (line-beginning-position))
+     (ensure-empty-lines 1)
+     ,@body
+     (newline 2)
+     ))
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1616,12 +1622,14 @@ If the SPECIAL node does not exist yet, it is created."
   "Set orphan STATUS of NODE (if given; else the current node) to STATUS."
   (skroad--set-special-status skroad--special-node-orphans status node))
 
+;; ;;helloworld
 
+(skroad--yank-to "crapz")
 
-
-;; (skroad--node-set-stub t "xxx1")
-;; (skroad--node-set-stub nil "xxx1")
-;; (skroad--node-stub-p "xxx1")
+;; (skroad--yank-to "xyz")
+;; (skroad--node-set-stub t "xyz")
+;; (skroad--node-set-stub nil "xyz")
+;; (skroad--node-stub-p "xyz")
 
 ;; ;; TODO: handle stub
 ;; (defun skroad--rename-node (node node-new) ;; TODO: proper renamer
