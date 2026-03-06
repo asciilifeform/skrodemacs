@@ -113,8 +113,9 @@
     `(let ((,visiting-buffer (find-buffer-visiting ,file)))
        (if ,visiting-buffer ;; If a buffer is visiting this file, use it:
            (with-current-buffer ,visiting-buffer
-             (save-mark-and-excursion
-               (atomic-change-group ,@body)))
+             (let ((buffer-read-only nil)) ;; Allow changing special nodes
+               (save-mark-and-excursion
+                 (atomic-change-group ,@body))))
          (with-temp-buffer ;; No visiting buffer, so make one:
            (insert-file-contents ,file t nil nil t) ;; set as unmodified
            ,@body)))))
@@ -148,6 +149,10 @@
   `(let ((start-expanded (skroad--get-start-of-line ,start))
          (end-expanded (skroad--get-end-of-line ,end)))
      ,@body))
+
+(defun skroad--delete-empty-line ()
+  "If the point is currently on an empty line, delete the line."
+  (when (and (bolp) (eolp)) (delete-line)))
 
 (defun skroad--prop-at (prop &optional pos)
   "Determine value of PROP, if any, including overlays, at POS (or point.)"
@@ -359,6 +364,13 @@ call the action with ARGS."
        (goto-char start)
        (while (funcall find-any-forward end)
          (funcall f (match-string-no-properties match-number)))))
+  :delete-payload-all
+  '(lambda (payload)
+     (save-mark-and-excursion
+       (goto-char (point-min))
+       (while (funcall find-payload-forward (point-max) payload)
+         (delete-region (match-beginning 0) (match-end 0))
+         (skroad--delete-empty-line))))
   :replace-payload-all ;; TODO: use replace-regexp-in-region ???
   '(lambda (payload payload-new)
      (let ((found-any nil))
@@ -586,6 +598,10 @@ or the node's indices, if it has been indexed; or `empty` (indices are null).")
   "Return indices for NODE; or `index-me` if not indexed; or nil if empty."
   (let ((data (skroad--cache-peek node))) (when (not (eq data 'empty)) data)))
 
+(defun skroad--cache-indexed-p (node)
+  "Return t if NODE is interned in the cache and has been indexed."
+  (let ((data (skroad--cache-peek node))) (and data (not (eq data 'index-me)))))
+
 (defun skroad--cache-intern (node)
   "If NODE is already in the cache, do nothing.  Otherwise, intern it."
   (unless (skroad--cache-peek node) (skroad--cache-intern-unindexed node)))
@@ -703,7 +719,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
     (when have-changes
       (setq indices (skroad--indices-update
                      indices skroad--buf-indices-pending
-                     (or no-actions (skroad--special-node-p)) init))
+                     (or no-actions (skroad--node-special-p)) init))
       (setq-local skroad--buf-indices-table indices)
       (skroad--cache-write (skroad--current-node) indices))))
 
@@ -749,13 +765,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   "Test whether a PAYLOAD of TEXT-TYPE exists in INDICES."
   (let ((index (alist-get text-type indices)))
     (when index (gethash payload index))))
-
-(defun skroad--node-has-p (text-type payload node)
-  "Test whether a PAYLOAD of TEXT-TYPE exists in NODE's indices."
-  (let ((indices (skroad--cache-fetch node)))
-    (unless (listp indices)
-      (error "Tried to query unindexed node!"))
-    (skroad--indices-has-p text-type payload indices)))
 
 (defun skroad--current-node-has-p (text-type payload)
   "Test whether a PAYLOAD of TEXT-TYPE exists in the current node's indices."
@@ -1217,7 +1226,9 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
    node
    'skroad--text-link-node-dead))
 
-;; TODO: skroad--link-zap
+(defun skroad--link-zap (node)
+  "Remove all live links to NODE from the current node."
+  (funcall (get 'skroad--text-link-node-live 'delete-payload-all) node))
 
 (defun skroad--reconnect (node)
   "Transform all dead links to NODE in the current node to live links."
@@ -1226,7 +1237,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
    node
    'skroad--text-link-node-live))
 
-;; TODO: don't bother trying to reconnect if this is a stub
 (defun skroad--connect (node)
   "Ensure that the current node has at least one live link to NODE."
   (or (skroad--connected-p node) ;; Already has a live link to node?
@@ -1234,12 +1244,12 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
            (skroad--reconnect node)) ;; Try livening the dead links
       (skroad--tail-put-live-link node))) ;; If neither: create the link.
 
-;; TODO: if we remove the last live link, current node is now orphaned
-;; TODO: if this node is a stub, zap the link, rather than deaden
 (defun skroad--disconnect (node)
   "Ensure that the current node does NOT have any live links to NODE."
   (and (skroad--connected-p node) ;; Actually has any live links to it?
-       (skroad--link-deaden node))) ;; Deaden any live links found.
+       (if (or (skroad--node-special-p) (skroad--node-stub-p))
+           (skroad--link-zap node) ;; If special or stub, simply remove links
+         (skroad--link-deaden node)))) ;; ... otherwise, deaden.
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1467,7 +1477,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 
 (defun skroad--set-writability ()
   "If the current node is a special node, interactive editing is prohibited."
-  (setq-local buffer-read-only (skroad--special-node-p)))
+  (setq-local buffer-read-only (skroad--node-special-p)))
 
 (defun skroad--open-node ()
   "Open a skroad node."
@@ -1502,14 +1512,14 @@ Return the path where the node is found on disk."
        ((file-writable-p node-path) ;; Not found on disk, but can be made:
         (write-region (concat node "\n") nil node-path nil 0) ;; only title
         (skroad--cache-write node nil) ;; Intern with an empty index
-        (unless (skroad--special-node-p node)
+        (unless (skroad--node-special-p node)
           ;; TODO: mark as stub and write journal entry
           ))
        (t (error "Could not activate node '%s'!" node))))
     node-path))
 
 (defmacro skroad--with-node (node no-actions &rest body)
-  "If NODE does not exist, it is created as a stub and interned in the cache.
+  "If NODE does not exist, it is created and interned in the cache.
 NODE's indices are synced with any pending changes (or, if absent, created.)
 Optional BODY is evaluated with NODE buffer; any changes are synced and saved.
 When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
@@ -1524,6 +1534,12 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
                  (save-buffer))))
         t)))
 
+(defun skroad--node-ensure-indices (node)
+  "Ensure that NODE (created if required) has been indexed; return its indices."
+  (if (skroad--cache-indexed-p node)
+      (skroad--cache-fetch node)
+    (skroad--with-node node nil (skroad--buf-indices))))
+
 (defvar skroad--special-nodes nil
   "List of all defined special nodes.  These nodes exist at all times;
 contain only mechanically-generated content; and cannot be renamed, deleted,
@@ -1537,13 +1553,9 @@ nodes, and vice-versa, but such links do not trigger automatic back-linkage.")
      (defconst ,handle ,node ,@legend)
      (add-to-list 'skroad--special-nodes ,node)))
 
-(defun skroad--special-node-p (&optional node)
+(defun skroad--node-special-p (&optional node)
   "Return t if NODE (if given; else the current node) is a special node."
   (member (or node (skroad--current-node)) skroad--special-nodes))
-
-(defun skroad--regular-node-p (&optional node)
-  "Return t if NODE (if given; else the current node) is NOT a special node."
-  (not (skroad--special-node-p node)))
 
 (skroad--define-special-node skroad--special-node-orphans skroad--orphans
   "A node with links to all known orphans (non-specials without any live links.)
@@ -1555,28 +1567,26 @@ Orphan nodes are candidates for deletion; and only an orphan may be deleted.")
 (skroad--define-special-node skroad--special-node-log skroad--log
   "Operation log.")
 
-(defvar skroad--special-nodes-ready nil "T when all special nodes are ready.")
+(defun skroad--node-in-special-p (node special-node)
+  "Return t when NODE is linked by SPECIAL-NODE (created if it doesn't exist)."
+  (let ((indices (skroad--node-ensure-indices special-node)))
+    (skroad--indices-has-p 'skroad--text-link-node-live node indices)))
 
-(defun skroad--special-nodes-ensure-all ()
-  "Ensure that all special nodes exist, have been interned, and indexed."
-  (unless skroad--special-nodes-ready
-    (mapc #'(lambda (node) (skroad--with-node node t)) skroad--special-nodes)
-    (setq skroad--special-nodes-ready t)))
+(defun skroad--node-stub-p (&optional node)
+  "Return t when NODE (if given; else the current node) is a known stub."
+  (skroad--node-in-special-p (or node (skroad--current-node))
+                             skroad--special-node-stubs))
 
-(defun skroad--special-linked-p (node special-node)
-  "Return t when NODE is currently registered in SPECIAL-NODE."
-  (skroad--special-nodes-ensure-all)
-  (skroad--node-has-p 'skroad--text-link-node-live node special-node))
-
-(defun skroad--node-stub-p (node)
-  "Return t when NODE is currently known to be a stub."
-  (skroad--special-linked-p node skroad--special-node-stubs))
-
-(defun skroad--node-orphan-p (node)
-  "Return t when NODE is currently known to be an orphan."
-  (skroad--special-linked-p node skroad--special-node-orphans))
+(defun skroad--node-orphan-p (&optional node)
+  "Return t when NODE (if given; else the current node) is a known orphan."
+  (skroad--node-in-special-p (or node (skroad--current-node))
+                             skroad--special-node-orphans))
 
 
+;; (skroad--with-node skroad--special-node-stubs nil (skroad--connect "xxx5"))
+;; (skroad--with-node skroad--special-node-stubs nil (skroad--disconnect "xxx2"))
+;; (skroad--node-stub-p "xxx1")
+;; (skroad--with-node skroad--special-node-stubs nil (skroad--link-zap "xxx4"))
 
 ;; ;; TODO: handle stub
 ;; (defun skroad--rename-node (node node-new) ;; TODO: proper renamer
