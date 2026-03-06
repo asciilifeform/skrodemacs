@@ -1256,15 +1256,15 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   "Ensure that NODE has a live link to TARGET (if not given: current node).
 If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
   (when (or allow-special (not (skroad--node-special-p node)))
-    (skroad--with-node node t
-      (skroad--connect (or target (skroad--current-node))))))
+    (let ((target-node (or target (skroad--current-node))))
+      (skroad--with-node node t (skroad--connect target-node)))))
 
 (defun skroad--disconnect-from (node &optional target allow-special)
   "Ensure that NODE has NO live links to TARGET (if not given: current node).
 If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
   (when (or allow-special (not (skroad--node-special-p node)))
-    (skroad--with-node node t
-      (skroad--disconnect (or target (skroad--current-node))))))
+    (let ((target-node (or target (skroad--current-node))))
+      (skroad--with-node node t (skroad--disconnect target-node)))))
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1507,15 +1507,6 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
 
 ;; Back-end. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (skroad--with-node "xyz" nil (skroad--connected-p "xxx"))
-;; (skroad--with-node "xyz" nil (skroad--connect "xxx1"))
-;; (skroad--with-node "xyz" nil (skroad--disconnect "xxx1"))
-;; (skroad--with-node "xyz" t (skroad--connect "xxx1"))
-;; (skroad--with-node "xyz" t (skroad--disconnect "xxx1"))
-;; (skroad--with-node "qqxyz" nil (skroad--connect "xxx1"))
-;; (skroad--with-node "xyz" (skroad--tail-put-text "foo2"))
-;; (skroad--with-node "crapz" (skroad--tail-put-text "foo2"))
-
 (defun skroad--node-ensure (node)
   "Find or create NODE, and ensure that it is interned in the cache.
 Return the path where the node is found on disk."
@@ -1528,7 +1519,8 @@ Return the path where the node is found on disk."
         (write-region (concat node "\n") nil node-path nil 0) ;; only title
         (skroad--cache-write node nil) ;; Intern with an empty index
         (unless (skroad--node-special-p node)
-          ;; TODO: mark as stub and write journal entry
+          (skroad--node-set-stub t node)
+          ;; TODO: write journal entry
           ))
        (t (error "Could not activate node '%s'!" node))))
     node-path))
@@ -1583,7 +1575,7 @@ Orphan nodes are candidates for deletion; and only an orphan may be deleted.")
 (skroad--define-special-node skroad--special-node-log skroad--log
   "Operation log.")
 
-(defun skroad--special-connected-p (special &optional node)
+(defun skroad--special-status-p (special &optional node)
   "Test whether NODE (if given; else the current node) is linked from SPECIAL.
 If the SPECIAL node does not exist yet, it is created."
   (let ((indices (skroad--node-ensure-indices special)))
@@ -1592,26 +1584,33 @@ If the SPECIAL node does not exist yet, it is created."
 
 (defun skroad--node-stub-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known stub."
-  (skroad--special-connected-p skroad--special-node-stubs node))
+  (skroad--special-status-p skroad--special-node-stubs node))
 
 (defun skroad--node-orphan-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known orphan."
-  (skroad--special-connected-p skroad--special-node-orphans node))
+  (skroad--special-status-p skroad--special-node-orphans node))
 
-(defun skroad--node-set-special-connection (special status &optional node)
+(defun skroad--set-special-status (special status &optional node)
   "Set connection STATUS of NODE (if given; else the current node) from SPECIAL.
 If the SPECIAL node does not exist yet, it is created."
-  (unless (eq (skroad--special-connected-p special node) status)
+  (unless (eq (skroad--special-status-p special node) status)
     (if status
         (skroad--connect-from special node t)
       (skroad--disconnect-from special node t))))
 
+(defun skroad--node-set-stub (status &optional node)
+  "Set stub STATUS of NODE (if given; else the current node) to STATUS."
+  (skroad--set-special-status skroad--special-node-stubs status node))
+
+(defun skroad--node-set-orphan (status &optional node)
+  "Set orphan STATUS of NODE (if given; else the current node) to STATUS."
+  (skroad--set-special-status skroad--special-node-orphans status node))
 
 
 
-;; (skroad--node-set-special-connection skroad--special-node-stubs t "xxx1")
-;; (skroad--with-node skroad--special-node-stubs nil (skroad--connect "xxx1"))
-;; (skroad--with-node skroad--special-node-stubs nil (skroad--disconnect "xxx1"))
+
+;; (skroad--node-set-stub t "xxx1")
+;; (skroad--node-set-stub nil "xxx1")
 ;; (skroad--node-stub-p "xxx1")
 
 ;; ;; TODO: handle stub
