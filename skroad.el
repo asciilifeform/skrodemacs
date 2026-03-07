@@ -1331,20 +1331,22 @@ YANK-ARGS (optional) are passed to yank."
 
 (defun skroad--tail-emplace ()
   "Emplace a node tail in the current node."
-  (save-mark-and-excursion
-    (goto-char (point-max))
-    (let ((tail (point-max)))
-      (while (and
-              (funcall
-               (get 'skroad--text-link-node-live 'find-any-backward)
-               (skroad--node-body-start))
-              (string-blank-p
-               (buffer-substring-no-properties (match-end 0) tail)))
-        (setq tail (point)))
-      (goto-char tail)
-      (ensure-empty-lines 1)
-      (insert skroad--node-tail)
-      (ensure-empty-lines 1))))
+  (goto-char (point-max))
+  (let ((tail (point)))
+    (while (and
+            (funcall
+             (get 'skroad--text-link-node-live 'find-any-backward)
+             (skroad--node-body-start))
+            (string-blank-p
+             (buffer-substring-no-properties (match-end 0) tail)))
+      (setq tail (point)))
+    (goto-char tail)
+    (ensure-empty-lines 1)
+    (setq tail (point))
+    (insert skroad--node-tail)
+    (ensure-empty-lines 1)
+    (goto-char tail)
+    (goto-char (line-end-position))))
 
 (defun skroad--tail-jump-after ()
   "Find or create the node tail in the current node; set point after it."
@@ -1637,9 +1639,11 @@ If the SPECIAL node does not exist yet, it is created."
   "Set orphan STATUS of NODE (if given; else the current node) to STATUS."
   (skroad--set-special-status skroad--special-node-orphans status node))
 
-
+;; hello
 ;; (skroad--yank-into "crapz")
 ;; (skroad--yank-into "xyz")
+;; (skroad--connect-from "xyz" "pqr")
+
 ;; (skroad--node-set-stub t "xyz")
 ;; (skroad--node-set-stub nil "xyz")
 ;; (skroad--node-stub-p "xyz")
