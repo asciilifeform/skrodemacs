@@ -173,6 +173,7 @@
 
 (defconst skroad--time-epsilon 0.01 "Short idle interval for async dispatch.")
 
+;; TODO: do all remote actions async?
 (defun skroad--async-dispatch (fn &rest args)
   "Dispatch FN with ARGS asynchronously; buffer is read-only until completed."
   (setq-local buffer-read-only t)
@@ -1125,7 +1126,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (skroad--deftype skroad--text-link-node
   :doc "Fundamental type for skroad node links (live or dead)."
   :use 'skroad--text-link
-  :help-echo 'skroad--link-mouseover
   :payload-regex skroad--node-title-regex
   :keymap (define-keymap "t" #'skroad--cmd-link-comment))
 
@@ -1192,6 +1192,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :on-destroy-last #'skroad--action-index-orphaned
   :on-activate #'skroad--action-open-link
   :mouse-face 'highlight
+  :help-echo 'skroad--link-mouseover
   :start-delim "[[" :end-delim "]]"
   :keymap (define-keymap
             "l" #'(lambda () (interactive)
@@ -1237,7 +1238,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
    node
    'skroad--text-link-node-dead))
 
-(defun skroad--link-zap (node)
+(defun skroad--link-remove (node)
   "Remove all live links to NODE from the current node."
   (funcall (get 'skroad--text-link-node-live 'delete-payload-all) node))
 
@@ -1259,7 +1260,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   "Ensure that the current node does NOT have any live links to NODE."
   (and (skroad--connected-p node) ;; Actually has any live links to it?
        (if (or (skroad--node-special-p) (skroad--node-stub-p))
-           (skroad--link-zap node) ;; If special or stub, simply remove links
+           (skroad--link-remove node) ;; If special or stub, simply remove links
          (skroad--link-deaden node)))) ;; ... otherwise, deaden.
 
 (defun skroad--connect-from (node &optional target allow-special)
@@ -1283,7 +1284,7 @@ YANK-ARGS (optional) are passed to yank."
   (unless (skroad--node-special-p node)
     (skroad--with-node node nil
       (skroad--above-tail (apply #'yank yank-args))
-      (when (buffer-modified-p) (skroad--node-set-stub nil)))))
+      (when (buffer-modified-p) (skroad--node-set-stub nil))))) ;; TODO: stub probe
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1353,8 +1354,7 @@ YANK-ARGS (optional) are passed to yank."
      (goto-char (line-beginning-position))
      (ensure-empty-lines 1)
      ,@body
-     (newline 2)
-     ))
+     (newline 2)))
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1524,8 +1524,6 @@ YANK-ARGS (optional) are passed to yank."
   (skroad--cache-intern (skroad--current-node))
   (skroad--async-dispatch #'skroad--buf-indices-sync) ;; move this to enabler
   )
-
-;; (file-has-changed-p (skroad--node-path "k") 'skroad)
 
 ;; Back-end. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
