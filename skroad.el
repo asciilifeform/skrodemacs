@@ -1295,8 +1295,8 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   "Ensure that NODE exists, and run OP on TARGET (nil: current node) from it.
 If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
   (when (or allow-special (not (skroad--node-special-p node)))
-    (let ((target-node (or target (skroad--current-node))))
-      (skroad--with-node node t (funcall op target-node)))))
+    (let ((target-or-current (or target (skroad--current-node))))
+      (skroad--with-node node t (funcall op target-or-current)))))
 
 (defun skroad--yank-into (node &rest yank-args) ;; TODO: undo mechanism?
   "Ensure that NODE exists, and yank into it; then sync indices (with actions.)
@@ -1634,10 +1634,11 @@ Orphan nodes are candidates for deletion; and only an orphan may be deleted.")
 (defun skroad--special-has-p (special &optional node)
   "Test whether NODE (if given; else the current node) is linked from SPECIAL.
 If NODE is a special node, return nil.  If SPECIAL does not exist, create it."
-  (unless (skroad--node-special-p node)
-    (let ((indices (skroad--node-ensure-indices special)))
-      (skroad--indices-has-p
-       'skroad--text-link-node-live (or node (skroad--current-node)) indices))))
+  (let ((node-or-current (or node (skroad--current-node))))
+    (unless (skroad--node-special-p node-or-current)
+      (let ((indices (skroad--node-ensure-indices special)))
+        (skroad--indices-has-p
+         'skroad--text-link-node-live node-or-current indices)))))
 
 (defun skroad--node-stub-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known stub."
