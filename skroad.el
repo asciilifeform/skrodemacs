@@ -1279,7 +1279,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (or (skroad--connected-p node) ;; Already has a live link to node?
       (and (skroad--reconnectable-p node) ;; If not, any dead links to it?
            (skroad--reconnect node)) ;; Try livening the dead links
-      (progn  ;; If none of the above: create it below the tail:
+      (progn ;; If none of the above: create a new link below the tail:
         (skroad--tail-jump-after) ;; If tail didn't exist, it does now
         (newline)
         (skroad--insert-live-link node))))
@@ -1298,13 +1298,13 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
     (let ((target-node (or target (skroad--current-node))))
       (skroad--with-node node t (funcall op target-node)))))
 
-(defun skroad--yank-into (node &rest yank-args) ;; TODO: undo mechanism for it?
+(defun skroad--yank-into (node &rest yank-args) ;; TODO: undo mechanism?
   "Ensure that NODE exists, and yank into it; then sync indices (with actions.)
 Do nothing if NODE is a special node, or if the current kill is empty or blank.
 YANK-ARGS (optional) are passed to yank."
-  (unless (or (skroad--node-special-p node)
+  (unless (or (skroad--node-special-p node) ;; Don't teleyank into special nodes
               (string-blank-p (skroad--current-kill-text)))
-    (skroad--with-node node nil
+    (skroad--with-node node nil ;; Yank could contain links, so actions must run
       (skroad--tail-jump-before)
       (ensure-empty-lines 1)
       (apply #'yank yank-args)
