@@ -326,7 +326,7 @@ call the action with ARGS."
 (skroad--deftype skroad--text-mixin-findable
   :doc "Mixin for findable text types. (Internal use only.)"
   :mixin t
-  :require '(make-regex regex-any finder-regex-forward make-text)
+  :require '(regex-any finder-regex-forward finder-regex-backward)
   :find-any-forward '(funcall finder-regex-forward regex-any)
   :find-any-backward '(funcall finder-regex-backward regex-any)
   :find-any-first '(lambda ()
@@ -335,12 +335,6 @@ call the action with ARGS."
   :find-any-last '(lambda ()
                     (goto-char (point-max))
                     (funcall find-any-backward (point-min)))
-  :find-payload-forward
-  '(lambda (limit p)
-     (funcall (funcall finder-regex-forward (funcall make-regex p)) limit))
-  :find-payload-backward
-  '(lambda (limit p)
-     (funcall (funcall finder-regex-backward (funcall make-regex p)) limit))
   :jump-next-from
   '(lambda (pos)
      (goto-char
@@ -364,7 +358,18 @@ call the action with ARGS."
      (save-mark-and-excursion
        (goto-char start)
        (while (funcall find-any-forward end)
-         (funcall f (match-string-no-properties match-number)))))
+         (funcall f (match-string-no-properties match-number))))))
+
+(skroad--deftype skroad--text-mixin-payloadable
+  :doc "Mixin for payloadable text types. (Internal use only.)"
+  :mixin t
+  :require '(make-regex finder-regex-forward finder-regex-backward make-text)
+  :find-payload-forward
+  '(lambda (limit p)
+     (funcall (funcall finder-regex-forward (funcall make-regex p)) limit))
+  :find-payload-backward
+  '(lambda (limit p)
+     (funcall (funcall finder-regex-backward (funcall make-regex p)) limit))
   :delete-payload-all
   '(lambda (payload)
      (save-mark-and-excursion
@@ -405,7 +410,8 @@ call the action with ARGS."
   :use 'skroad--text-mixin-delimited
   :finder-regex-forward #'skroad--finder-regex-forward
   :finder-regex-backward #'skroad--finder-regex-backward
-  :use 'skroad--text-mixin-findable)
+  :use 'skroad--text-mixin-findable
+  :use 'skroad--text-mixin-payloadable)
 
 ;; TODO: invalidate cache when changing title
 (defvar-local skroad--buf-node-body-start-cached nil)
@@ -438,6 +444,14 @@ call the action with ARGS."
   :doc "Mixin for delimited text types excluded from the node title."
   :mixin t
   :use 'skroad--text-mixin-delimited
+  :finder-regex-forward #'skroad--finder-regex-forward-non-title
+  :finder-regex-backward #'skroad--finder-regex-backward-non-title
+  :use 'skroad--text-mixin-findable
+  :use 'skroad--text-mixin-payloadable)
+
+(skroad--deftype skroad--text-mixin-search-only-non-title
+  :doc "Mixin for search-only text types excluded from the node title."
+  :mixin t
   :finder-regex-forward #'skroad--finder-regex-forward-non-title
   :finder-regex-backward #'skroad--finder-regex-backward-non-title
   :use 'skroad--text-mixin-findable)
@@ -791,22 +805,22 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
              (delete-char -1))))))
 
 ;; TODO: jump to either living or dead?
-(defun skroad--cmd-top-jump-to-next-live-link ()
+(defun skroad--cmd-top-jump-to-next-link ()
   "Jump to the next live link following point; cycle to first if no more."
   (interactive)
-  (funcall (get 'skroad--text-link-node-live 'jump-next-from) (point)))
+  (funcall (get 'skroad--text-link-node-alive-or-dead 'jump-next-from) (point)))
 
 ;; TODO: jump to either living or dead?
-(defun skroad--cmd-top-jump-to-prev-live-link ()
+(defun skroad--cmd-top-jump-to-prev-link ()
   "Jump to the previous live link preceding point; cycle to last if no more."
   (interactive)
-  (funcall (get 'skroad--text-link-node-live 'jump-prev-from) (point)))
+  (funcall (get 'skroad--text-link-node-alive-or-dead 'jump-prev-from) (point)))
 
 (defvar skroad--mode-keymap
   (define-keymap
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
-    "<tab>" #'skroad--cmd-top-jump-to-next-live-link
-    "C-<tab>" #'skroad--cmd-top-jump-to-prev-live-link
+    "<tab>" #'skroad--cmd-top-jump-to-next-link
+    "C-<tab>" #'skroad--cmd-top-jump-to-prev-link
     )
   "Top-level keymap for the skroad major mode.")
 
@@ -881,7 +895,8 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   "Jump to the next link following this atomic; cycle to first after the last."
   (interactive)
   (funcall
-   (get 'skroad--text-link-node-live 'jump-next-from) (skroad--zone-end)))
+   (get 'skroad--text-link-node-alive-or-dead 'jump-next-from)
+   (skroad--zone-end)))
 
 (skroad--deftype skroad--text-atomic
   :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
@@ -1227,6 +1242,14 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :use 'skroad--text-mixin-render-delimited-zoned
   :use 'skroad--text-mixin-indexed)
 
+(skroad--deftype skroad--text-link-node-alive-or-dead
+  :doc "Leaf type exclusively for searching for either live/dead node links."
+  :match-number 0
+  :regex-any
+  (concat "\\(" (get 'skroad--text-link-node-live 'regex-any)
+          "\\)\\|\\(" (get 'skroad--text-link-node-dead 'regex-any) "\\)")
+  :use 'skroad--text-mixin-search-only-non-title)
+
 (defun skroad--reconnectable-p (node)
   "Determine whether the current node has at least one dead link to NODE."
   (skroad--current-indices-have-p 'skroad--text-link-node-dead node))
@@ -1329,13 +1352,14 @@ YANK-ARGS (optional) are passed to yank."
 
 (defconst skroad--node-tail "@@@" "Node tail marker.")
 
+;; TODO: skip dead links too
 (defun skroad--tail-emplace ()
   "Emplace a node tail in the current node."
   (goto-char (point-max))
   (let ((tail (point)))
     (while (and
             (funcall
-             (get 'skroad--text-link-node-live 'find-any-backward)
+             (get 'skroad--text-link-node-alive-or-dead 'find-any-backward)
              (skroad--node-body-start))
             (string-blank-p
              (buffer-substring-no-properties (match-end 0) tail)))
