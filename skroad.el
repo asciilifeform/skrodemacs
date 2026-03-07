@@ -1649,8 +1649,7 @@ If the SPECIAL node does not exist yet, it is created."
 
 (defun skroad--set-special-status (special status &optional node)
   "Set connection STATUS of NODE (if given; else the current node) from SPECIAL.
-Special nodes may not have a connection set from a special node.
-If the SPECIAL node does not exist yet, it is created."
+If NODE is a special node, do nothing.  If SPECIAL does not exist, create it."
   (unless (or (skroad--node-special-p node)
               (eq (skroad--special-status-p special node) status))
     (if status
