@@ -454,11 +454,6 @@ call the action with ARGS."
   :use 'skroad--text-mixin-findable-non-title
   :use 'skroad--text-mixin-payloadable)
 
-(skroad--deftype skroad--text-mixin-search-only-non-title
-  :doc "Mixin for search-only text types excluded from the node title."
-  :mixin t
-  :use 'skroad--text-mixin-findable-non-title)
-
 ;; Font lock rendered text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--text-types-rendered nil "Text types for use with font-lock.")
@@ -1251,7 +1246,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :regex-any
   (concat "\\(" (get 'skroad--text-link-node-live 'regex-any)
           "\\)\\|\\(" (get 'skroad--text-link-node-dead 'regex-any) "\\)")
-  :use 'skroad--text-mixin-search-only-non-title)
+  :use 'skroad--text-mixin-findable-non-title)
 
 (defun skroad--reconnectable-p (node)
   "Determine whether the current node has at least one dead link to NODE."
