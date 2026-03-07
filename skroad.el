@@ -1576,10 +1576,9 @@ Return the path where the node is found on disk."
        ((file-writable-p node-path) ;; Not found on disk, but can be made:
         (write-region (concat node "\n") nil node-path nil 0) ;; only title
         (skroad--cache-write node nil) ;; Intern with an empty index
-        (unless (skroad--node-special-p node)
-          (skroad--node-set-stub t node) ;; Mark the new node as a stub
-          ;; TODO: write journal entry
-          ))
+        (skroad--node-set-stub t node) ;; Becomes a stub (unless special)
+        ;; TODO: write journal entry
+        )
        (t (error "Could not activate node '%s'!" node))))
     node-path))
 
@@ -1650,8 +1649,10 @@ If the SPECIAL node does not exist yet, it is created."
 
 (defun skroad--set-special-status (special status &optional node)
   "Set connection STATUS of NODE (if given; else the current node) from SPECIAL.
+Special nodes may not have a connection set from a special node.
 If the SPECIAL node does not exist yet, it is created."
-  (unless (eq (skroad--special-status-p special node) status)
+  (unless (or (skroad--node-special-p node)
+              (eq (skroad--special-status-p special node) status))
     (if status
         (skroad--from-node special #'skroad--connect node t)
       (skroad--from-node special #'skroad--disconnect node t))))
@@ -1664,13 +1665,10 @@ If the SPECIAL node does not exist yet, it is created."
   "Set orphan STATUS of NODE (if given; else the current node) to STATUS."
   (skroad--set-special-status skroad--special-node-orphans status node))
 
-;; hello
 ;; (skroad--yank-into "crapz")
 ;; (skroad--yank-into "xyz")
-
 ;; (skroad--node-set-stub t "xxx1")
 ;; (skroad--node-set-stub nil "xxx1")
-
 ;; (skroad--node-set-stub t "xyz")
 ;; (skroad--node-set-stub nil "xyz")
 ;; (skroad--node-stub-p "xyz")
