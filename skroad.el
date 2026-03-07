@@ -521,12 +521,12 @@ call the action with ARGS."
   :use 'skroad--text-mixin-rendered)
 
 (defun skroad--zone-start (&optional pos)
-  "Return the position at which the zone at POS starts."
+  "Return the position where the zone at POS starts."
   (or (previous-single-property-change (1+ (or pos (point))) 'zone)
       (point-min)))
 
 (defun skroad--zone-end (&optional pos)
-  "Return the position at which the zone at POS ends."
+  "Return the position where the zone at POS ends."
   (or (next-single-property-change (or pos (point)) 'zone) (point-max)))
 
 (defmacro skroad--with-current-zone (&rest body)
@@ -1329,11 +1329,22 @@ YANK-ARGS (optional) are passed to yank."
 
 (defconst skroad--node-tail "@@@" "Node tail marker.")
 
-(defun skroad--tail-emplace () ;; TODO: smart, rather than point-max ?
+(defun skroad--tail-emplace ()
   "Emplace a node tail in the current node."
-  (goto-char (point-max))
-  (ensure-empty-lines 1)
-  (insert skroad--node-tail))
+  (save-mark-and-excursion
+    (goto-char (point-max))
+    (let ((tail (point-max)))
+      (while (and
+              (funcall
+               (get 'skroad--text-link-node-live 'find-any-backward)
+               (skroad--node-body-start))
+              (string-blank-p
+               (buffer-substring-no-properties (match-end 0) tail)))
+        (setq tail (point)))
+      (goto-char tail)
+      (ensure-empty-lines 1)
+      (insert skroad--node-tail)
+      (ensure-empty-lines 1))))
 
 (defun skroad--tail-jump-after ()
   "Find or create the node tail in the current node; set point after it."
