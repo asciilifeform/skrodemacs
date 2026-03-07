@@ -1634,10 +1634,11 @@ Orphan nodes are candidates for deletion; and only an orphan may be deleted.")
 
 (defun skroad--special-status-p (special &optional node)
   "Test whether NODE (if given; else the current node) is linked from SPECIAL.
-If the SPECIAL node does not exist yet, it is created."
-  (let ((indices (skroad--node-ensure-indices special)))
-    (skroad--indices-has-p
-     'skroad--text-link-node-live (or node (skroad--current-node)) indices)))
+If NODE is a special node, return nil.  If SPECIAL does not exist, create it."
+  (unless (skroad--node-special-p node)
+    (let ((indices (skroad--node-ensure-indices special)))
+      (skroad--indices-has-p
+       'skroad--text-link-node-live (or node (skroad--current-node)) indices))))
 
 (defun skroad--node-stub-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known stub."
