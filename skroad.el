@@ -1277,7 +1277,7 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
       (skroad--with-node node t (skroad--disconnect target-node)))))
 
 (defun skroad--yank-into (node &rest yank-args) ;; TODO: undo mechanism for it?
-  "Yank into NODE (created if not exists) and sync indices (with actions.)
+  "Ensure that NODE exists, and yank into it; then sync indices (with actions.)
 Do nothing if NODE is a special node.  NODE, if a stub, may lose stub status.
 YANK-ARGS (optional) are passed to yank."
   (unless (skroad--node-special-p node)
