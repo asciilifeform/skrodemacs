@@ -135,6 +135,10 @@
            ,@body
            (setq ,l (cddr ,l)))))))
 
+(defun skroad--current-kill-text ()
+  "Return a copy of the current kill (plain) text.  Does not modify anything."
+  (substring-no-properties (current-kill 0 t)))
+
 (defun skroad--get-start-of-line (pos)
   "Get the position of the start of the line on which POS resides."
   (save-mark-and-excursion (goto-char pos) (line-beginning-position)))
@@ -1299,7 +1303,7 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
 Do nothing if NODE is a special node, or if the current kill is empty or blank.
 YANK-ARGS (optional) are passed to yank."
   (unless (or (skroad--node-special-p node)
-              (string-blank-p (substring-no-properties (current-kill 0 t))))
+              (string-blank-p (skroad--current-kill-text)))
     (skroad--with-node node nil
       (skroad--tail-jump-before)
       (ensure-empty-lines 1)
