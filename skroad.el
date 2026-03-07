@@ -1386,13 +1386,12 @@ YANK-ARGS (optional) are passed to yank."
 (defun skroad--node-test-stub-p ()
   "Determine whether the current node should be classified as a stub.
 A stub is a node where no text is found between the title and the tail."
-  (string-blank-p
-   (buffer-substring-no-properties
-    (skroad--node-body-start)
-    (save-mark-and-excursion
-      (skroad--tail-jump-before)
-      ;; (save-buffer) ;; Save if there was no tail and we emplaced one.
-      (point)))))
+  (save-mark-and-excursion
+    (skroad--tail-jump-before)
+    (let ((tail (point)))
+      (goto-char (skroad--node-body-start))
+      (skip-syntax-forward " ")
+      (eq (point) tail))))
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1582,10 +1581,11 @@ Return the path where the node is found on disk."
        (t (error "Could not activate node '%s'!" node))))
     node-path))
 
+;; TODO: use async dispatch?
 (defmacro skroad--with-node (node no-actions &rest body)
   "If NODE does not exist, it is created and interned in the cache.
 NODE's indices are synced with any pending changes (or, if absent, created.)
-Optional BODY is evaluated with NODE buffer; any changes are synced and saved.
+Optional BODY is evaluated with NODE buffer; new changes are synced and saved.
 When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
   (declare (indent defun))
   `(skroad--with-file (skroad--node-ensure ,node)
