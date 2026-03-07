@@ -1296,15 +1296,16 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
 
 (defun skroad--yank-into (node &rest yank-args) ;; TODO: undo mechanism for it?
   "Ensure that NODE exists, and yank into it; then sync indices (with actions.)
-Do nothing if NODE is a special node.  NODE, if a modified, will be unstubbed.
+Do nothing if NODE is a special node, or if the current kill is empty or blank.
 YANK-ARGS (optional) are passed to yank."
-  (unless (skroad--node-special-p node)
+  (unless (or (skroad--node-special-p node)
+              (string-blank-p (substring-no-properties (current-kill 0 t))))
     (skroad--with-node node nil
       (skroad--tail-jump-before)
       (ensure-empty-lines 1)
       (apply #'yank yank-args)
       (newline 2)
-      (when (buffer-modified-p) (skroad--node-set-stub nil)))))
+      (skroad--node-set-stub nil)))) ;; TODO: display confirmation message?
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
