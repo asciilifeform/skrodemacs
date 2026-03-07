@@ -1303,7 +1303,7 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
 
 (defun skroad--yank-into (node &rest yank-args) ;; TODO: undo mechanism for it?
   "Ensure that NODE exists, and yank into it; then sync indices (with actions.)
-Do nothing if NODE is a special node.  NODE, if a stub, may lose stub status.
+Do nothing if NODE is a special node.  NODE, if a modified, will be unstubbed.
 YANK-ARGS (optional) are passed to yank."
   (unless (skroad--node-special-p node)
     (skroad--with-node node nil
@@ -1311,7 +1311,7 @@ YANK-ARGS (optional) are passed to yank."
       (ensure-empty-lines 1)
       (apply #'yank yank-args)
       (newline 2)
-      (when (buffer-modified-p) (skroad--node-set-stub nil))))) ;; TODO: stub probe
+      (when (buffer-modified-p) (skroad--node-set-stub nil)))))
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1384,6 +1384,17 @@ YANK-ARGS (optional) are passed to yank."
   "Find or create the node tail in the current node; set point before it."
   (skroad--tail-jump-after)
   (goto-char (line-beginning-position)))
+
+(defun skroad--node-test-stub-p ()
+  "Determine whether the current node should be classified as a stub.
+A stub is a node where no text is found between the title and the tail."
+  (string-blank-p
+   (buffer-substring-no-properties
+    (skroad--node-body-start)
+    (save-mark-and-excursion
+      (skroad--tail-jump-before)
+      (save-buffer) ;; Save if there was no tail and we emplaced one.
+      (point)))))
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1658,7 +1669,9 @@ If the SPECIAL node does not exist yet, it is created."
 ;; hello
 ;; (skroad--yank-into "crapz")
 ;; (skroad--yank-into "xyz")
-;; (skroad--connect-from "xyz" "pqr")
+;; (skroad--connect-from "xyz" "pqr2")
+
+;; (skroad--node-set-stub nil "xxx1")
 
 ;; (skroad--node-set-stub t "xyz")
 ;; (skroad--node-set-stub nil "xyz")
