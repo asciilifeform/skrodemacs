@@ -1275,7 +1275,10 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (or (skroad--connected-p node) ;; Already has a live link to node?
       (and (skroad--reconnectable-p node) ;; If not, any dead links to it?
            (skroad--reconnect node)) ;; Try livening the dead links
-      (skroad--below-tail (skroad--insert-live-link node)))) ;; or create it.
+      (progn  ;; If none of the above: create it.
+        (skroad--tail-jump-after)
+        (newline)
+        (skroad--insert-live-link node))))
 
 (defun skroad--disconnect (node)
   "Ensure that the current node does NOT have any live links to NODE."
@@ -1304,7 +1307,10 @@ Do nothing if NODE is a special node.  NODE, if a stub, may lose stub status.
 YANK-ARGS (optional) are passed to yank."
   (unless (skroad--node-special-p node)
     (skroad--with-node node nil
-      (skroad--above-tail (apply #'yank yank-args))
+      (skroad--tail-jump-before)
+      (ensure-empty-lines 1)
+      (apply #'yank yank-args)
+      (newline 2)
       (when (buffer-modified-p) (skroad--node-set-stub nil))))) ;; TODO: stub probe
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1350,7 +1356,6 @@ YANK-ARGS (optional) are passed to yank."
 
 (defconst skroad--node-tail "@@@" "Node tail marker.")
 
-;; TODO: skip dead links too
 (defun skroad--tail-emplace ()
   "Emplace a node tail in the current node."
   (goto-char (point-max))
@@ -1375,21 +1380,10 @@ YANK-ARGS (optional) are passed to yank."
   (or (funcall (get 'skroad--text-node-tail 'find-any-first))
       (skroad--tail-emplace)))
 
-(defmacro skroad--below-tail (&rest body)
-  "Execute BODY with point under the tail in the current node."
-  `(progn
-     (skroad--tail-jump-after)
-     (newline)
-     ,@body))
-
-(defmacro skroad--above-tail (&rest body)
-  "Execute BODY with point above the tail in the current node."
-  `(progn
-     (skroad--tail-jump-after)
-     (goto-char (line-beginning-position))
-     (ensure-empty-lines 1)
-     ,@body
-     (newline 2)))
+(defun skroad--tail-jump-before ()
+  "Find or create the node tail in the current node; set point before it."
+  (skroad--tail-jump-after)
+  (goto-char (line-beginning-position)))
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
