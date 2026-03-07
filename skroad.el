@@ -1275,8 +1275,8 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (or (skroad--connected-p node) ;; Already has a live link to node?
       (and (skroad--reconnectable-p node) ;; If not, any dead links to it?
            (skroad--reconnect node)) ;; Try livening the dead links
-      (progn  ;; If none of the above: create it.
-        (skroad--tail-jump-after)
+      (progn  ;; If none of the above: create it below the tail:
+        (skroad--tail-jump-after) ;; If tail didn't exist, it does now
         (newline)
         (skroad--insert-live-link node))))
 
@@ -1287,19 +1287,12 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
            (skroad--link-remove node) ;; If special or stub, simply remove links
          (skroad--link-deaden node)))) ;; ... otherwise, deaden.
 
-(defun skroad--connect-from (node &optional target allow-special)
-  "Ensure that NODE exists, and has a live link to TARGET (nil: current node).
+(defun skroad--from-node (node op &optional target allow-special)
+  "Ensure that NODE exists, and run OP on TARGET (nil: current node) from it.
 If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
   (when (or allow-special (not (skroad--node-special-p node)))
     (let ((target-node (or target (skroad--current-node))))
-      (skroad--with-node node t (skroad--connect target-node)))))
-
-(defun skroad--disconnect-from (node &optional target allow-special)
-  "Ensure that NODE exists, and has NO live links to TARGET (nil: current node).
-If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
-  (when (or allow-special (not (skroad--node-special-p node)))
-    (let ((target-node (or target (skroad--current-node))))
-      (skroad--with-node node t (skroad--disconnect target-node)))))
+      (skroad--with-node node t (funcall op target-node)))))
 
 (defun skroad--yank-into (node &rest yank-args) ;; TODO: undo mechanism for it?
   "Ensure that NODE exists, and yank into it; then sync indices (with actions.)
@@ -1393,7 +1386,7 @@ A stub is a node where no text is found between the title and the tail."
     (skroad--node-body-start)
     (save-mark-and-excursion
       (skroad--tail-jump-before)
-      (save-buffer) ;; Save if there was no tail and we emplaced one.
+      ;; (save-buffer) ;; Save if there was no tail and we emplaced one.
       (point)))))
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1655,8 +1648,8 @@ If the SPECIAL node does not exist yet, it is created."
 If the SPECIAL node does not exist yet, it is created."
   (unless (eq (skroad--special-status-p special node) status)
     (if status
-        (skroad--connect-from special node t)
-      (skroad--disconnect-from special node t))))
+        (skroad--from-node special #'skroad--connect node t)
+      (skroad--from-node special #'skroad--disconnect node t))))
 
 (defun skroad--node-set-stub (status &optional node)
   "Set stub STATUS of NODE (if given; else the current node) to STATUS."
@@ -1669,8 +1662,8 @@ If the SPECIAL node does not exist yet, it is created."
 ;; hello
 ;; (skroad--yank-into "crapz")
 ;; (skroad--yank-into "xyz")
-;; (skroad--connect-from "xyz" "pqr2")
 
+;; (skroad--node-set-stub t "xxx1")
 ;; (skroad--node-set-stub nil "xxx1")
 
 ;; (skroad--node-set-stub t "xyz")
