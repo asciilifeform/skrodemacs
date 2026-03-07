@@ -1608,8 +1608,7 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
 (defvar skroad--special-nodes nil
   "List of all defined special nodes.  These nodes exist at all times;
 contain only mechanically-generated content; and cannot be renamed, deleted,
-or directly edited by the user.  A special node may contain links to ordinary
-nodes, and vice-versa, but such links do not trigger automatic back-linkage.")
+or edited by the user.  Special nodes neither produce nor receive back-links.")
 
 (defmacro skroad--define-special-node (handle node &rest legend)
   "Define a special NODE; store title in HANDLE."
