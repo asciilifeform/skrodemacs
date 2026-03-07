@@ -440,21 +440,24 @@ call the action with ARGS."
     (let ((lim (max (skroad--node-body-start) (or limit (point-min)))))
       (when (> (point) lim) (re-search-backward r lim t)))))
 
+(skroad--deftype skroad--text-mixin-findable-non-title
+  :doc "Mixin for findable text types excluded from the node title."
+  :mixin t
+  :finder-regex-forward #'skroad--finder-regex-forward-non-title
+  :finder-regex-backward #'skroad--finder-regex-backward-non-title
+  :use 'skroad--text-mixin-findable)
+
 (skroad--deftype skroad--text-mixin-delimited-non-title
   :doc "Mixin for delimited text types excluded from the node title."
   :mixin t
   :use 'skroad--text-mixin-delimited
-  :finder-regex-forward #'skroad--finder-regex-forward-non-title
-  :finder-regex-backward #'skroad--finder-regex-backward-non-title
-  :use 'skroad--text-mixin-findable
+  :use 'skroad--text-mixin-findable-non-title
   :use 'skroad--text-mixin-payloadable)
 
 (skroad--deftype skroad--text-mixin-search-only-non-title
   :doc "Mixin for search-only text types excluded from the node title."
   :mixin t
-  :finder-regex-forward #'skroad--finder-regex-forward-non-title
-  :finder-regex-backward #'skroad--finder-regex-backward-non-title
-  :use 'skroad--text-mixin-findable)
+  :use 'skroad--text-mixin-findable-non-title)
 
 ;; Font lock rendered text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
