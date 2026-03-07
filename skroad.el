@@ -1181,8 +1181,8 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :kbd-doc
-  "<return> go|<r> rename|<l> deaden|<t> textify|<y> teleyank|<del> delete|<spc> prepend space"
-  :kbd-doc-readonly "<return> go"
+  "<return> go|<r> rename|<l> dead|<t> textify|<y> teleyank|<del> zap|<spc> pre-space"
+  :kbd-doc-readonly "<return> go|<y> teleyank|"
   :use 'skroad--text-link-node
   :on-init #'skroad--action-index-linked-init
   :on-create #'skroad--action-index-linked
@@ -1215,7 +1215,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 
 (skroad--deftype skroad--text-link-node-dead
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
-  :kbd-doc "<l> liven|<t> textify|<del> delete|<spc> prepend space"
+  :kbd-doc "<l> liven|<t> textify|<del> zap|<spc> pre-space"
   :use 'skroad--text-link-node
   :start-delim "[-[" :end-delim "]-]"
   :face 'skroad--dead-link-face
@@ -1299,8 +1299,8 @@ YANK-ARGS (optional) are passed to yank."
 ;; TODO: require whitespace or start/end of line delimiters
 (skroad--deftype skroad-text-url-link
   :doc "URL."
-  :kbd-doc "<return> go|<t> textify|<del> delete|<spc> prepend space"
-  :kbd-doc-readonly "<return> go"
+  :kbd-doc "<return> go|<t> textify|<del> zap|<spc> pre-space"
+  :kbd-doc-readonly "<return> go|<y> teleyank|"
   :use 'skroad--text-link
   :mouse-face 'highlight
   :help-echo "External link."
