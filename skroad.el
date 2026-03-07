@@ -1173,9 +1173,15 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :face 'skroad--indirect-renamer-face
   :before-string " " :after-string " ")
 
+(defun skroad--cmd-teleyank-at (&rest args)
+  "Yank (with optional ARGS) into a node when standing on a live link to it."
+  (interactive)
+  (skroad--yank-into (skroad--prop-at 'data) args))
+
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
-  :kbd-doc "<return> go|<r> rename|<l> deaden|<t> textify|<del> delete|<spc> prepend space"
+  :kbd-doc
+  "<return> go|<r> rename|<l> deaden|<t> textify|<y> teleyank|<del> delete|<spc> prepend space"
   :kbd-doc-readonly "<return> go"
   :use 'skroad--text-link-node
   :on-init #'skroad--action-index-linked-init
@@ -1190,9 +1196,8 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :keymap (define-keymap
             "l" #'(lambda () (interactive)
                     (skroad--transform-at 'skroad--text-link-node-dead))
-            "<remap> <yank>"
-            #'(lambda (&rest args) (interactive) ;; tele-yank
-                (skroad--yank-to (skroad--prop-at 'data) args))
+            "y" #'skroad--cmd-teleyank-at ;; Official teleyank trigger
+            "<remap> <yank>" #'skroad--cmd-teleyank-at ;; Ordinary yank key also works
             )
   :renamer-overlay-type 'skroad--text-renamer-indirect
   :use 'skroad--text-mixin-renameable
@@ -1271,9 +1276,9 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
     (let ((target-node (or target (skroad--current-node))))
       (skroad--with-node node t (skroad--disconnect target-node)))))
 
-(defun skroad--yank-to (node &rest yank-args)
+(defun skroad--yank-into (node &rest yank-args) ;; TODO: undo mechanism for it?
   "Yank into NODE (created if not exists) and sync indices (with actions.)
-Do nothing if NODE is a special node.  NODE may lose stub status if a stub.
+Do nothing if NODE is a special node.  NODE, if a stub, may lose stub status.
 YANK-ARGS (optional) are passed to yank."
   (unless (skroad--node-special-p node)
     (skroad--with-node node nil
@@ -1623,11 +1628,9 @@ If the SPECIAL node does not exist yet, it is created."
   "Set orphan STATUS of NODE (if given; else the current node) to STATUS."
   (skroad--set-special-status skroad--special-node-orphans status node))
 
-;;helloworld
 
-(skroad--yank-to "crapz")
-
-;; (skroad--yank-to "xyz")
+;; (skroad--yank-into "crapz")
+;; (skroad--yank-into "xyz")
 ;; (skroad--node-set-stub t "xyz")
 ;; (skroad--node-set-stub nil "xyz")
 ;; (skroad--node-stub-p "xyz")
