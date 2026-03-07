@@ -1632,7 +1632,7 @@ Orphan nodes are candidates for deletion; and only an orphan may be deleted.")
 (skroad--define-special-node skroad--special-node-log skroad--log
   "Operation log.")
 
-(defun skroad--special-status-p (special &optional node)
+(defun skroad--special-has-p (special &optional node)
   "Test whether NODE (if given; else the current node) is linked from SPECIAL.
 If NODE is a special node, return nil.  If SPECIAL does not exist, create it."
   (unless (skroad--node-special-p node)
@@ -1642,28 +1642,28 @@ If NODE is a special node, return nil.  If SPECIAL does not exist, create it."
 
 (defun skroad--node-stub-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known stub."
-  (skroad--special-status-p skroad--special-node-stubs node))
+  (skroad--special-has-p skroad--special-node-stubs node))
 
 (defun skroad--node-orphan-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known orphan."
-  (skroad--special-status-p skroad--special-node-orphans node))
+  (skroad--special-has-p skroad--special-node-orphans node))
 
-(defun skroad--set-special-status (special status &optional node)
+(defun skroad--set-special-linkage (special status &optional node)
   "Set connection STATUS of NODE (if given; else the current node) from SPECIAL.
 If NODE is a special node, do nothing.  If SPECIAL does not exist, create it."
   (unless (or (skroad--node-special-p node)
-              (eq (skroad--special-status-p special node) status))
+              (eq (skroad--special-has-p special node) status))
     (if status
         (skroad--from-node special #'skroad--connect node t)
       (skroad--from-node special #'skroad--disconnect node t))))
 
 (defun skroad--node-set-stub (status &optional node)
   "Set stub STATUS of NODE (if given; else the current node) to STATUS."
-  (skroad--set-special-status skroad--special-node-stubs status node))
+  (skroad--set-special-linkage skroad--special-node-stubs status node))
 
 (defun skroad--node-set-orphan (status &optional node)
   "Set orphan STATUS of NODE (if given; else the current node) to STATUS."
-  (skroad--set-special-status skroad--special-node-orphans status node))
+  (skroad--set-special-linkage skroad--special-node-orphans status node))
 
 ;; (skroad--yank-into "crapz")
 ;; (skroad--yank-into "xyz")
