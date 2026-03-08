@@ -1606,7 +1606,7 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
     (skroad--with-node node nil (skroad--buf-indices))))
 
 (defvar skroad--special-nodes nil
-  "List of all defined special nodes.  These nodes exist at all times;
+  "List of all defined special nodes.  These nodes are created automatically;
 contain only mechanically-generated content; and cannot be renamed, deleted,
 or edited interactively.  Special nodes are not subject to auto-backlinking.")
 
