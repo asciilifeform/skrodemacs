@@ -1353,6 +1353,7 @@ YANK-ARGS (optional) are passed to yank."
 
 (defconst skroad--node-tail "@@@" "Node tail marker.")
 
+;; TODO: do we want to drop a marker on the tail?
 (defun skroad--tail-emplace ()
   "Emplace a node tail in the current node."
   (goto-char (point-max))
@@ -1607,7 +1608,7 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
 (defvar skroad--special-nodes nil
   "List of all defined special nodes.  These nodes exist at all times;
 contain only mechanically-generated content; and cannot be renamed, deleted,
-or edited by the user.  Special nodes neither produce nor receive back-links.")
+or edited interactively.  Special nodes are not subject to auto-backlinking.")
 
 (defmacro skroad--define-special-node (handle node &rest legend)
   "Define a special NODE; store title in HANDLE."
