@@ -479,7 +479,6 @@ call the action with ARGS."
 
 (defvar skroad--font-lock-keywords nil "Font lock keywords for skroad mode.")
 
-;; TODO: abstract out types ordering sort
 (defun skroad--generate-font-lock-keywords ()
   "Generate font-lock keywords for skroad mode."
   (unless skroad--font-lock-keywords
@@ -789,6 +788,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   "Test whether a PAYLOAD of TEXT-TYPE exists in the current node's indices."
   (skroad--indices-has-p text-type payload (skroad--buf-indices)))
 
+;; TODO: probably should copy it before walking
 (defun skroad--current-indices-foreach (text-type fn &rest other-args)
   "Apply FN to all payloads of TEXT-TYPE in the current node's indices."
   (maphash #'(lambda (key val) (apply fn (cons key other-args)))
@@ -806,15 +806,13 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
                (delete-region (skroad--zone-start (1- p)) p)
              (delete-char -1))))))
 
-;; TODO: jump to either living or dead?
 (defun skroad--cmd-top-jump-to-next-link ()
-  "Jump to the next live link following point; cycle to first if no more."
+  "Jump to the next link following point; cycle to first if no more."
   (interactive)
   (funcall (get 'skroad--text-link-node-alive-or-dead 'jump-next-from) (point)))
 
-;; TODO: jump to either living or dead?
 (defun skroad--cmd-top-jump-to-prev-link ()
-  "Jump to the previous live link preceding point; cycle to last if no more."
+  "Jump to the previous link preceding point; cycle to last if no more."
   (interactive)
   (funcall (get 'skroad--text-link-node-alive-or-dead 'jump-prev-from) (point)))
 
@@ -1291,6 +1289,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
            (skroad--link-remove node) ;; If special or stub, simply remove links
          (skroad--link-deaden node)))) ;; ... otherwise, deaden.
 
+;; TODO: override readonly only here, rather than in with-file ?
 (defun skroad--from-node (node op &optional target allow-special)
   "Ensure that NODE exists, and run OP on TARGET (nil: current node) from it.
 If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
