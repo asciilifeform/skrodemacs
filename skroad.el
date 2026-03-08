@@ -1325,7 +1325,7 @@ YANK-ARGS (optional) are passed to yank."
 (skroad--deftype skroad-text-url-link
   :doc "URL."
   :kbd-doc "<return> go|<t> textify|<del> zap|<spc> pre-space"
-  :kbd-doc-readonly "<return> go|<y> teleyank|"
+  :kbd-doc-readonly "<return> go"
   :use 'skroad--text-link
   :mouse-face 'highlight
   :help-echo "External link."
