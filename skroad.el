@@ -534,10 +534,11 @@ call the action with ARGS."
 ;;           (with-current-buffer visiting-buffer
 
 
-;; (defun skroad--refontify-visible ()
-;;   "Refresh fontification of visible portion of a skroad buffer."
-;;   (save-mark-and-excursion
-;;     (font-lock-ensure (window-start) (window-end))))
+(defun skroad--refontify-visible ()
+  "Refresh fontification of visible portion of a skroad buffer."
+  (save-mark-and-excursion
+    (font-lock-flush)
+    (font-lock-ensure (window-start) (window-end))))
 
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1723,8 +1724,8 @@ If NODE is a special node, do nothing.  If SPECIAL does not exist, create it."
   (skroad--set-special-linkage skroad--special-node-orphans status node))
 
 
-(skroad--node-set-stub t "crapz")
-(skroad--node-set-stub nil "crapz")
+;; (skroad--node-set-stub t "crapz")
+;; (skroad--node-set-stub nil "crapz")
 
 ;; (skroad--with-node "k" nil skroad--visible-start)
 
