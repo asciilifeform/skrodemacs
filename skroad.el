@@ -57,7 +57,15 @@
 (defconst skroad--renamer-faces-invalid-background "red"
   "Background colour during invalid renamer state.")
 
-;; cyan1
+(defface skroad--live-link-face
+  '((t :inherit link))
+  "Face used for live links."
+  :group 'skroad-faces)
+
+(defface skroad--stub-link-face
+  '((t :inherit link :foreground "Orange"))
+  "Face used for dead links."
+  :group 'skroad-faces)
 
 (defface skroad--dead-link-face
   '((t :inherit link :foreground "red"))
@@ -303,6 +311,7 @@ call the action with ARGS."
   :order 100 ;; lower number will get rendered first
   :face 'skroad--text-face
   :mouse-face nil
+  :face-selector nil
   :rear-nonsticky t)
 
 (skroad--deftype skroad--text-mixin-delimited
@@ -470,7 +479,7 @@ call the action with ARGS."
   :register 'skroad--text-types-rendered)
 
 (defconst skroad--font-lock-properties
-  '(category face mouse-face zone data)
+  '(category face mouse-face face-selector zone data)
   "Let font lock know what props we use in renderers, so it will clean them.")
 
 (defvar skroad--font-lock-keywords nil "Font lock keywords for skroad mode.")
@@ -538,14 +547,17 @@ call the action with ARGS."
   :require 'face
   :render
   '(lambda ()
-     (set-text-properties
-      (match-beginning 0) (match-end 0)
-      (list 'category type-name
-            'zone (gensym)
-            'face face ;; TODO: dynamic faces
-            'mouse-face (when mouse-face (list mouse-face)) ;; prevent glomming
-            'data (string-clean-whitespace
-                   (match-string-no-properties match-number)))))
+     (let ((payload (string-clean-whitespace
+                     (match-string-no-properties match-number))))
+       (set-text-properties
+        (match-beginning 0) (match-end 0)
+        (list 'category type-name
+              'zone (gensym)
+              'face (if (functionp face-selector)
+                        (funcall face-selector payload)
+                      face)
+              'mouse-face (when mouse-face (list mouse-face)) ;; no glomming
+              'data payload))))
   :use 'skroad--text-mixin-rendered)
 
 (defun skroad--zone-start (&optional pos)
@@ -1134,7 +1146,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :doc "Fundamental type from which all skroad links are derived."
   :use 'skroad--text-atomic
   :exclude-delims-from-titles t
-  :face 'link
   :keymap (define-keymap
             "<down-mouse-1>" #'skroad--cmd-link-left-click
             "RET" #'skroad--cmd-link-activate))
@@ -1223,6 +1234,11 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :on-create-first #'skroad--action-index-unorphaned
   :on-destroy-last #'skroad--action-index-orphaned
   :on-activate #'skroad--action-open-link
+  :face 'skroad--live-link-face
+  :face-selector #'(lambda (payload)
+                     (if (skroad--node-stub-p payload)
+                         'skroad--stub-link-face
+                       'skroad--live-link-face))
   :mouse-face 'highlight
   :help-echo 'skroad--link-mouseover
   :start-delim "[[" :end-delim "]]"
@@ -1344,6 +1360,7 @@ YANK-ARGS (optional) are passed to yank."
   :kbd-doc "<return> go|<t> textify|<del> zap|<spc> pre-space"
   :kbd-doc-readonly "<return> go"
   :use 'skroad--text-link
+  :face 'skroad--live-link-face
   :mouse-face 'highlight
   :help-echo "External link."
   ;; :payload-regex ;; TODO: needs whitespace to terminate
@@ -1704,6 +1721,10 @@ If NODE is a special node, do nothing.  If SPECIAL does not exist, create it."
 (defun skroad--node-set-orphan (status &optional node)
   "Set orphan STATUS of NODE (if given; else the current node) to STATUS."
   (skroad--set-special-linkage skroad--special-node-orphans status node))
+
+
+(skroad--node-set-stub t "crapz")
+(skroad--node-set-stub nil "crapz")
 
 ;; (skroad--with-node "k" nil skroad--visible-start)
 
