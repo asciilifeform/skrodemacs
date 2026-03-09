@@ -521,24 +521,13 @@ call the action with ARGS."
   (save-mark-and-excursion
     (font-lock-ensure (line-beginning-position) (line-end-position))))
 
-;; (defun skroad--refontify-open-nodes ()
-;;   "Refresh fontification of every currently-open node."
-  
-;;   )
-
-;; ;; Declare the region BEG...END's fontification as out-of-date.
-;; (font-lock-flush beg end)
-
-;; (let ((visiting-buffer (find-buffer-visiting old-file)))
-;;         (when visiting-buffer
-;;           (with-current-buffer visiting-buffer
-
-
-(defun skroad--refontify-visible ()
-  "Refresh fontification of visible portion of a skroad buffer."
-  (save-mark-and-excursion
-    (font-lock-flush)
-    (font-lock-ensure (window-start) (window-end))))
+(defun skroad--refontify-open-nodes ()
+  "Refresh fontification in all currently-open nodes."
+  (dolist (buf (buffer-list))
+    (with-current-buffer buf
+      (when (skroad--mode-p)
+        (font-lock-flush)
+        (font-lock-ensure skroad--visible-start skroad--visible-end)))))
 
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -548,10 +537,10 @@ call the action with ARGS."
   :require 'face
   :render
   '(lambda ()
-     (let ((payload (string-clean-whitespace
-                     (match-string-no-properties match-number))))
-       (set-text-properties
-        (match-beginning 0) (match-end 0)
+     (set-text-properties
+      (match-beginning 0) (match-end 0)
+      (let ((payload (string-clean-whitespace
+                      (match-string-no-properties match-number))))
         (list 'category type-name
               'zone (gensym)
               'face (if (functionp face-selector)
@@ -1236,7 +1225,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :on-destroy-last #'skroad--action-index-orphaned
   :on-activate #'skroad--action-open-link
   :face 'skroad--live-link-face
-  :face-selector #'(lambda (payload)
+  :face-selector #'(lambda (payload) ;; If a link to a stub, use stub link face
                      (if (skroad--node-stub-p payload)
                          'skroad--stub-link-face
                        'skroad--live-link-face))
@@ -1477,7 +1466,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   :renamer-overlay-type 'skroad--text-renamer-direct
   :use 'skroad--text-mixin-renameable
   :match-number 0
-  :regex-any "\\`[^\n]*\n"
+  :regex-any "\\`.*\n"
   :use 'skroad--text-mixin-findable-anywhere
   :use 'skroad--text-mixin-rendered-zoned
   )
@@ -1713,19 +1702,21 @@ If NODE is a special node, do nothing.  If SPECIAL does not exist, create it."
               (eq (skroad--special-has-p special node) status)) ;; no change?
     (if status
         (skroad--from-node special #'skroad--connect node t)
-      (skroad--from-node special #'skroad--disconnect node t))))
+      (skroad--from-node special #'skroad--disconnect node t))
+    t))
 
 (defun skroad--node-set-stub (status &optional node)
   "Set stub STATUS of NODE (if given; else the current node) to STATUS."
-  (skroad--set-special-linkage skroad--special-node-stubs status node))
+  (when (skroad--set-special-linkage skroad--special-node-stubs status node)
+    (skroad--refontify-open-nodes))) ;; Refontify if stub status changed
 
 (defun skroad--node-set-orphan (status &optional node)
   "Set orphan STATUS of NODE (if given; else the current node) to STATUS."
   (skroad--set-special-linkage skroad--special-node-orphans status node))
 
 
-;; (skroad--node-set-stub t "crapz")
-;; (skroad--node-set-stub nil "crapz")
+;; (skroad--node-set-stub t "pqr")
+;; (skroad--node-set-stub nil "pqr")
 
 ;; (skroad--with-node "k" nil skroad--visible-start)
 
