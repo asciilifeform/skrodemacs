@@ -311,7 +311,7 @@ call the action with ARGS."
   :order 100 ;; lower number will get rendered first
   :face 'skroad--text-face
   :mouse-face nil
-  :face-selector nil
+  :face-function nil
   :rear-nonsticky t)
 
 (skroad--deftype skroad--text-mixin-delimited
@@ -479,7 +479,7 @@ call the action with ARGS."
   :register 'skroad--text-types-rendered)
 
 (defconst skroad--font-lock-properties
-  '(category face mouse-face face-selector zone data)
+  '(category face mouse-face zone data)
   "Let font lock know what props we use in renderers, so it will clean them.")
 
 (defvar skroad--font-lock-keywords nil "Font lock keywords for skroad mode.")
@@ -543,8 +543,8 @@ call the action with ARGS."
                       (match-string-no-properties match-number))))
         (list 'category type-name
               'zone (gensym)
-              'face (if (functionp face-selector)
-                        (funcall face-selector payload)
+              'face (if (functionp face-function)
+                        (funcall face-function payload)
                       face)
               'mouse-face (when mouse-face (list mouse-face)) ;; no glomming
               'data payload))))
@@ -1224,8 +1224,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :on-create-first #'skroad--action-index-unorphaned
   :on-destroy-last #'skroad--action-index-orphaned
   :on-activate #'skroad--action-open-link
-  :face 'skroad--live-link-face
-  :face-selector #'(lambda (payload) ;; If a link to a stub, use stub link face
+  :face-function #'(lambda (payload) ;; If a link to a stub, use stub link face
                      (if (skroad--node-stub-p payload)
                          'skroad--stub-link-face
                        'skroad--live-link-face))
