@@ -57,6 +57,11 @@
 (defconst skroad--renamer-faces-invalid-background "red"
   "Background colour during invalid renamer state.")
 
+(defface skroad--highlight-link-face
+  '((t :inherit highlight))
+  "Face used for highlighted links."
+  :group 'skroad-faces)
+
 (defface skroad--live-link-face
   '((t :inherit link))
   "Face used for live links."
@@ -527,7 +532,9 @@ call the action with ARGS."
     (with-current-buffer buf
       (when (skroad--mode-p)
         (font-lock-flush)
-        (font-lock-ensure skroad--visible-start skroad--visible-end)))))
+        (font-lock-ensure
+         (or skroad--visible-start (point-min))
+         (or skroad--visible-end (point-max)))))))
 
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1159,6 +1166,8 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (skroad--deftype skroad--text-link-node
   :doc "Fundamental type for skroad node links (live or dead)."
   :use 'skroad--text-link
+  :face 'skroad--live-link-face ;; default
+  :mouse-face 'skroad--highlight-link-face
   :payload-regex skroad--node-title-regex
   :keymap (define-keymap "t" #'skroad--cmd-link-comment))
 
@@ -1228,7 +1237,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
                      (if (skroad--node-stub-p payload)
                          'skroad--stub-link-face
                        'skroad--live-link-face))
-  :mouse-face 'highlight
   :help-echo 'skroad--link-mouseover
   :start-delim "[[" :end-delim "]]"
   :keymap (define-keymap
@@ -1349,8 +1357,6 @@ YANK-ARGS (optional) are passed to yank."
   :kbd-doc "<return> go|<t> textify|<del> zap|<spc> pre-space"
   :kbd-doc-readonly "<return> go"
   :use 'skroad--text-link
-  :face 'skroad--live-link-face
-  :mouse-face 'highlight
   :help-echo "External link."
   ;; :payload-regex ;; TODO: needs whitespace to terminate
   ;; "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\r\f\t\s]+\\)"
@@ -1714,8 +1720,8 @@ If NODE is a special node, do nothing.  If SPECIAL does not exist, create it."
   (skroad--set-special-linkage skroad--special-node-orphans status node))
 
 
-;; (skroad--node-set-stub t "pqr")
-;; (skroad--node-set-stub nil "pqr")
+(skroad--node-set-stub t "pqr")
+(skroad--node-set-stub nil "pqr")
 
 ;; (skroad--with-node "k" nil skroad--visible-start)
 
