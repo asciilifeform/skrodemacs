@@ -18,15 +18,6 @@
 (defconst skroad--file-extension "skroad"
   "File extension denoting a skroad node.")
 
-(defconst skroad--orphans "#Orphans"
-  "Title of the special node which tracks known orphans.")
-
-(defconst skroad--stubs "#Stubs"
-  "Title of the special node which tracks known stubs.")
-
-(defconst skroad--log "#Log"
-  "Title of the special node containing the operations log.")
-
 ;;; Fonts. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defconst skroad--node-title-regex "\\([^][\n\r\f\t\s]+[^][\n\r\f\t]*?\\)"
@@ -408,13 +399,18 @@ call the action with ARGS."
   "Generate a backward finder for regex R."
   (lambda (limit) (re-search-forward r limit t)))
 
+(skroad--deftype skroad--text-mixin-findable-anywhere
+  :doc "Mixin for findable text types found anywhere in the buffer."
+  :mixin t
+  :finder-regex-forward #'skroad--finder-regex-forward
+  :finder-regex-backward #'skroad--finder-regex-backward
+  :use 'skroad--text-mixin-findable)
+
 (skroad--deftype skroad--text-mixin-delimited-anywhere
   :doc "Mixin for delimited text types found anywhere in the buffer."
   :mixin t
   :use 'skroad--text-mixin-delimited
-  :finder-regex-forward #'skroad--finder-regex-forward
-  :finder-regex-backward #'skroad--finder-regex-backward
-  :use 'skroad--text-mixin-findable
+  :use 'skroad--text-mixin-findable-anywhere
   :use 'skroad--text-mixin-payloadable)
 
 ;; TODO: invalidate cache when changing title
@@ -516,12 +512,29 @@ call the action with ARGS."
   (save-mark-and-excursion
     (font-lock-ensure (line-beginning-position) (line-end-position))))
 
+;; (defun skroad--refontify-open-nodes ()
+;;   "Refresh fontification of every currently-open node."
+  
+;;   )
+
+;; ;; Declare the region BEG...END's fontification as out-of-date.
+;; (font-lock-flush beg end)
+
+;; (let ((visiting-buffer (find-buffer-visiting old-file)))
+;;         (when visiting-buffer
+;;           (with-current-buffer visiting-buffer
+
+
+;; (defun skroad--refontify-visible ()
+;;   "Refresh fontification of visible portion of a skroad buffer."
+;;   (save-mark-and-excursion
+;;     (font-lock-ensure (window-start) (window-end))))
+
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(skroad--deftype skroad--text-mixin-render-delimited-zoned
-  :doc "Mixin for zoned delimited text types rendered by font-lock."
+(skroad--deftype skroad--text-mixin-rendered-zoned
+  :doc "Mixin for zoned text types rendered by font-lock."
   :mixin t
-  :exclude-delims-from-titles t
   :require 'face
   :render
   '(lambda ()
@@ -529,7 +542,7 @@ call the action with ARGS."
       (match-beginning 0) (match-end 0)
       (list 'category type-name
             'zone (gensym)
-            'face face
+            'face face ;; TODO: dynamic faces
             'mouse-face (when mouse-face (list mouse-face)) ;; prevent glomming
             'data (string-clean-whitespace
                    (match-string-no-properties match-number)))))
@@ -577,8 +590,10 @@ call the action with ARGS."
   :payload-regex "\\([^*]+\\)"
   :use 'skroad--text-mixin-render-delimited-decorative)
 
+;; TODO: should have actual delims
 (skroad--deftype skroad--text-decorative-heading
   :doc "Heading text."
+  :exclude-delims-from-titles t
   :face 'skroad--heading-face
   :payload-regex "^##\s*\\([^\n\r\f\t\s]+[^\n\r\f\t]*\\)"
   :use 'skroad--text-mixin-render-delimited-decorative)
@@ -898,6 +913,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
    (get 'skroad--text-link-node-alive-or-dead 'jump-next-from)
    (skroad--zone-end)))
 
+;; TODO: require zone?
 (skroad--deftype skroad--text-atomic
   :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
   :on-enter '(lambda (pos-from auto)
@@ -981,9 +997,9 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
               (when (get type 'exclude-delims-from-titles)
                 (let ((start-delim (get type 'start-delim))
                       (end-delim (get type 'end-delim)))
-                  (unless (string-empty-p start-delim)
+                  (unless (or (null start-delim) (string-empty-p start-delim))
                     (push start-delim prohib-strings))
-                  (unless (string-empty-p end-delim)
+                  (unless (or (null end-delim) (string-empty-p end-delim))
                     (push end-delim prohib-strings)))))
             (regexp-opt prohib-strings))))
   skroad--title-prohibited-regex-cached)
@@ -1117,6 +1133,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (skroad--deftype skroad--text-link
   :doc "Fundamental type from which all skroad links are derived."
   :use 'skroad--text-atomic
+  :exclude-delims-from-titles t
   :face 'link
   :keymap (define-keymap
             "<down-mouse-1>" #'skroad--cmd-link-left-click
@@ -1218,7 +1235,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :renamer-overlay-type 'skroad--text-renamer-indirect
   :use 'skroad--text-mixin-renameable
   :use 'skroad--text-mixin-delimited-non-title
-  :use 'skroad--text-mixin-render-delimited-zoned
+  :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
 
 (defun skroad--insert-live-link (node)
@@ -1239,7 +1256,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
             "l" #'(lambda () (interactive)
                     (skroad--transform-at 'skroad--text-link-node-live)))
   :use 'skroad--text-mixin-delimited-non-title
-  :use 'skroad--text-mixin-render-delimited-zoned
+  :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
 
 (skroad--deftype skroad--text-link-node-alive-or-dead
@@ -1329,26 +1346,34 @@ YANK-ARGS (optional) are passed to yank."
   :use 'skroad--text-link
   :mouse-face 'highlight
   :help-echo "External link."
-  :payload-regex ;; TODO: needs whitespace to terminate
+  ;; :payload-regex ;; TODO: needs whitespace to terminate
+  ;; "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\r\f\t\s]+\\)"
+  :match-number 0
+  :regex-any ;; TODO: needs whitespace to terminate
   "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\r\f\t\s]+\\)"
   :on-activate #'browse-url
   :keymap (define-keymap "t" #'skroad--cmd-url-comment)
-  :use 'skroad--text-mixin-delimited-non-title
-  :use 'skroad--text-mixin-render-delimited-zoned
+  :use 'skroad--text-mixin-findable-non-title
+  ;; :use 'skroad--text-mixin-delimited-non-title
+  :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed ;; TODO: do we need this?
   )
 
 ;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: readonly tail, bg colour, etc
 (skroad--deftype skroad--text-node-tail
   :doc "Node tail."
   :kbd-doc "Auto-backlinks inserted below this marker; throws inserted above it."
   :use 'skroad--text-atomic
   :face 'skroad--node-tail-face
   :help-echo "Node tail."
-  :payload-regex "^\\(@@@\\)$"
-  :use 'skroad--text-mixin-delimited-non-title
-  :use 'skroad--text-mixin-render-delimited-zoned
+  :match-number 0
+  :regex-any "^\\(@@@\\)$"
+  ;; :payload-regex "^\\(@@@\\)$"
+  :use 'skroad--text-mixin-findable-non-title
+  ;; :use 'skroad--text-mixin-delimited-non-title
+  :use 'skroad--text-mixin-rendered-zoned
   )
 
 (defconst skroad--node-tail "@@@" "Node tail marker.")
@@ -1385,7 +1410,8 @@ YANK-ARGS (optional) are passed to yank."
 
 (defun skroad--node-test-stub-p ()
   "Determine whether the current node should be classified as a stub.
-A stub is a node where no text is found between the title and the tail."
+A stub is a node where no text is found between the title and the tail.
+If the tail did not previously exist in the current node, it is emplaced."
   (save-mark-and-excursion
     (skroad--tail-jump-before)
     (let ((tail (point)))
@@ -1428,13 +1454,14 @@ A stub is a node where no text is found between the title and the tail."
     "<remap> <kill-ring-save>" #'skroad--cmd-title-kill-ring-save
     )
   :face 'skroad--title-face
+  :inhibit-isearch t ;; Don't interactive-search in the title
   :read-only "Title must be changed via rename command!"
   :renamer-overlay-type 'skroad--text-renamer-direct
   :use 'skroad--text-mixin-renameable
   :match-number 0
-  :payload-regex "\\`[^\n]*\n"
-  :use 'skroad--text-mixin-delimited-anywhere
-  :use 'skroad--text-mixin-render-delimited-zoned
+  :regex-any "\\`[^\n]*\n"
+  :use 'skroad--text-mixin-findable-anywhere
+  :use 'skroad--text-mixin-rendered-zoned
   )
 
 ;; Cursor motion, mark, and floating title handling. ;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1501,12 +1528,24 @@ A stub is a node where no text is found between the title and the tail."
   "Triggers prior to a skroad buffer save."
   (skroad--renamer-deactivate))
 
+(defvar-local skroad--visible-start nil
+  "Start of last known visible text interval in the current buffer.")
+
+(defvar-local skroad--visible-end nil
+  "End of last known visible text interval in the current buffer.")
+
+(defun skroad--update-visible ()
+  "Update the last known visible text interval of the current node."
+  (setq-local skroad--visible-start (window-start))
+  (setq-local skroad--visible-end (window-end)))
+
 (defun skroad--scroll-hook (window start)
   "Triggers when a buffer scrolls."
   (setq-local header-line-format ;; Float the title if it isn't in view
               (when (and skroad--floating-title-enable (> start 1))
                 (buffer-substring (point-min)
-                                  (skroad--get-end-of-line 1)))))
+                                  (skroad--get-end-of-line 1))))
+  (skroad--update-visible))
 
 (when skroad--debug
   (defadvice skroad--post-command-hook (around intercept activate)
@@ -1559,6 +1598,7 @@ A stub is a node where no text is found between the title and the tail."
   (skroad--init-font-lock)
   (skroad--set-writability) ;; If special node, open it as read-only
   (skroad--cache-intern (skroad--current-node))
+  (skroad--update-visible)
   (skroad--async-dispatch #'skroad--buf-indices-sync) ;; move this to enabler
   )
 
@@ -1614,21 +1654,21 @@ or edited interactively.  Special nodes are not subject to auto-backlinking.")
   "Define a special NODE; store title in HANDLE."
   (declare (indent defun))
   `(progn
-     (defconst ,handle ,node ,@legend)
+     (defconst ,handle ,node ,@legend) ;; TODO: redundant?
      (add-to-list 'skroad--special-nodes ,node)))
 
 (defun skroad--node-special-p (&optional node)
   "Return t if NODE (if given; else the current node) is a special node."
   (member (or node (skroad--current-node)) skroad--special-nodes))
 
-(skroad--define-special-node skroad--special-node-orphans skroad--orphans
+(skroad--define-special-node skroad--special-node-orphans "#Orphans"
   "A node with links to all known orphans (non-specials without any live links.)
 Orphan nodes are candidates for deletion; and only an orphan may be deleted.")
 
-(skroad--define-special-node skroad--special-node-stubs skroad--stubs
+(skroad--define-special-node skroad--special-node-stubs "#Stubs"
   "A node with links to all known stubs (non-specials containing only links.)")
 
-(skroad--define-special-node skroad--special-node-log skroad--log
+(skroad--define-special-node skroad--special-node-log "#Log"
   "Operation log.")
 
 (defun skroad--special-has-p (special &optional node)
@@ -1664,6 +1704,10 @@ If NODE is a special node, do nothing.  If SPECIAL does not exist, create it."
 (defun skroad--node-set-orphan (status &optional node)
   "Set orphan STATUS of NODE (if given; else the current node) to STATUS."
   (skroad--set-special-linkage skroad--special-node-orphans status node))
+
+;; (skroad--with-node "k" nil skroad--visible-start)
+
+;; (skroad--with-node "crapz" nil (get-buffer-window-list (current-buffer) nil t))
 
 ;; (skroad--yank-into "crapz")
 ;; (skroad--yank-into "xyz")
