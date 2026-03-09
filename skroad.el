@@ -1702,7 +1702,8 @@ If NODE is a special node, return nil.  If SPECIAL does not exist, create it."
 
 (defun skroad--set-special-linkage (special status &optional node)
   "Set connection STATUS of NODE (if given; else the current node) from SPECIAL.
-If NODE is a special node, do nothing.  If SPECIAL does not exist, create it."
+If NODE is a special node, do nothing.  If SPECIAL does not exist, create it.
+Return t when the connection status has in fact changed as a result."
   (unless (or (skroad--node-special-p node) ;; If node is special, do nothing
               (eq (skroad--special-has-p special node) status)) ;; no change?
     (if status
