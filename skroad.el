@@ -124,6 +124,15 @@
            (insert-file-contents ,file t nil nil t) ;; set as unmodified
            ,@body)))))
 
+(defmacro skroad--visit-open-nodes (&rest body)
+  "Visit each currently-open node buffer and execute BODY."
+  (declare (indent defun))
+  (let ((visiting-buffer (make-symbol "visiting-buffer")))
+    `(dolist (,visiting-buffer (buffer-list))
+       (with-current-buffer ,visiting-buffer
+         (when (skroad--mode-p)
+           ,@body)))))
+
 (defun skroad--keyword-to-symbol (exp)
   "If EXP is a keyword, convert it to a symbol. If not, return it as-is."
   (unless (keywordp exp) (error "%s is not a keyword!" exp))
@@ -526,15 +535,12 @@ call the action with ARGS."
   (save-mark-and-excursion
     (font-lock-ensure (line-beginning-position) (line-end-position))))
 
-(defun skroad--refontify-open-nodes ()
-  "Refresh fontification in all currently-open nodes."
-  (dolist (buf (buffer-list))
-    (with-current-buffer buf
-      (when (skroad--mode-p)
-        (font-lock-flush)
-        (font-lock-ensure
-         (or skroad--visible-start (point-min))
-         (or skroad--visible-end (point-max)))))))
+(defun skroad--refontify-current-buffer ()
+  "Refresh fontification in the current buffer."
+  (font-lock-flush)
+  (font-lock-ensure
+   (or skroad--visible-start (point-min))
+   (or skroad--visible-end (point-max))))
 
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -923,6 +929,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
    (skroad--zone-end)))
 
 ;; TODO: require zone?
+;; TODO: allow mouse click point motion by default
 (skroad--deftype skroad--text-atomic
   :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
   :on-enter '(lambda (pos-from auto)
@@ -1069,6 +1076,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
               :background ,skroad--renamer-faces-invalid-background))
   nil)
 
+;; TODO: bring out the title validator
 (defun skroad--renamer-validate-if-active ()
   "If a renamer is active, validate the proposed text."
   (setq-local
@@ -1258,6 +1266,12 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (defun skroad--connected-p (node)
   "Determine whether the current node has at least one live link to NODE."
   (skroad--current-indices-have-p 'skroad--text-link-node-live node))
+
+;;;;; TODO: when dead link clicked, simply move the point there
+;; (defun skroad--cmd-dead-link-activate ()
+;;   "Move the point to a dead link."
+;;   (interactive)
+;;   (goto-char (point)))
 
 (skroad--deftype skroad--text-link-node-dead
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
@@ -1714,7 +1728,9 @@ Return t when the connection status has in fact changed as a result."
 (defun skroad--node-set-stub (status &optional node)
   "Set stub STATUS of NODE (if given; else the current node) to STATUS."
   (when (skroad--set-special-linkage skroad--special-node-stubs status node)
-    (skroad--refontify-open-nodes))) ;; Refontify if stub status changed
+    (skroad--visit-open-nodes ;; Walk the currently-open nodes
+      (when (skroad--connected-p node) ;; Refontify if node is linked there
+        (skroad--refontify-current-buffer)))))
 
 (defun skroad--node-set-orphan (status &optional node)
   "Set orphan STATUS of NODE (if given; else the current node) to STATUS."
