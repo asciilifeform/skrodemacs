@@ -1737,8 +1737,8 @@ Return t when the connection status has in fact changed as a result."
   (skroad--set-special-linkage skroad--special-node-orphans status node))
 
 
-(skroad--node-set-stub t "pqr")
-(skroad--node-set-stub nil "pqr")
+;; (skroad--node-set-stub t "pqr")
+;; (skroad--node-set-stub nil "pqr")
 
 ;; (skroad--with-node "k" nil skroad--visible-start)
 
