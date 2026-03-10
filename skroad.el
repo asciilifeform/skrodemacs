@@ -1413,8 +1413,11 @@ YANK-ARGS (optional) are passed to yank."
             (funcall
              (get 'skroad--text-link-node-alive-or-dead 'find-any-backward)
              (skroad--node-body-start))
-            (string-blank-p
-             (buffer-substring-no-properties (match-end 0) tail)))
+            (eq (match-end 0)
+                (save-mark-and-excursion
+                  (goto-char tail)
+                  (skip-syntax-backward " ")
+                  (point))))
       (setq tail (point)))
     (goto-char tail)
     (ensure-empty-lines 1)
@@ -1737,6 +1740,8 @@ Return t when the connection status has in fact changed as a result."
   (skroad--set-special-linkage skroad--special-node-orphans status node))
 
 
+;; (skroad--from-node "xyz" #'skroad--connect "qqq1" t)
+
 ;; (skroad--node-set-stub t "pqr")
 ;; (skroad--node-set-stub nil "pqr")
 
@@ -1761,6 +1766,8 @@ Return t when the connection status has in fact changed as a result."
 ;;     (error "Could not rename node '%s' to '%s'!" node node-new))
 ;;   t)
 
+;; TODO: proper mode exit cleanup
+;; TODO: do NOT set the mode if file is not in the data dir
 (define-derived-mode skroad-mode text-mode "Skroad"
   ;; Prohibit change hooks firing when only text properties have changed:
   (skroad--silence-modifications 'put-text-property)
