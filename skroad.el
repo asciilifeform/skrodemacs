@@ -883,6 +883,8 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (skroad--define-atomics-region-cmd kill-region)
 (skroad--define-atomics-region-cmd kill-ring-save)
 
+;; TODO: make sure selector is NEVER visible if point is not in this buffer!
+
 (defvar-local skroad--buf-selector nil
   "Selector overlay active when an atomic is under the point.")
 
@@ -1387,6 +1389,8 @@ YANK-ARGS (optional) are passed to yank."
 
 ;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defconst skroad--node-tail "@@@" "Node tail marker.")
+
 ;; TODO: readonly tail, bg colour, etc
 (skroad--deftype skroad--text-node-tail
   :doc "Node tail."
@@ -1396,57 +1400,62 @@ YANK-ARGS (optional) are passed to yank."
   :help-echo "Node tail."
   :match-number 0
   :regex-any "^\\(@@@\\)$"
-  ;; :payload-regex "^\\(@@@\\)$"
   :use 'skroad--text-mixin-findable-non-title
-  ;; :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-rendered-zoned
   )
 
-(defconst skroad--node-tail "@@@" "Node tail marker.")
+(defvar-local skroad--buf-tail-marker nil
+  "Marker which points after the current node's tail, if known.")
 
-;; TODO: do we want to drop a marker on the tail?
-(defun skroad--tail-emplace ()
-  "Emplace a node tail in the current node."
-  (goto-char (point-max))
-  (let ((tail (point)))
-    (while (and
-            (funcall
-             (get 'skroad--text-link-node-alive-or-dead 'find-any-backward)
-             (skroad--node-body-start))
-            (eq (match-end 0)
-                (save-mark-and-excursion
-                  (goto-char tail)
-                  (skip-syntax-backward " ")
-                  (point))))
-      (setq tail (point)))
-    (goto-char tail)
-    (ensure-empty-lines 1)
-    (setq tail (point))
-    (insert skroad--node-tail)
-    (ensure-empty-lines 1)
-    (goto-char tail)
-    (goto-char (line-end-position))))
+(defun skroad--tail-find-or-emplace ()
+  "Find or emplace the tail in the current node, and store its location."
+  (unless (funcall (get 'skroad--text-node-tail 'find-any-first))
+    (goto-char (point-max))
+    (let ((tail (point)))
+      (while (and
+              (funcall
+               (get 'skroad--text-link-node-alive-or-dead 'find-any-backward)
+               (skroad--node-body-start))
+              (eq (match-end 0)
+                  (save-mark-and-excursion
+                    (goto-char tail)
+                    (skip-syntax-backward " ")
+                    (point))))
+        (setq tail (point)))
+      (goto-char tail)
+      (ensure-empty-lines 1)
+      (setq tail (point))
+      (insert skroad--node-tail)
+      (ensure-empty-lines 1)
+      (goto-char tail)
+      (goto-char (line-end-position))))
+  (setq-local skroad--buf-tail-marker (copy-marker (point))))
 
 (defun skroad--tail-jump-after ()
-  "Find or create the node tail in the current node; set point after it."
-  (or (funcall (get 'skroad--text-node-tail 'find-any-first))
-      (skroad--tail-emplace)))
+  "Find or create the tail in the current node; set point after it."
+  (or (and skroad--buf-tail-marker ;; Try using the tail marker, if we have it:
+           (goto-char (marker-position skroad--buf-tail-marker))
+           (string-equal ;; Verify that tail marker actually points to a tail
+            (buffer-substring-no-properties (line-beginning-position) (point))
+            skroad--node-tail))
+      (skroad--tail-find-or-emplace)))
 
 (defun skroad--tail-jump-before ()
-  "Find or create the node tail in the current node; set point before it."
+  "Find or create the tail in the current node; set point before it."
   (skroad--tail-jump-after)
   (goto-char (line-beginning-position)))
 
-(defun skroad--node-test-stub-p ()
-  "Determine whether the current node should be classified as a stub.
+(defun skroad--update-stub-status ()
+  "Determine whether the current node is a stub, and update Stubs if necessary.
 A stub is a node where no text is found between the title and the tail.
 If the tail did not previously exist in the current node, it is emplaced."
-  (save-mark-and-excursion
-    (skroad--tail-jump-before)
-    (let ((tail (point)))
-      (goto-char (skroad--node-body-start))
-      (skip-syntax-forward " ")
-      (eq (point) tail))))
+  (skroad--node-set-stub
+   (save-mark-and-excursion
+     (skroad--tail-jump-before)
+     (let ((before-tail (point)))
+       (goto-char (skroad--node-body-start))
+       (skip-syntax-forward " ")
+       (eq (point) before-tail)))))
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1550,7 +1559,9 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
   (skroad--buf-indices-sync) ;; TODO: do it in save hook?
   (when (buffer-modified-p)
-    (skroad--renamer-validate-if-active))
+    (skroad--renamer-validate-if-active)
+    (skroad--update-stub-status) ;; TODO: don't do it if renamer active here?
+    )
   (unless mark-active (setq-local mouse-highlight t)))
 
 (defun skroad--before-save-hook ()
@@ -1628,6 +1639,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--set-writability) ;; If special node, open it as read-only
   (skroad--cache-intern (skroad--current-node))
   (skroad--update-visible)
+  (skroad--update-stub-status)
   (skroad--async-dispatch #'skroad--buf-indices-sync) ;; move this to enabler
   )
 
@@ -1729,14 +1741,16 @@ Return t when the connection status has in fact changed as a result."
     t))
 
 (defun skroad--node-set-stub (status &optional node)
-  "Set stub STATUS of NODE (if given; else the current node) to STATUS."
-  (when (skroad--set-special-linkage skroad--special-node-stubs status node)
-    (skroad--visit-open-nodes ;; Walk the currently-open nodes
-      (when (skroad--connected-p node) ;; Refontify if node is linked there
-        (skroad--refontify-current-buffer)))))
+  "Set stub status of NODE (if given; else the current node) to STATUS."
+  (let ((node-or-current (or node (skroad--current-node))))
+    (when (skroad--set-special-linkage
+           skroad--special-node-stubs status node-or-current)
+      (skroad--visit-open-nodes ;; Walk the currently-open nodes
+        (when (skroad--connected-p node-or-current)
+          (skroad--refontify-current-buffer)))))) ;; Refontify if linked there
 
 (defun skroad--node-set-orphan (status &optional node)
-  "Set orphan STATUS of NODE (if given; else the current node) to STATUS."
+  "Set orphan status of NODE (if given; else the current node) to STATUS."
   (skroad--set-special-linkage skroad--special-node-orphans status node))
 
 
