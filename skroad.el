@@ -125,7 +125,7 @@
            ,@body)))))
 
 (defmacro skroad--visit-open-nodes (&rest body)
-  "Visit each currently-open node buffer and execute BODY."
+  "Evaluate BODY in each currently-open node buffer."
   (declare (indent defun))
   (let ((visiting-buffer (make-symbol "visiting-buffer")))
     `(dolist (,visiting-buffer (buffer-list))
