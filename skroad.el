@@ -689,7 +689,7 @@ If FINAL is t, the count sum going negative will signal an error."
   `(or (alist-get ,text-type ,indices)
        (setf (alist-get ,text-type ,indices) (make-hash-table :test 'equal))))
 
-;; TODO: not-found action?
+;; TODO: `on-dupe` action?
 ;; TODO: secondary actions should always execute, unless this is a special node
 (defun skroad--indices-update (indices changes &optional no-actions init-scan)
   "Apply a set of pending CHANGES to INDICES.  Return the updated INDICES.
@@ -701,7 +701,8 @@ Also execute the following text type actions (unless NO-ACTIONS) :
 Secondary type actions (run after a primary action has ran, if applicable) :
 `on-create-first`: the first payload of this type has appeared in the buffer.
 `on-init-first`: same as above, but during initial scan (INIT-SCAN is t).
-`on-destroy-last`: the last payload of this type was removed from the buffer."
+`on-destroy-last`: the last payload of this type was removed from the buffer.
+`on-init-none`: during initial scan, no payloads of this type were found."
   (dolist (pending-change changes)
     (let ((text-type (car pending-change)) (type-changes (cdr pending-change)))
       (when (not (skroad--hash-empty-p type-changes))
@@ -723,9 +724,12 @@ Secondary type actions (run after a primary action has ran, if applicable) :
           (let*
               ((none-after (skroad--hash-empty-p type-index))
                (action
-                (cond ((and none-before (not none-after)) type-create-action)
+                (cond ((and init-scan none-after) 'on-init-none)
+                      ((and none-before (not none-after)) type-create-action)
                       ((and (not none-before) none-after) 'on-destroy-last))))
-            (unless (or (null action) no-actions)
+            ;; was: (or (null action) no-actions)
+            (unless (or (null action)
+                        (skroad--node-special-p))
               (skroad--type-action text-type action))
             (when none-after ;; Don't waste cache space on empty indices
               (setq indices (assq-delete-all text-type indices))))))))
@@ -759,7 +763,9 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
          (init (eq indices 'index-me))
          (have-changes (skroad--buf-indices-have-pending-p)))
     (when init
-      (when have-changes (error "Tried to apply changes to unindexed node!"))
+      (when have-changes
+        (error "Tried to apply changes to unindexed node: '%s'"
+               (skroad--current-node)))
       (skroad--index-scan-region (point-min) (point-max) 1)
       (setq have-changes t)
       (setq indices nil))
@@ -1185,39 +1191,32 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (defun skroad--action-open-link (data)
   (message (format "Live link pushed: '%s'" data)))
 
-;; TODO: lint action?
-(defun skroad--action-index-linked-init (node)
+;; TODO: prevent reentry
+(defun skroad--action-connected-on-init (node)
   "The first instance of a live link to NODE was found during indexing."
+  ;; TODO: lint-only?
+  (skroad--in-node node #'skroad--connect)
   )
 
-(defun skroad--action-index-linked (node)
+(defun skroad--action-connected (node)
   "The first instance of a live link to NODE was introduced."
-  (message "Link create: node='%s'" node)
+  ;; (message "Link create: node='%s'" node)
+  (skroad--in-node node #'skroad--connect)
   )
 
-(defun skroad--action-index-unlinked (node)
+(defun skroad--action-disconnected (node)
   "The last instance of a live link to NODE was removed."
-  (message "Link destroy: node='%s'" node)
+  ;; (message "Link destroy: node='%s'" node)
+  (skroad--in-node node #'skroad--disconnect)
   )
 
-;; TODO: lint action?
-(defun skroad--action-index-unorphaned-init ()
-  "A live link was found for the first time during indexing."
-  (message "Link init first")
-  )
+(defun skroad--action-orphaned ()
+  "The current node is an orphan (i.e. it has NO live links)."
+  (skroad--node-set-orphan t))
 
-;; TODO: deorphan the node
-(defun skroad--action-index-unorphaned ()
-  "A live link was introduced, where there were none before."
-  (message "Link create first")
-  )
-
-;; TODO: orphan the node (if not stub)
-;; TODO: if stub, delete the node (1st close any buffer where it is open)
-(defun skroad--action-index-orphaned ()
-  "The last live link was removed."
-  (message "Link destroy last")
-  )
+(defun skroad--action-unorphaned ()
+  "The current node is NOT an orphan (i.e. it has live links)."
+  (skroad--node-set-orphan nil))
 
 (skroad--deftype skroad--text-renamer-indirect
   :doc "Renamer for editing a node's title while standing on a link to the node."
@@ -1236,12 +1235,13 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   "<return> go|<r> rename|<l> dead|<t> textify|<y> teleyank|<del> zap|<spc> pre-space"
   :kbd-doc-readonly "<return> go|<y> teleyank|"
   :use 'skroad--text-link-node
-  :on-init #'skroad--action-index-linked-init
-  :on-create #'skroad--action-index-linked
-  :on-destroy #'skroad--action-index-unlinked
-  :on-init-first #'skroad--action-index-unorphaned-init
-  :on-create-first #'skroad--action-index-unorphaned
-  :on-destroy-last #'skroad--action-index-orphaned
+  :on-init-none #'skroad--action-orphaned
+  :on-destroy-last #'skroad--action-orphaned
+  :on-init-first #'skroad--action-unorphaned
+  :on-create-first #'skroad--action-unorphaned
+  :on-init #'skroad--action-connected-on-init
+  :on-create #'skroad--action-connected
+  :on-destroy #'skroad--action-disconnected
   :on-activate #'skroad--action-open-link
   :face-function #'(lambda (payload) ;; If a link to a stub, use stub link face
                      (if (skroad--node-stub-p payload)
@@ -1253,7 +1253,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
             "l" #'(lambda () (interactive)
                     (skroad--transform-at 'skroad--text-link-node-dead))
             "y" #'skroad--cmd-teleyank-at ;; Official teleyank trigger
-            "<remap> <yank>" #'skroad--cmd-teleyank-at ;; Ordinary yank key also works
+            "<remap> <yank>" #'skroad--cmd-teleyank-at ;; Regular yank also
             )
   :renamer-overlay-type 'skroad--text-renamer-indirect
   :use 'skroad--text-mixin-renameable
@@ -1326,7 +1326,8 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
       (progn ;; If none of the above: create a new link below the tail:
         (skroad--tail-jump-after) ;; If tail didn't exist, it does now
         (newline)
-        (skroad--insert-live-link node))))
+        (skroad--insert-live-link node)
+        (skroad--update-stub-status))))
 
 (defun skroad--disconnect (node)
   "Ensure that the current node does NOT have any live links to NODE."
@@ -1336,7 +1337,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
          (skroad--link-deaden node)))) ;; ... otherwise, deaden.
 
 ;; TODO: override readonly only here, rather than in with-file ?
-(defun skroad--from-node (node op &optional target allow-special)
+(defun skroad--in-node (node op &optional target allow-special)
   "Ensure that NODE exists, and run OP on TARGET (nil: current node) from it.
 If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
   (when (or allow-special (not (skroad--node-special-p node)))
@@ -1431,6 +1432,7 @@ YANK-ARGS (optional) are passed to yank."
       (goto-char (line-end-position))))
   (setq-local skroad--buf-tail-marker (copy-marker (point))))
 
+;; TODO: update stub status every time we obtain the tail, when it is cheap
 (defun skroad--tail-jump-after ()
   "Find or create the tail in the current node; set point after it."
   (or (and skroad--buf-tail-marker ;; Try using the tail marker, if we have it:
@@ -1445,17 +1447,22 @@ YANK-ARGS (optional) are passed to yank."
   (skroad--tail-jump-after)
   (goto-char (line-beginning-position)))
 
+;; (defun skroad--pos-after-tail-p (pos)
+;;   "Return t if POS is after the tail (created if it did not exist)."
+;;   (>= pos (save-mark-and-excursion (skroad--tail-jump-after) (point))))
+
 (defun skroad--update-stub-status ()
   "Determine whether the current node is a stub, and update Stubs if necessary.
-A stub is a node where no text is found between the title and the tail.
+A stub is a node where only whitespace is found between the title and the tail.
 If the tail did not previously exist in the current node, it is emplaced."
-  (skroad--node-set-stub
-   (save-mark-and-excursion
-     (skroad--tail-jump-before)
-     (let ((before-tail (point)))
-       (goto-char (skroad--node-body-start))
-       (skip-syntax-forward " ")
-       (eq (point) before-tail)))))
+  (unless (skroad--node-special-p)
+    (skroad--node-set-stub
+     (save-mark-and-excursion
+       (skroad--tail-jump-before)
+       (let ((before-tail (point)))
+         (goto-char (skroad--node-body-start))
+         (skip-syntax-forward " ")
+         (eq (point) before-tail))))))
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1560,6 +1567,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--buf-indices-sync) ;; TODO: do it in save hook?
   (when (buffer-modified-p)
     (skroad--renamer-validate-if-active)
+    ;; TODO: do it in the change hook?
     (skroad--update-stub-status) ;; TODO: don't do it if renamer active here?
     )
   (unless mark-active (setq-local mouse-highlight t)))
@@ -1639,7 +1647,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--set-writability) ;; If special node, open it as read-only
   (skroad--cache-intern (skroad--current-node))
   (skroad--update-visible)
-  (skroad--update-stub-status)
+  (skroad--update-stub-status) ;; TODO: do we want this here?
   (skroad--async-dispatch #'skroad--buf-indices-sync) ;; move this to enabler
   )
 
@@ -1736,40 +1744,33 @@ Return t when the connection status has in fact changed as a result."
   (unless (or (skroad--node-special-p node) ;; If node is special, do nothing
               (eq (skroad--special-has-p special node) status)) ;; no change?
     (if status
-        (skroad--from-node special #'skroad--connect node t)
-      (skroad--from-node special #'skroad--disconnect node t))
+        (skroad--in-node special #'skroad--connect node t)
+      (skroad--in-node special #'skroad--disconnect node t))
     t))
 
+;; TODO: write journal entry
 (defun skroad--node-set-stub (status &optional node)
   "Set stub status of NODE (if given; else the current node) to STATUS."
   (let ((node-or-current (or node (skroad--current-node))))
     (when (skroad--set-special-linkage
            skroad--special-node-stubs status node-or-current)
       (skroad--visit-open-nodes ;; Walk the currently-open nodes
-        (when (skroad--connected-p node-or-current)
-          (skroad--refontify-current-buffer)))))) ;; Refontify if linked there
+        ;; (when (skroad--connected-p node-or-current)
+          (skroad--refontify-current-buffer)
+          ;; )
+        )
+      ))) ;; Refontify if linked there
 
+;; TODO: write journal entry
+;; TODO: if orphan+stub, delete the node (1st close any buffer where it is open)
 (defun skroad--node-set-orphan (status &optional node)
   "Set orphan status of NODE (if given; else the current node) to STATUS."
-  (skroad--set-special-linkage skroad--special-node-orphans status node))
+  (let ((node-or-current (or node (skroad--current-node))))
+    (skroad--set-special-linkage
+     skroad--special-node-orphans status node-or-current)))
 
 
-;; (skroad--from-node "xyz" #'skroad--connect "qqq1" t)
-
-;; (skroad--node-set-stub t "pqr")
-;; (skroad--node-set-stub nil "pqr")
-
-;; (skroad--with-node "k" nil skroad--visible-start)
-
-;; (skroad--with-node "crapz" nil (get-buffer-window-list (current-buffer) nil t))
-
-;; (skroad--yank-into "crapz")
-;; (skroad--yank-into "xyz")
-;; (skroad--node-set-stub t "xxx1")
-;; (skroad--node-set-stub nil "xxx1")
-;; (skroad--node-set-stub t "xyz")
-;; (skroad--node-set-stub nil "xyz")
-;; (skroad--node-stub-p "xyz")
+;; (skroad--in-node "xyz" #'skroad--connect "qqq1")
 
 ;; ;; TODO: handle stub
 ;; (defun skroad--rename-node (node node-new) ;; TODO: proper renamer
