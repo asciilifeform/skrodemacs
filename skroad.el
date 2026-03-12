@@ -1195,7 +1195,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (defun skroad--action-connected-on-init (node)
   "The first instance of a live link to NODE was found during indexing."
   ;; TODO: lint-only?
-  (skroad--in-node node #'skroad--connect)
+  ;; (skroad--in-node node #'skroad--connect)
   )
 
 (defun skroad--action-connected (node)
@@ -1214,6 +1214,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   "The current node is an orphan (i.e. it has NO live links)."
   (skroad--node-set-orphan t))
 
+;; TODO: links to specials do not count!
 (defun skroad--action-unorphaned ()
   "The current node is NOT an orphan (i.e. it has live links)."
   (skroad--node-set-orphan nil))
@@ -1666,6 +1667,7 @@ Return the path where the node is found on disk."
         (skroad--cache-write node nil) ;; Intern with an empty index
         (skroad--node-set-stub t node) ;; Becomes a stub (unless special)
         ;; TODO: write journal entry
+        (message "Created new node: '%s'" node)
         )
        (t (error "Could not activate node '%s'!" node))))
     node-path))
