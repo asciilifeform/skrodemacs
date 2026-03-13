@@ -239,19 +239,16 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   (when node
     (let ((node-nowhite (string-clean-whitespace node)))
       (when (not (string-empty-p node-nowhite))
-        (let* ((encode-match
-                #'(lambda (m)
-                    (mapconcat (lambda (ch) (format "%%%02X" ch)) m "")))
-               (filename
+        (let* ((encoded
                 (replace-regexp-in-string
-                 (rx (any "\x00-\x1f\x7f" ?/ ?\\ ?: ?* ?? ?\" ?< ?> ?| ?~ ?%))
-                 encode-match node-nowhite t t))
+                 (rx (| (any "\x00-\x1f\x7f" ?/ ?\\ ?: ?* ?? ?\" ?< ?> ?| ?~ ?%)
+                        (seq bos (+ "."))
+                        (seq (+ ".") eos)))
+                 #'(lambda (m)
+                     (mapconcat (lambda (ch) (format "%%%02X" ch)) m ""))
+                 node-nowhite t t))
                (filename
-                (replace-regexp-in-string
-                 (rx (| (seq bos (+ ".")) (seq (+ ".") eos)))
-                 encode-match filename t t))
-               (filename
-                (concat filename "." skroad--file-extension)))
+                (concat encoded "." skroad--file-extension)))
           (when (<= (length (encode-coding-string filename 'utf-8 t)) 255)
             filename))))))
 
