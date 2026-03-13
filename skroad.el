@@ -240,8 +240,8 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
     (let ((node-nowhite (string-clean-whitespace node)))
       (when (not (string-empty-p node-nowhite))
         (let* ((encode-match
-                (lambda (m)
-                  (mapconcat (lambda (ch) (format "%%%02X" ch)) m "")))
+                #'(lambda (m)
+                    (mapconcat (lambda (ch) (format "%%%02X" ch)) m "")))
                (filename
                 (replace-regexp-in-string
                  (rx (any "\x00-\x1f\x7f" ?/ ?\\ ?: ?* ?? ?\" ?< ?> ?| ?~ ?%))
