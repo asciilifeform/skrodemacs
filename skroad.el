@@ -239,19 +239,19 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   (when node
     (let ((node-nowhite (string-clean-whitespace node)))
       (when (not (string-empty-p node-nowhite))
-        (let* ((filename
-                (file-name-with-extension node-nowhite skroad--file-extension))
+        (let* ((encode-match
+                (lambda (m)
+                  (mapconcat (lambda (ch) (format "%%%02X" ch)) m "")))
                (filename
                 (replace-regexp-in-string
                  (rx (any "\x00-\x1f\x7f" ?/ ?\\ ?: ?* ?? ?\" ?< ?> ?| ?~ ?%))
-                 (lambda (m) (format "%%%02X" (aref m 0)))
-                 filename t t))
+                 encode-match node-nowhite t t))
                (filename
                 (replace-regexp-in-string
                  (rx (| (seq bos (+ ".")) (seq (+ ".") eos)))
-                 (lambda (m)
-                   (mapconcat (lambda (ch) (format "%%%02X" ch)) m ""))
-                 filename t t)))
+                 encode-match filename t t))
+               (filename
+                (concat filename "." skroad--file-extension)))
           (when (<= (length (encode-coding-string filename 'utf-8 t)) 255)
             filename))))))
 
@@ -278,7 +278,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   (mapcar #'skroad--file-path-to-node-title
           (file-expand-wildcards
            (skroad--file-path-in-data-directory
-            (file-name-with-extension "*" skroad--file-extension)))))
+            (concat "*." skroad--file-extension)))))
 
 (defun skroad--node-path (node)
   "Generate the canonical file path where NODE would be found if it exists."
