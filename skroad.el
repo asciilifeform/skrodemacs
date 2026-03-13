@@ -234,25 +234,59 @@ If OVERWRITE is t, allow overwriting.  Return success."
   (unless (skroad--ensure-directory skroad--data-directory)
     (error "Unable to access or create skroad data directory!")))
 
-(defun skroad--filename-to-node (filename)
-  "Transform FILENAME to a valid node title."
-  (file-name-base filename))
+(defun skroad--node-title-to-filename (node)
+  "Transform the node title NODE into an appropriate filename (with extension).
+Reserved characters are percent-encoded (%XX).  Leading/trailing spaces are
+stripped and interior whitespace runs collapsed.  Returns nil if NODE is nil,
+empty/whitespace-only, or if the result exceeds 255 UTF-8 bytes.
+The original NODE can be recovered using `skroad--path-to-node-title'."
+  (when node
+    (let ((node-nowhite (string-clean-whitespace node)))
+      (when (not (string-empty-p node-nowhite))
+        (let* ((filename
+                (file-name-with-extension node-nowhite skroad--file-extension))
+               (filename
+                (replace-regexp-in-string
+                 (rx (any "\x00-\x1f\x7f" ?/ ?\\ ?: ?* ?? ?\" ?< ?> ?| ?~ ?%))
+                 (lambda (m) (format "%%%02X" (aref m 0)))
+                 filename t t))
+               (filename
+                (replace-regexp-in-string
+                 (rx (| (seq bos (+ ".")) (seq (+ ".") eos)))
+                 (lambda (m)
+                   (mapconcat (lambda (ch) (format "%%%02X" ch)) m ""))
+                 filename t t)))
+          (when (<= (length (encode-coding-string filename 'utf-8 t)) 255)
+            filename))))))
 
-(defun skroad--node-path (node)
-  "Generate the canonical file path where NODE would be found if it exists."
-  (expand-file-name
-   (file-name-concat
-    skroad--data-directory
-    (file-name-with-extension node skroad--file-extension))))
+(defun skroad--path-to-node-title (file)
+  "Get the base name and decode escapes to transform FILE to a node title."
+  (replace-regexp-in-string
+   "%[0-9A-F][0-9A-F]"
+   (lambda (match)
+     (char-to-string (string-to-number (substring match 1) 16)))
+   (file-name-base file) t t))
 
-(defun skroad--current-node ()
+(defun skroad--current-node-title ()
   "Return the filename-derived title of the node in the current buffer."
-  (skroad--filename-to-node (buffer-file-name)))
+  (skroad--path-to-node-title (buffer-file-name)))
+
+(defun skroad--file-path-in-data-directory (file)
+  "Generate the path where FILE would reside in the data directory."
+  (when (null file)
+    (error "Filename '%s' is invalid!" file))
+  (expand-file-name (file-name-concat skroad--data-directory file)))
 
 (defun skroad--storage-list-nodes ()
   "Return a list of all nodes currently stored on disk."
-  (mapcar #'skroad--filename-to-node
-          (file-expand-wildcards (skroad--node-path "*"))))
+  (mapcar #'skroad--path-to-node-title
+          (file-expand-wildcards
+           (skroad--file-path-in-data-directory
+            (file-name-with-extension "*" skroad--file-extension)))))
+
+(defun skroad--node-path (node)
+  "Generate the canonical file path where NODE would be found if it exists."
+  (skroad--file-path-in-data-directory (skroad--node-title-to-filename node)))
 
 ;; Skroad text type mechanism and basic types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -542,6 +576,10 @@ call the action with ARGS."
    (or skroad--visible-start (point-min))
    (or skroad--visible-end (point-max))))
 
+(defun skroad--refontify-open-nodes ()
+  "Refresh fontification in all currently-open nodes."
+  (skroad--visit-open-nodes (skroad--refontify-current-buffer)))
+
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (skroad--deftype skroad--text-mixin-rendered-zoned
@@ -668,6 +706,10 @@ or the node's indices, if it has been indexed; or `empty` (indices are null).")
       (skroad--cache-evict node)
       t)))
 
+(defun skroad--cache-foreach (fn)
+  "Evaluate (for side effects) FN applied to each node currently in the cache."
+  (maphash #'(lambda (key val) (funcall fn key)) (skroad--cache)))
+
 ;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--index-delta (index payload delta &optional final create destroy)
@@ -752,7 +794,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
   "Obtain the current node's text type indices."
   (when (eq skroad--buf-indices-table 'fetch-me) ;; Fetch from cache?
     (setq-local skroad--buf-indices-table
-                (skroad--cache-fetch (skroad--current-node))))
+                (skroad--cache-fetch (skroad--current-node-title))))
   skroad--buf-indices-table)
 
 (defun skroad--buf-indices-sync (&optional no-actions)
@@ -765,16 +807,16 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
     (when init
       (when have-changes
         (error "Tried to apply changes to unindexed node: '%s'"
-               (skroad--current-node)))
+               (skroad--current-node-title)))
       (skroad--index-scan-region (point-min) (point-max) 1)
       (setq have-changes t)
       (setq indices nil))
     (when have-changes
       (setq indices (skroad--indices-update
                      indices skroad--buf-indices-pending
-                     (or no-actions (skroad--node-special-p)) init))
+                     (or no-actions (skroad--node-special-p)) init)) ;; TODO?
       (setq-local skroad--buf-indices-table indices)
-      (skroad--cache-write (skroad--current-node) indices))))
+      (skroad--cache-write (skroad--current-node-title) indices))))
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
@@ -1191,10 +1233,11 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (defun skroad--action-open-link (data)
   (message (format "Live link pushed: '%s'" data)))
 
-;; TODO: prevent reentry
+;; TODO: store the graph edge for lint
 (defun skroad--action-connected-on-init (node)
   "The first instance of a live link to NODE was found during indexing."
   ;; TODO: lint-only?
+  ;; (skroad--node-ensure node)
   ;; (skroad--in-node node #'skroad--connect)
   )
 
@@ -1212,11 +1255,13 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 
 (defun skroad--action-orphaned ()
   "The current node is an orphan (i.e. it has NO live links)."
+  (message "Orphaned: '%s'" (skroad--current-node-title))
   (skroad--node-set-orphan t))
 
 ;; TODO: links to specials do not count!
 (defun skroad--action-unorphaned ()
   "The current node is NOT an orphan (i.e. it has live links)."
+  (message "Unorphaned: '%s'" (skroad--current-node-title))
   (skroad--node-set-orphan nil))
 
 (skroad--deftype skroad--text-renamer-indirect
@@ -1342,7 +1387,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   "Ensure that NODE exists, and run OP on TARGET (nil: current node) from it.
 If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
   (when (or allow-special (not (skroad--node-special-p node)))
-    (let ((target-or-current (or target (skroad--current-node))))
+    (let ((target-or-current (or target (skroad--current-node-title))))
       (skroad--with-node node t (funcall op target-or-current)))))
 
 (defun skroad--yank-into (node &rest yank-args) ;; TODO: undo mechanism?
@@ -1467,14 +1512,14 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--get-title-from-buffer ()
+(defun skroad--current-internal-title ()
   "Get the current node title from the buffer."
   (buffer-substring-no-properties (point-min) (skroad--get-end-of-line 1)))
 
 (defun skroad--cmd-title-kill-ring-save ()
   "Save the current node's title, transformed to a live link, to the kill ring."
   (interactive)
-  (let ((node (skroad--get-title-from-buffer)))
+  (let ((node (skroad--current-internal-title)))
     (with-temp-buffer
       (skroad--insert-live-link node)
       (copy-region-as-kill (point-min) (point-max)))))
@@ -1646,7 +1691,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (face-remap-set-base 'header-line 'skroad--title-face)
   (skroad--init-font-lock)
   (skroad--set-writability) ;; If special node, open it as read-only
-  (skroad--cache-intern (skroad--current-node))
+  (skroad--cache-intern (skroad--current-node-title))
   (skroad--update-visible)
   (skroad--update-stub-status) ;; TODO: do we want this here?
   (skroad--async-dispatch #'skroad--buf-indices-sync) ;; move this to enabler
@@ -1710,7 +1755,7 @@ or edited interactively.  Special nodes are not subject to auto-backlinking.")
 
 (defun skroad--node-special-p (&optional node)
   "Return t if NODE (if given; else the current node) is a special node."
-  (member (or node (skroad--current-node)) skroad--special-nodes))
+  (member (or node (skroad--current-node-title)) skroad--special-nodes))
 
 (skroad--define-special-node skroad--special-node-orphans "#Orphans"
   "A node with links to all known orphans (non-specials without any live links.)
@@ -1725,11 +1770,10 @@ Orphan nodes are candidates for deletion; and only an orphan may be deleted.")
 (defun skroad--special-has-p (special &optional node)
   "Test whether NODE (if given; else the current node) is linked from SPECIAL.
 If NODE is a special node, return nil.  If SPECIAL does not exist, create it."
-  (let ((node-or-current (or node (skroad--current-node))))
-    (unless (skroad--node-special-p node-or-current)
-      (let ((indices (skroad--node-ensure-indices special)))
-        (skroad--indices-has-p
-         'skroad--text-link-node-live node-or-current indices)))))
+  (unless (skroad--node-special-p node)
+    (skroad--indices-has-p 'skroad--text-link-node-live
+                           (or node (skroad--current-node-title))
+                           (skroad--node-ensure-indices special))))
 
 (defun skroad--node-stub-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known stub."
@@ -1745,32 +1789,54 @@ If NODE is a special node, do nothing.  If SPECIAL does not exist, create it.
 Return t when the connection status has in fact changed as a result."
   (unless (or (skroad--node-special-p node) ;; If node is special, do nothing
               (eq (skroad--special-has-p special node) status)) ;; no change?
-    (if status
-        (skroad--in-node special #'skroad--connect node t)
-      (skroad--in-node special #'skroad--disconnect node t))
+    (let ((node-or-current (or node (skroad--current-node-title))))
+      (if status
+          (skroad--in-node special #'skroad--connect node-or-current t)
+        (skroad--in-node special #'skroad--disconnect node-or-current t)))
     t))
 
 ;; TODO: write journal entry
 (defun skroad--node-set-stub (status &optional node)
   "Set stub status of NODE (if given; else the current node) to STATUS."
-  (let ((node-or-current (or node (skroad--current-node))))
-    (when (skroad--set-special-linkage
-           skroad--special-node-stubs status node-or-current)
-      (skroad--visit-open-nodes ;; Walk the currently-open nodes
-        ;; (when (skroad--connected-p node-or-current)
-          (skroad--refontify-current-buffer)
-          ;; )
-        )
-      ))) ;; Refontify if linked there
+  (when (skroad--set-special-linkage skroad--special-node-stubs status node)
+    (skroad--refontify-open-nodes)))
 
 ;; TODO: write journal entry
 ;; TODO: if orphan+stub, delete the node (1st close any buffer where it is open)
 (defun skroad--node-set-orphan (status &optional node)
   "Set orphan status of NODE (if given; else the current node) to STATUS."
-  (let ((node-or-current (or node (skroad--current-node))))
-    (skroad--set-special-linkage
-     skroad--special-node-orphans status node-or-current)))
+  (skroad--set-special-linkage skroad--special-node-orphans status node))
 
+;; TODO: write journal entry if changing
+(defun skroad--verify-node-title ()
+  "Perform consistency check on the title of the current node."
+  ;; Verify that the node's internal title matches the filename:
+  (let ((node (skroad--current-node-title))
+        (internal-title (skroad--current-internal-title)))
+    (unless (string-equal internal-title node)
+      (message
+       "Node '%s' internal title '%s' does not match filename!"
+       node internal-title)
+      )))
+
+(defun skroad--verify-all-nodes ()
+  "Perform consistency check on all nodes, updating the broken node list."
+  (skroad--cache-foreach ;; For every node, build indices and verify title
+   #'(lambda (node)
+       (skroad--with-node node t (skroad--verify-node-title))))
+  
+  ;; (skroad--cache-foreach
+  ;;  #'(lambda (node)
+  ;;      (skroad--with-node node t
+  ;;        ;; Verify that each live link is reciprocal:
+  ;;        )
+  ;;      ))
+  )
+
+;;(defun skroad--current-indices-foreach (text-type fn &rest other-args)
+
+;; (skroad--verify-all-nodes)
+;; skroad--cache-table
 
 ;; (skroad--in-node "xyz" #'skroad--connect "qqq1")
 
