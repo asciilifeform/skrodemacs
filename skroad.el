@@ -288,7 +288,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
                  (skroad--node-title-to-filename title)
                  (file-name-nondirectory file))
                 title)
-               (t (message "'%s' is not reachable!" file) nil))))
+               (t (message "Node file '%s' is not reachable!" file) nil))))
    (skroad--storage-list-files)))
 
 (defun skroad--node-path (node)
