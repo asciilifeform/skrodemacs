@@ -292,8 +292,6 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
                (t (message "Node file '%s' is not reachable!" file) nil))))
    (skroad--storage-list-files)))
 
-(skroad--storage-list-nodes)
-
 ;; Skroad text type mechanism and basic types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmacro skroad--deftype (name &rest properties)
