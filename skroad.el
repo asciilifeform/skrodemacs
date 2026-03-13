@@ -289,7 +289,9 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
    #'(lambda (file)
        (let ((title (skroad--file-path-to-node-title file)))
          (cond ((string-equal (skroad--node-path title) file) title)
-               (t (message "Node file '%s' is not reachable!" file) nil))))
+               (t (message "Node %s is not reachable!"
+                           (browse-url-file-url file))
+                  nil))))
    (skroad--storage-list-files)))
 
 ;; Skroad text type mechanism and basic types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1227,7 +1229,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (skroad--deftype skroad--text-link-node
   :doc "Fundamental type for skroad node links (live or dead)."
   :use 'skroad--text-link
-  :face 'skroad--live-link-face ;; default
   :mouse-face 'skroad--highlight-link-face
   :payload-regex skroad--node-title-regex
   :keymap (define-keymap "t" #'skroad--cmd-link-comment))
@@ -1424,6 +1425,7 @@ YANK-ARGS (optional) are passed to yank."
   :kbd-doc-readonly "<return> go"
   :use 'skroad--text-link
   :help-echo "External link."
+  :face 'skroad--live-link-face
   ;; :payload-regex ;; TODO: needs whitespace to terminate
   ;; "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\r\f\t\s]+\\)"
   :match-number 0
