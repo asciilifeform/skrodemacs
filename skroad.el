@@ -270,12 +270,26 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
     (error "Filename '%s' is invalid!" file))
   (expand-file-name (file-name-concat skroad--data-directory file)))
 
+(defun skroad--storage-list-files ()
+  "Return a list of all node files currently stored in the data directory."
+  (skroad--storage-ensure)
+  (file-expand-wildcards
+   (skroad--file-path-in-data-directory
+    (concat "*." skroad--file-extension))))
+
+;; TODO: alarm unreachables to log
 (defun skroad--storage-list-nodes ()
-  "Return a list of all nodes currently stored on disk."
-  (mapcar #'skroad--file-path-to-node-title
-          (file-expand-wildcards
-           (skroad--file-path-in-data-directory
-            (concat "*." skroad--file-extension)))))
+  "Return a list of all nodes currently stored on disk.  Verify reachability."
+  (skroad--storage-ensure)
+  (seq-keep
+   #'(lambda (file)
+       (let ((title (skroad--file-path-to-node-title file)))
+         (cond ((string-equal
+                 (skroad--node-title-to-filename title)
+                 (file-name-nondirectory file))
+                title)
+               (t (message "'%s' is not reachable!" file) nil))))
+   (skroad--storage-list-files)))
 
 (defun skroad--node-path (node)
   "Generate the canonical file path where NODE would be found if it exists."
@@ -654,7 +668,6 @@ or the node's indices, if it has been indexed; or `empty` (indices are null).")
 (defun skroad--cache ()
   "Access the node indices cache.  Populate it from disk on first access."
   (unless skroad--cache-table
-    (skroad--storage-ensure)
     (setq skroad--cache-table (make-hash-table :test 'equal))
     (mapc #'skroad--cache-intern-unindexed (skroad--storage-list-nodes)))
   skroad--cache-table)
