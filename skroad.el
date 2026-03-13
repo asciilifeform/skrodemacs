@@ -202,10 +202,6 @@
          (apply fn args)
          (skroad--set-writability))))))
 
-(defun skroad--canonical-title (s)
-  "Return a canonicalized node title from string S."
-  (string-clean-whitespace s))
-
 ;; File and directory ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--mv-file (old-file new-file &optional overwrite)
@@ -1105,9 +1101,9 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
                 skroad--buf-renamer-valid nil)))
 
 (defun skroad--renamer-text ()
-  "Get the text in the current renamer."
-  (skroad--canonical-title (field-string-no-properties
-                            (overlay-start skroad--buf-renamer))))
+  "Get the proposed text in the current renamer."
+  (string-clean-whitespace
+   (field-string-no-properties (overlay-start skroad--buf-renamer))))
 
 (defun skroad--renamer-get-default-face ()
   "Get the default face of the current renamer."
