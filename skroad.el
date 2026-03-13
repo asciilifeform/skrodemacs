@@ -235,11 +235,11 @@ If OVERWRITE is t, allow overwriting.  Return success."
     (error "Unable to access or create skroad data directory!")))
 
 (defun skroad--node-title-to-filename (node)
-  "Transform the node title NODE into an appropriate filename (with extension).
+  "Encode the NODE title into an appropriate filename (with our extension).
 Reserved characters are percent-encoded (%XX).  Leading/trailing spaces are
 stripped and interior whitespace runs collapsed.  Returns nil if NODE is nil,
 empty/whitespace-only, or if the result exceeds 255 UTF-8 bytes.
-The original NODE can be recovered using `skroad--path-to-node-title'."
+The original NODE can be recovered using `skroad--file-path-to-node-title'."
   (when node
     (let ((node-nowhite (string-clean-whitespace node)))
       (when (not (string-empty-p node-nowhite))
@@ -259,8 +259,8 @@ The original NODE can be recovered using `skroad--path-to-node-title'."
           (when (<= (length (encode-coding-string filename 'utf-8 t)) 255)
             filename))))))
 
-(defun skroad--path-to-node-title (file)
-  "Get the base name and decode escapes to transform FILE to a node title."
+(defun skroad--file-path-to-node-title (file)
+  "Get the base name and parse escapes to decode FILE name to a node title."
   (replace-regexp-in-string
    "%[0-9A-F][0-9A-F]"
    (lambda (match)
@@ -269,7 +269,7 @@ The original NODE can be recovered using `skroad--path-to-node-title'."
 
 (defun skroad--current-node-title ()
   "Return the filename-derived title of the node in the current buffer."
-  (skroad--path-to-node-title (buffer-file-name)))
+  (skroad--file-path-to-node-title (buffer-file-name)))
 
 (defun skroad--file-path-in-data-directory (file)
   "Generate the path where FILE would reside in the data directory."
@@ -279,7 +279,7 @@ The original NODE can be recovered using `skroad--path-to-node-title'."
 
 (defun skroad--storage-list-nodes ()
   "Return a list of all nodes currently stored on disk."
-  (mapcar #'skroad--path-to-node-title
+  (mapcar #'skroad--file-path-to-node-title
           (file-expand-wildcards
            (skroad--file-path-in-data-directory
             (file-name-with-extension "*" skroad--file-extension)))))
