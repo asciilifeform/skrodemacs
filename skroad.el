@@ -77,6 +77,11 @@
   "Face used for dead links."
   :group 'skroad-faces)
 
+(defface skroad--url-link-face
+  '((t :inherit link))
+  "Face used for url links."
+  :group 'skroad-faces)
+
 (defface skroad--heading-face
   '((t :inherit skroad--text-face
        :weight bold :height 1.2 :inverse-video t))
@@ -282,6 +287,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   (skroad--file-path-in-data-directory (skroad--node-title-to-filename node)))
 
 ;; TODO: alarm unreachables to log
+;; TODO: unreachables should not open in skroad mode
 (defun skroad--storage-list-nodes ()
   "Return a list of all nodes currently stored on disk.  Verify reachability."
   (skroad--storage-ensure)
@@ -1425,7 +1431,7 @@ YANK-ARGS (optional) are passed to yank."
   :kbd-doc-readonly "<return> go"
   :use 'skroad--text-link
   :help-echo "External link."
-  :face 'skroad--live-link-face
+  :face 'skroad--url-link-face
   ;; :payload-regex ;; TODO: needs whitespace to terminate
   ;; "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\r\f\t\s]+\\)"
   :match-number 0
@@ -1696,7 +1702,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (face-remap-set-base 'header-line 'skroad--title-face)
   (skroad--init-font-lock)
   (skroad--set-writability) ;; If special node, open it as read-only
-  (skroad--cache-intern (skroad--current-node-title))
+  ;; (skroad--cache-intern (skroad--current-node-title))
   (skroad--update-visible)
   (skroad--update-stub-status) ;; TODO: do we want this here?
   (skroad--async-dispatch #'skroad--buf-indices-sync) ;; move this to enabler
