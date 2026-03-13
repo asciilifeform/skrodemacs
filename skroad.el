@@ -277,6 +277,10 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
    (skroad--file-path-in-data-directory
     (concat "*." skroad--file-extension))))
 
+(defun skroad--node-path (node)
+  "Generate the canonical file path where NODE would be found if it exists."
+  (skroad--file-path-in-data-directory (skroad--node-title-to-filename node)))
+
 ;; TODO: alarm unreachables to log
 (defun skroad--storage-list-nodes ()
   "Return a list of all nodes currently stored on disk.  Verify reachability."
@@ -284,16 +288,9 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   (seq-keep
    #'(lambda (file)
        (let ((title (skroad--file-path-to-node-title file)))
-         (cond ((string-equal
-                 (skroad--node-title-to-filename title)
-                 (file-name-nondirectory file))
-                title)
+         (cond ((string-equal (skroad--node-path title) file) title)
                (t (message "Node file '%s' is not reachable!" file) nil))))
    (skroad--storage-list-files)))
-
-(defun skroad--node-path (node)
-  "Generate the canonical file path where NODE would be found if it exists."
-  (skroad--file-path-in-data-directory (skroad--node-title-to-filename node)))
 
 ;; Skroad text type mechanism and basic types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
