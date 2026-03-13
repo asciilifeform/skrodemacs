@@ -241,8 +241,8 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
       (when (not (string-empty-p node-nowhite))
         (let* ((encoded
                 (replace-regexp-in-string
-                 (rx (| (any "\x00-\x1f\x7f" ?/ ?\\ ?: ?* ?? ?\" ?< ?> ?| ?~ ?%)
-                        (seq bos (+ "."))
+                 (rx (| (any "\x00-\x1f\x7f" ?/ ?\\ ?: ?* ?? ?\" ?< ?> ?| ?%)
+                        (seq bos (| (+ ".") "~"))
                         (seq (+ ".") eos)))
                  #'(lambda (m)
                      (mapconcat (lambda (ch) (format "%%%02X" ch)) m ""))
@@ -291,6 +291,8 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
          (cond ((string-equal (skroad--node-path title) file) title)
                (t (message "Node file '%s' is not reachable!" file) nil))))
    (skroad--storage-list-files)))
+
+(skroad--storage-list-nodes)
 
 ;; Skroad text type mechanism and basic types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
