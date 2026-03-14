@@ -381,24 +381,18 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
                (append '(:use skroad--text-mixin-default-type) properties))))
   name)
 
-(defun skroad--type-action (text-type action-name &rest args)
-  "If ACTION-NAME is not nil, and TEXT-TYPE has a defined action of that name,
-call the action with ARGS."
-  (when action-name (let ((action (get text-type action-name)))
-                      (when action (apply action args)))))
-
 (skroad--deftype skroad--text-mixin-default-type
   :doc "Default text type from which all other types (except mixins) inherit."
   :mixin t
   :order 100 ;; lower number will get rendered first
-  :filter nil
+  :finder-filter nil
   :face 'skroad--text-face
   :mouse-face nil
   :face-function nil
   :rear-nonsticky t)
 
 (skroad--deftype skroad--text-mixin-findable
-  :doc "Mixin for findable text types. (Internal use only.)"
+  :doc "Mixin for all findable text types. (Internal use only.)"
   :mixin t
   :require '(regex-any finder-regex-forward finder-regex-backward)
   :find-any-forward '(funcall finder-regex-forward regex-any)
@@ -449,9 +443,9 @@ call the action with ARGS."
   :find-payload-forward
   '(lambda (limit p)
      (funcall (funcall finder-regex-forward (funcall make-regex p)) limit))
-  :find-payload-backward
-  '(lambda (limit p)
-     (funcall (funcall finder-regex-backward (funcall make-regex p)) limit))
+  ;; :find-payload-backward
+  ;; '(lambda (limit p)
+  ;;    (funcall (funcall finder-regex-backward (funcall make-regex p)) limit))
   :delete-payload-all
   '(lambda (payload)
      (save-mark-and-excursion
@@ -541,6 +535,12 @@ call the action with ARGS."
   :finder-regex-forward #'skroad--finder-regex-forward-non-title
   :finder-regex-backward #'skroad--finder-regex-backward-non-title
   :use 'skroad--text-mixin-delimited-findable)
+
+(defun skroad--type-action (text-type action-name &rest args)
+  "If ACTION-NAME is not nil, and TEXT-TYPE has a defined action of that name,
+call the action with ARGS."
+  (when action-name (let ((action (get text-type action-name)))
+                      (when action (apply action args)))))
 
 ;; Font lock rendered text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1333,7 +1333,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
             )
   :renamer-overlay-type 'skroad--text-renamer-indirect
   :use 'skroad--text-mixin-renameable
-  :filter #'skroad--in-node-body-p
+  :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
@@ -1361,7 +1361,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :keymap (define-keymap
             "l" #'(lambda () (interactive)
                     (skroad--transform-at 'skroad--text-link-node-live)))
-  :filter #'skroad--in-node-body-p
+  :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
@@ -1372,7 +1372,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :regex-any
   (concat "\\(" (get 'skroad--text-link-node-live 'regex-any)
           "\\)\\|\\(" (get 'skroad--text-link-node-dead 'regex-any) "\\)")
-  :filter #'skroad--in-node-body-p
+  :finder-filter #'skroad--in-node-body-p ;; TODO: use both
   :use 'skroad--text-mixin-findable-non-title)
 
 (defun skroad--reconnectable-p (node)
@@ -1462,7 +1462,7 @@ YANK-ARGS (optional) are passed to yank."
   "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\r\f\t\s]+\\)"
   :on-activate #'browse-url
   :keymap (define-keymap "t" #'skroad--cmd-url-comment)
-  :filter #'skroad--in-node-body-p
+  :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-findable-non-title
   ;; :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-rendered-zoned
@@ -1482,7 +1482,7 @@ YANK-ARGS (optional) are passed to yank."
   :help-echo "Node tail."
   :match-number 0
   :regex-any "^\\(@@@\\)$"
-  :filter #'skroad--in-node-body-p
+  :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-findable-non-title
   :use 'skroad--text-mixin-rendered-zoned
   )
