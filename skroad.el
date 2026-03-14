@@ -172,7 +172,7 @@
          (end-expanded (skroad--get-end-of-line ,end)))
      ,@body))
 
-(defun skroad--delete-empty-line ()
+(defun skroad--delete-line-if-empty ()
   "If the point is currently on an empty line, delete the line."
   (when (and (bolp) (eolp)) (delete-line)))
 
@@ -191,6 +191,11 @@
 (defun skroad--in-node-body-p (&optional pos)
   "Return t if POS (or point, if not given) is inside the node body."
   (> (line-number-at-pos pos t) 1))
+
+(defun skroad--goto-node-body-start ()
+  "Jump to the position at the start of the node body."
+  (goto-char (point-min))
+  (forward-line 1))
 
 (defun skroad--re-search (finder regexp &optional limit filter)
   "Find REGEXP using FINDER, to LIMIT; filter by FILTER, if given."
@@ -440,6 +445,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   '(if (string-empty-p end-delim) "" (concat "\s*" (regexp-quote end-delim)))
   :make-regex '(lambda (s) (concat start-delim-regex s end-delim-regex))
   :regex-any '(funcall make-regex payload-regex)
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   :find-payload-forward
   '(lambda (limit p)
      (funcall (funcall finder-regex-forward (funcall make-regex p)) limit))
@@ -452,7 +458,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
        (goto-char (point-min))
        (while (funcall find-payload-forward (point-max) payload)
          (delete-region (match-beginning 0) (match-end 0))
-         (skroad--delete-empty-line))))
+         (skroad--delete-line-if-empty))))
   :replace-payload-all ;; TODO: use replace-regexp-in-region ???
   '(lambda (payload payload-new)
      (let ((found-any nil))
@@ -907,12 +913,13 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (defun skroad--cmd-top-backspace ()
   "If prev point is in an atomic, delete it; otherwise, normal backspace."
   (interactive)
-  (let ((p (point)))
-    (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
-          ((> p (skroad--node-body-start)) ;; TODO: simplify
-           (if (skroad--prop-at 'data (1- p))
-               (delete-region (skroad--zone-start (1- p)) p)
-             (delete-char -1))))))
+  (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
+        ((bobp) nil)
+        (t (let* ((p (point)) (left (1- p)))
+             (unless (skroad--in-node-title-p left) ;; Never bite into the title
+               (if (skroad--prop-at 'data left) ;; If in front of an atomic:
+                   (delete-region (skroad--zone-start left) p) ;; ... delete it;
+                 (delete-backward-char 1))))))) ;; ... if not: normal backspace.
 
 (defun skroad--cmd-top-jump-to-next-link ()
   "Jump to the next link following point; cycle to first if no more."
@@ -1498,7 +1505,7 @@ YANK-ARGS (optional) are passed to yank."
       (while (and
               (funcall
                (get 'skroad--text-link-node-alive-or-dead 'find-any-backward)
-               (skroad--node-body-start))
+               (skroad--node-body-start)) ;; TODO
               (eq (match-end 0)
                   (save-mark-and-excursion
                     (goto-char tail)
@@ -1542,7 +1549,7 @@ If the tail did not previously exist in the current node, it is emplaced."
      (save-mark-and-excursion
        (skroad--tail-jump-before)
        (let ((before-tail (point)))
-         (goto-char (skroad--node-body-start))
+         (skroad--goto-node-body-start)
          (skip-syntax-forward " ")
          (eq (point) before-tail))))))
 
