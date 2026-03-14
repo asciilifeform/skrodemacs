@@ -184,6 +184,28 @@
   "Determine whether OVERLAY is currently active."
   (and (overlayp overlay) (eq (current-buffer) (overlay-buffer overlay))))
 
+(defun skroad--in-title-p (&optional pos)
+  "Return t if POS (current point if not given) is inside the node title."
+  (= (line-number-at-pos pos t) 1))
+
+(defun skroad--in-body-p (&optional pos)
+  "Return t if POS (current point if not given) is inside the node body."
+  (> (line-number-at-pos pos t) 1))
+
+(defun skroad--re-search (finder regexp &optional limit filter)
+  "Find REGEXP using FINDER, to LIMIT; filter by FILTER, if given."
+  (if (functionp filter)
+      (let (found found-match)
+        (save-mark-and-excursion
+          (while (and (not found) (funcall finder regexp limit t))
+            (when (funcall filter)
+              (setq found (point)
+                    found-match (match-data t)))))
+        (when found
+          (set-match-data found-match)
+          (goto-char found)))
+    (funcall finder regexp limit t)))
+
 (defmacro skroad--silence-modifications (function)
   "Prevent FUNCTION from triggering modification hooks while in this mode."
   `(advice-add ,function :around
@@ -369,23 +391,11 @@ call the action with ARGS."
   :doc "Default text type from which all other types (except mixins) inherit."
   :mixin t
   :order 100 ;; lower number will get rendered first
+  :filter nil
   :face 'skroad--text-face
   :mouse-face nil
   :face-function nil
   :rear-nonsticky t)
-
-(skroad--deftype skroad--text-mixin-delimited
-  :doc "Base mixin for delimited text types. Define delimiters before using."
-  :mixin t
-  :require 'payload-regex
-  :defaults '((start-delim "") (end-delim "") (match-number 1))
-  :make-text '(lambda (payload) (concat start-delim payload end-delim))
-  :start-delim-regex
-  '(if (string-empty-p start-delim) "" (concat (regexp-quote start-delim) "\s*"))
-  :end-delim-regex
-  '(if (string-empty-p end-delim) "" (concat "\s*" (regexp-quote end-delim)))
-  :make-regex '(lambda (s) (concat start-delim-regex s end-delim-regex))
-  :regex-any '(funcall make-regex payload-regex))
 
 (skroad--deftype skroad--text-mixin-findable
   :doc "Mixin for findable text types. (Internal use only.)"
@@ -424,10 +434,18 @@ call the action with ARGS."
        (while (funcall find-any-forward end)
          (funcall f (match-string-no-properties match-number))))))
 
-(skroad--deftype skroad--text-mixin-payloadable
-  :doc "Mixin for payloadable text types. (Internal use only.)"
+(skroad--deftype skroad--text-mixin-delimited
+  :doc "Base mixin for delimited text types. Define delimiters before using."
   :mixin t
-  :require '(make-regex finder-regex-forward finder-regex-backward make-text)
+  :require '(payload-regex finder-regex-forward finder-regex-backward)
+  :defaults '((start-delim "") (end-delim "") (match-number 1))
+  :make-text '(lambda (payload) (concat start-delim payload end-delim))
+  :start-delim-regex
+  '(if (string-empty-p start-delim) "" (concat (regexp-quote start-delim) "\s*"))
+  :end-delim-regex
+  '(if (string-empty-p end-delim) "" (concat "\s*" (regexp-quote end-delim)))
+  :make-regex '(lambda (s) (concat start-delim-regex s end-delim-regex))
+  :regex-any '(funcall make-regex payload-regex)
   :find-payload-forward
   '(lambda (limit p)
      (funcall (funcall finder-regex-forward (funcall make-regex p)) limit))
@@ -478,9 +496,10 @@ call the action with ARGS."
 (skroad--deftype skroad--text-mixin-delimited-anywhere
   :doc "Mixin for delimited text types found anywhere in the buffer."
   :mixin t
+  :finder-regex-forward #'skroad--finder-regex-forward
+  :finder-regex-backward #'skroad--finder-regex-backward
   :use 'skroad--text-mixin-delimited
-  :use 'skroad--text-mixin-findable-anywhere
-  :use 'skroad--text-mixin-payloadable)
+  :use 'skroad--text-mixin-findable)
 
 ;; TODO: invalidate cache when changing title
 (defvar-local skroad--buf-node-body-start-cached nil)
@@ -519,9 +538,10 @@ call the action with ARGS."
 (skroad--deftype skroad--text-mixin-delimited-non-title
   :doc "Mixin for delimited text types excluded from the node title."
   :mixin t
+  :finder-regex-forward #'skroad--finder-regex-forward-non-title
+  :finder-regex-backward #'skroad--finder-regex-backward-non-title
   :use 'skroad--text-mixin-delimited
-  :use 'skroad--text-mixin-findable-non-title
-  :use 'skroad--text-mixin-payloadable)
+  :use 'skroad--text-mixin-findable)
 
 ;; Font lock rendered text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -890,7 +910,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (interactive)
   (let ((p (point)))
     (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
-          ((> p (skroad--node-body-start))
+          ((> p (skroad--node-body-start)) ;; TODO: simplify
            (if (skroad--prop-at 'data (1- p))
                (delete-region (skroad--zone-start (1- p)) p)
              (delete-char -1))))))
@@ -993,6 +1013,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 ;; TODO: allow mouse click point motion by default
 (skroad--deftype skroad--text-atomic
   :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
+  :atomic t ;; TODO: check
   :on-enter '(lambda (pos-from auto)
                (skroad--selector-activate-here)
                (goto-char (skroad--zone-start)) ;; point can only sit on start
