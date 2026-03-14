@@ -184,12 +184,12 @@
   "Determine whether OVERLAY is currently active."
   (and (overlayp overlay) (eq (current-buffer) (overlay-buffer overlay))))
 
-(defun skroad--in-title-p (&optional pos)
-  "Return t if POS (current point if not given) is inside the node title."
+(defun skroad--in-node-title-p (&optional pos)
+  "Return t if POS (or point, if not given) is inside the node title."
   (= (line-number-at-pos pos t) 1))
 
-(defun skroad--in-body-p (&optional pos)
-  "Return t if POS (current point if not given) is inside the node body."
+(defun skroad--in-node-body-p (&optional pos)
+  "Return t if POS (or point, if not given) is inside the node body."
   (> (line-number-at-pos pos t) 1))
 
 (defun skroad--re-search (finder regexp &optional limit filter)
@@ -1333,6 +1333,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
             )
   :renamer-overlay-type 'skroad--text-renamer-indirect
   :use 'skroad--text-mixin-renameable
+  :filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
@@ -1360,6 +1361,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :keymap (define-keymap
             "l" #'(lambda () (interactive)
                     (skroad--transform-at 'skroad--text-link-node-live)))
+  :filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
@@ -1370,6 +1372,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :regex-any
   (concat "\\(" (get 'skroad--text-link-node-live 'regex-any)
           "\\)\\|\\(" (get 'skroad--text-link-node-dead 'regex-any) "\\)")
+  :filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-findable-non-title)
 
 (defun skroad--reconnectable-p (node)
@@ -1459,6 +1462,7 @@ YANK-ARGS (optional) are passed to yank."
   "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\r\f\t\s]+\\)"
   :on-activate #'browse-url
   :keymap (define-keymap "t" #'skroad--cmd-url-comment)
+  :filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-findable-non-title
   ;; :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-rendered-zoned
@@ -1478,6 +1482,7 @@ YANK-ARGS (optional) are passed to yank."
   :help-echo "Node tail."
   :match-number 0
   :regex-any "^\\(@@@\\)$"
+  :filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-findable-non-title
   :use 'skroad--text-mixin-rendered-zoned
   )
