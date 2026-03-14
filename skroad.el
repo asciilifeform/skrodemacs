@@ -434,7 +434,7 @@ call the action with ARGS."
        (while (funcall find-any-forward end)
          (funcall f (match-string-no-properties match-number))))))
 
-(skroad--deftype skroad--text-mixin-delimited
+(skroad--deftype skroad--text-mixin-delimited-findable
   :doc "Base mixin for delimited text types. Define delimiters before using."
   :mixin t
   :require '(payload-regex finder-regex-forward finder-regex-backward)
@@ -471,7 +471,8 @@ call the action with ARGS."
   :payload-change-type
   '(lambda (payload new-type)
      (funcall replace-payload-all payload
-              (funcall (get new-type 'make-text) payload))))
+              (funcall (get new-type 'make-text) payload)))
+  :use 'skroad--text-mixin-findable)
 
 (defun skroad--transform-at (new-type)
   "Transform the text item at point (including all duplicates) to NEW-TYPE."
@@ -498,8 +499,7 @@ call the action with ARGS."
   :mixin t
   :finder-regex-forward #'skroad--finder-regex-forward
   :finder-regex-backward #'skroad--finder-regex-backward
-  :use 'skroad--text-mixin-delimited
-  :use 'skroad--text-mixin-findable)
+  :use 'skroad--text-mixin-delimited-findable)
 
 ;; TODO: invalidate cache when changing title
 (defvar-local skroad--buf-node-body-start-cached nil)
@@ -540,8 +540,7 @@ call the action with ARGS."
   :mixin t
   :finder-regex-forward #'skroad--finder-regex-forward-non-title
   :finder-regex-backward #'skroad--finder-regex-backward-non-title
-  :use 'skroad--text-mixin-delimited
-  :use 'skroad--text-mixin-findable)
+  :use 'skroad--text-mixin-delimited-findable)
 
 ;; Font lock rendered text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
