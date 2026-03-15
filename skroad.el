@@ -479,7 +479,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :for-all-in-region-forward
   '(lambda (start end fn)
      (skroad--re-foreach regex-any fn finder-filter start end))
-  :get-match
+  :get-match ;; TODO?
   '(lambda ()
      (string-clean-whitespace (match-string-no-properties match-number)))
   )
@@ -633,7 +633,6 @@ call the action with ARGS."
 (skroad--deftype skroad--text-mixin-render-delimited-decorative
   :doc "Mixin for decorative delimited text types rendered by font-lock."
   :mixin t
-  ;; :use 'skroad--text-mixin-delimited-anywhere
   :use 'skroad--text-mixin-delimited-findable
   :require 'face
   :render
@@ -1319,10 +1318,9 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
             "<remap> <yank>" #'skroad--cmd-teleyank-at ;; Regular yank also
             )
   :renamer-overlay-type 'skroad--text-renamer-indirect
-  :use 'skroad--text-mixin-renameable
   :finder-filter #'skroad--in-node-body-p
+  :use 'skroad--text-mixin-renameable
   :use 'skroad--text-mixin-delimited-findable
-  ;; :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
 
@@ -1351,7 +1349,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
                     (skroad--transform-at 'skroad--text-link-node-live)))
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-delimited-findable
-  ;; :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
 
@@ -1363,7 +1360,6 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
           "\\)\\|\\(" (get 'skroad--text-link-node-dead 'regex-any) "\\)")
   :finder-filter #'skroad--in-node-body-p ;; TODO: use both
   :use 'skroad--text-mixin-findable
-  ;; :use 'skroad--text-mixin-findable-non-title
   )
 
 (defun skroad--reconnectable-p (node)
@@ -1446,8 +1442,6 @@ YANK-ARGS (optional) are passed to yank."
   :use 'skroad--text-link
   :help-echo "External link."
   :face 'skroad--url-link-face
-  ;; :payload-regex ;; TODO: needs whitespace to terminate
-  ;; "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\r\f\t\s]+\\)"
   :match-number 0
   :regex-any ;; TODO: needs whitespace to terminate
   "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\r\f\t\s]+\\)"
@@ -1455,8 +1449,6 @@ YANK-ARGS (optional) are passed to yank."
   :keymap (define-keymap "t" #'skroad--cmd-url-comment)
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-findable
-  ;; :use 'skroad--text-mixin-findable-non-title
-  ;; :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed ;; TODO: do we need this?
   )
@@ -1476,7 +1468,6 @@ YANK-ARGS (optional) are passed to yank."
   :regex-any "^\\(@@@\\)$"
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-findable
-  ;; :use 'skroad--text-mixin-findable-non-title
   :use 'skroad--text-mixin-rendered-zoned
   )
 
@@ -1580,7 +1571,6 @@ If the tail did not previously exist in the current node, it is emplaced."
   :match-number 0
   :regex-any "\\`.*\n"
   :use 'skroad--text-mixin-findable
-  ;; :use 'skroad--text-mixin-findable-anywhere
   :use 'skroad--text-mixin-rendered-zoned
   )
 
