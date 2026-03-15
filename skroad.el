@@ -184,6 +184,27 @@
   "Determine whether OVERLAY is currently active."
   (and (overlayp overlay) (eq (current-buffer) (overlay-buffer overlay))))
 
+;; ;; TODO: invalidate cache when changing title
+;; (defvar-local skroad--buf-node-body-start-cached nil)
+
+;; (defun skroad--node-body-start ()
+;;   "Return the first position in the buffer outside of the node title."
+;;   (unless skroad--buf-node-body-start-cached
+;;     (setq-local skroad--buf-node-body-start-cached
+;;                 (save-mark-and-excursion
+;;                   (goto-char (point-min))
+;;                   (goto-char (line-beginning-position 2))
+;;                   (point))))
+;;   skroad--buf-node-body-start-cached)
+
+;; (defun skroad--in-node-title-p (&optional pos)
+;;   "Return t if POS (or point, if not given) is inside the node title."
+;;   (< (or pos (point)) (skroad--node-body-start)))
+
+;; (defun skroad--in-node-body-p (&optional pos)
+;;   "Return t if POS (or point, if not given) is inside the node body."
+;;   (>= (or pos (point)) (skroad--node-body-start)))
+
 (defun skroad--in-node-title-p (&optional pos)
   "Return t if POS (or point, if not given) is inside the node title."
   (= (line-number-at-pos pos t) 1))
@@ -210,6 +231,36 @@
           (set-match-data found-match)
           (goto-char found)))
     (funcall finder regexp limit t)))
+
+(defun skroad--re-foreach (regexp fn &optional filter start end)
+  "Execute FN for each match of REGEXP; optionally filtered by FILTER.
+If START and/or END are given, search only in that range.
+Return t if there were any matches, otherwise nil."
+  (save-mark-and-excursion
+    (goto-char (or start (point-min)))
+    (let (did-any)
+      (while (skroad--re-search #'re-search-forward regexp end filter)
+        (setq did-any t)
+        (funcall fn))
+      did-any)))
+
+(defun skroad--re-replace-all (regexp text &optional filter start end)
+  "Replace all matching REGEXP with TEXT; optionally filtered by FILTER.
+If START and/or END are given, replace only in that range."
+  (skroad--re-foreach
+   regexp
+   #'(lambda () (replace-match text) t t)
+   filter start end))
+
+(defun skroad--re-delete-all (regexp &optional filter start end)
+  "Delete all matching REGEXP, optionally filtered by FILTER.
+If START and/or END are given, delete only in that range."
+  (skroad--re-foreach
+   regexp
+   #'(lambda ()
+       (delete-region (match-beginning 0) (match-end 0))
+       (skroad--delete-line-if-empty))
+   filter start end))
 
 (defmacro skroad--silence-modifications (function)
   "Prevent FUNCTION from triggering modification hooks while in this mode."
@@ -390,53 +441,53 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :doc "Default text type from which all other types (except mixins) inherit."
   :mixin t
   :order 100 ;; lower number will get rendered first
-  :finder-filter nil
   :face 'skroad--text-face
   :mouse-face nil
-  :face-function nil
-  :rear-nonsticky t)
+  :face-function t
+  :rear-nonsticky t
+  :finder-filter t
+  )
 
 (skroad--deftype skroad--text-mixin-findable
   :doc "Mixin for all findable text types. (Internal use only.)"
   :mixin t
-  :require '(regex-any finder-regex-forward finder-regex-backward)
-  :find-any-forward '(funcall finder-regex-forward regex-any)
-  :find-any-backward '(funcall finder-regex-backward regex-any)
-  :find-any-first '(lambda ()
-                     (goto-char (point-min))
-                     (funcall find-any-forward (point-max)))
-  :find-any-last '(lambda ()
-                    (goto-char (point-max))
-                    (funcall find-any-backward (point-min)))
+  :require '(regex-any finder-filter)
+  :find-any-forward
+  '(lambda (&optional start end)
+     (when start (goto-char start))
+     (skroad--re-search #'re-search-forward regex-any end finder-filter))
+  :find-any-backward
+  '(lambda (&optional start end)
+     (when start (goto-char start))
+     (skroad--re-search #'re-search-backward regex-any end finder-filter))
+  :find-any-first '(lambda () (funcall find-any-forward (point-min)))
+  :find-any-last '(lambda () (funcall find-any-backward (point-max)))
   :jump-next-from
   '(lambda (pos)
      (goto-char
       (or (save-mark-and-excursion
-            (when (or (and (goto-char pos)
-                           (funcall find-any-forward (point-max)))
-                      (funcall find-any-first))
+            (when (or (funcall find-any-forward pos) (funcall find-any-first))
               (match-beginning 0)))
           (point))))
   :jump-prev-from
   '(lambda (pos)
      (goto-char
       (or (save-mark-and-excursion
-            (when (or (and (goto-char pos)
-                           (funcall find-any-backward (point-min)))
-                      (funcall find-any-last))
+            (when (or (funcall find-any-backward pos) (funcall find-any-last))
               (match-beginning 0)))
           (point))))
   :for-all-in-region-forward
-  '(lambda (start end f)
-     (save-mark-and-excursion
-       (goto-char start)
-       (while (funcall find-any-forward end)
-         (funcall f (match-string-no-properties match-number))))))
+  '(lambda (start end fn)
+     (skroad--re-foreach regex-any fn finder-filter start end))
+  :get-match
+  '(lambda ()
+     (string-clean-whitespace (match-string-no-properties match-number)))
+  )
 
 (skroad--deftype skroad--text-mixin-delimited-findable
   :doc "Base mixin for delimited text types. Define delimiters before using."
   :mixin t
-  :require '(payload-regex finder-regex-forward finder-regex-backward)
+  :require '(payload-regex finder-filter)
   :defaults '((start-delim "") (end-delim "") (match-number 1))
   :make-text '(lambda (payload) (concat start-delim payload end-delim))
   :start-delim-regex
@@ -446,101 +497,25 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :make-regex '(lambda (s) (concat start-delim-regex s end-delim-regex))
   :regex-any '(funcall make-regex payload-regex)
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  :find-payload-forward
-  '(lambda (limit p)
-     (funcall (funcall finder-regex-forward (funcall make-regex p)) limit))
-  ;; :find-payload-backward
-  ;; '(lambda (limit p)
-  ;;    (funcall (funcall finder-regex-backward (funcall make-regex p)) limit))
   :delete-payload-all
   '(lambda (payload)
-     (save-mark-and-excursion
-       (goto-char (point-min))
-       (while (funcall find-payload-forward (point-max) payload)
-         (delete-region (match-beginning 0) (match-end 0))
-         (skroad--delete-line-if-empty))))
-  :replace-payload-all ;; TODO: use replace-regexp-in-region ???
+     (skroad--re-delete-all
+      (funcall make-regex payload) finder-filter))
+  :replace-payload-all
   '(lambda (payload payload-new)
-     (let ((found-any nil))
-       (save-mark-and-excursion
-         (goto-char (point-min))
-         (while (funcall find-payload-forward (point-max) payload)
-           (replace-match payload-new)
-           (setq found-any t)))
-       found-any))
+     (skroad--re-replace-all
+      (funcall make-regex payload) payload-new finder-filter))
   :payload-change-type
   '(lambda (payload new-type)
      (funcall replace-payload-all payload
               (funcall (get new-type 'make-text) payload)))
-  :use 'skroad--text-mixin-findable)
+  :use 'skroad--text-mixin-findable
+  )
 
 (defun skroad--transform-at (new-type)
   "Transform the text item at point (including all duplicates) to NEW-TYPE."
   (funcall
    (skroad--prop-at 'payload-change-type) (skroad--prop-at 'data) new-type))
-
-(defun skroad--finder-regex-forward (r)
-  "Generate a forward finder for regex R."
-  (lambda (limit) (re-search-forward r limit t)))
-
-(defun skroad--finder-regex-backward (r)
-  "Generate a backward finder for regex R."
-  (lambda (limit) (re-search-forward r limit t)))
-
-(skroad--deftype skroad--text-mixin-findable-anywhere
-  :doc "Mixin for findable text types found anywhere in the buffer."
-  :mixin t
-  :finder-regex-forward #'skroad--finder-regex-forward
-  :finder-regex-backward #'skroad--finder-regex-backward
-  :use 'skroad--text-mixin-findable)
-
-(skroad--deftype skroad--text-mixin-delimited-anywhere
-  :doc "Mixin for delimited text types found anywhere in the buffer."
-  :mixin t
-  :finder-regex-forward #'skroad--finder-regex-forward
-  :finder-regex-backward #'skroad--finder-regex-backward
-  :use 'skroad--text-mixin-delimited-findable)
-
-;; TODO: invalidate cache when changing title
-(defvar-local skroad--buf-node-body-start-cached nil)
-
-(defun skroad--node-body-start ()
-  "Return the first position in the buffer outside of the node title."
-  (unless skroad--buf-node-body-start-cached
-    (setq-local skroad--buf-node-body-start-cached
-                (save-mark-and-excursion
-                  (goto-char (point-min))
-                  (goto-char (line-beginning-position 2))
-                  (point))))
-  skroad--buf-node-body-start-cached)
-
-(defun skroad--finder-regex-forward-non-title (r)
-  "Generate a forward finder for regex R which excludes the title."
-  (lambda (limit)
-    (goto-char (max (point) (skroad--node-body-start)))
-    (let ((lim (if (< (point) (or limit (point-max)))
-                   limit (line-end-position))))
-      (re-search-forward r lim t))))
-
-(defun skroad--finder-regex-backward-non-title (r)
-  "Generate a backward finder for regex R which excludes the title."
-  (lambda (limit)
-    (let ((lim (max (skroad--node-body-start) (or limit (point-min)))))
-      (when (> (point) lim) (re-search-backward r lim t)))))
-
-(skroad--deftype skroad--text-mixin-findable-non-title
-  :doc "Mixin for findable text types excluded from the node title."
-  :mixin t
-  :finder-regex-forward #'skroad--finder-regex-forward-non-title
-  :finder-regex-backward #'skroad--finder-regex-backward-non-title
-  :use 'skroad--text-mixin-findable)
-
-(skroad--deftype skroad--text-mixin-delimited-non-title
-  :doc "Mixin for delimited text types excluded from the node title."
-  :mixin t
-  :finder-regex-forward #'skroad--finder-regex-forward-non-title
-  :finder-regex-backward #'skroad--finder-regex-backward-non-title
-  :use 'skroad--text-mixin-delimited-findable)
 
 (defun skroad--type-action (text-type action-name &rest args)
   "If ACTION-NAME is not nil, and TEXT-TYPE has a defined action of that name,
@@ -558,7 +533,7 @@ call the action with ARGS."
   :require '(find-any-forward render)
   :render-next
   '(lambda (limit)
-     (when (funcall find-any-forward limit)
+     (when (funcall find-any-forward nil limit)
        (with-silent-modifications (funcall render) t)))
   :font-lock-rule '(lambda () (list render-next '(0 nil append)))
   :register 'skroad--text-types-rendered)
@@ -622,13 +597,13 @@ call the action with ARGS."
 (skroad--deftype skroad--text-mixin-rendered-zoned
   :doc "Mixin for zoned text types rendered by font-lock."
   :mixin t
-  :require 'face
+  :require '(face face-function get-match)
+  ;; :require 'face
   :render
   '(lambda ()
      (set-text-properties
       (match-beginning 0) (match-end 0)
-      (let ((payload (string-clean-whitespace
-                      (match-string-no-properties match-number))))
+      (let ((payload (funcall get-match)))
         (list 'category type-name
               'zone (gensym)
               'face (if (functionp face-function)
@@ -658,7 +633,8 @@ call the action with ARGS."
 (skroad--deftype skroad--text-mixin-render-delimited-decorative
   :doc "Mixin for decorative delimited text types rendered by font-lock."
   :mixin t
-  :use 'skroad--text-mixin-delimited-anywhere
+  ;; :use 'skroad--text-mixin-delimited-anywhere
+  :use 'skroad--text-mixin-delimited-findable
   :require 'face
   :render
   '(lambda () (add-face-text-property (match-beginning 0) (match-end 0) face))
@@ -859,7 +835,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
 (skroad--deftype skroad--text-mixin-indexed
   :doc "Mixin for indexed text types."
   :mixin t
-  :require 'for-all-in-region-forward
+  :require '(for-all-in-region-forward get-match)
   :register 'skroad--text-types-indexed)
 
 (defvar-local skroad--buf-indices-scan-enable t "Toggle index scanning.")
@@ -874,10 +850,14 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
       (dolist (text-type skroad--text-types-indexed) ;; walk all indexed types
         (let ((pending-index
                (skroad--ensure-index skroad--buf-indices-pending text-type)))
-          (funcall (get text-type 'for-all-in-region-forward)
-                   start-expanded end-expanded
-                   #'(lambda (payload)
-                       (skroad--index-delta pending-index payload delta))))))))
+          (funcall
+           (get text-type 'for-all-in-region-forward)
+           start-expanded end-expanded
+           #'(lambda ()
+               (skroad--index-delta
+                pending-index
+                (funcall (get text-type 'get-match))
+                delta))))))))
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in the buffer in region START...END."
@@ -1341,7 +1321,8 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :renamer-overlay-type 'skroad--text-renamer-indirect
   :use 'skroad--text-mixin-renameable
   :finder-filter #'skroad--in-node-body-p
-  :use 'skroad--text-mixin-delimited-non-title
+  :use 'skroad--text-mixin-delimited-findable
+  ;; :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
 
@@ -1369,7 +1350,8 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
             "l" #'(lambda () (interactive)
                     (skroad--transform-at 'skroad--text-link-node-live)))
   :finder-filter #'skroad--in-node-body-p
-  :use 'skroad--text-mixin-delimited-non-title
+  :use 'skroad--text-mixin-delimited-findable
+  ;; :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
 
@@ -1380,7 +1362,9 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (concat "\\(" (get 'skroad--text-link-node-live 'regex-any)
           "\\)\\|\\(" (get 'skroad--text-link-node-dead 'regex-any) "\\)")
   :finder-filter #'skroad--in-node-body-p ;; TODO: use both
-  :use 'skroad--text-mixin-findable-non-title)
+  :use 'skroad--text-mixin-findable
+  ;; :use 'skroad--text-mixin-findable-non-title
+  )
 
 (defun skroad--reconnectable-p (node)
   "Determine whether the current node has at least one dead link to NODE."
@@ -1470,7 +1454,8 @@ YANK-ARGS (optional) are passed to yank."
   :on-activate #'browse-url
   :keymap (define-keymap "t" #'skroad--cmd-url-comment)
   :finder-filter #'skroad--in-node-body-p
-  :use 'skroad--text-mixin-findable-non-title
+  :use 'skroad--text-mixin-findable
+  ;; :use 'skroad--text-mixin-findable-non-title
   ;; :use 'skroad--text-mixin-delimited-non-title
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed ;; TODO: do we need this?
@@ -1490,7 +1475,8 @@ YANK-ARGS (optional) are passed to yank."
   :match-number 0
   :regex-any "^\\(@@@\\)$"
   :finder-filter #'skroad--in-node-body-p
-  :use 'skroad--text-mixin-findable-non-title
+  :use 'skroad--text-mixin-findable
+  ;; :use 'skroad--text-mixin-findable-non-title
   :use 'skroad--text-mixin-rendered-zoned
   )
 
@@ -1504,8 +1490,7 @@ YANK-ARGS (optional) are passed to yank."
     (let ((tail (point)))
       (while (and
               (funcall
-               (get 'skroad--text-link-node-alive-or-dead 'find-any-backward)
-               (skroad--node-body-start)) ;; TODO
+               (get 'skroad--text-link-node-alive-or-dead 'find-any-backward))
               (eq (match-end 0)
                   (save-mark-and-excursion
                     (goto-char tail)
@@ -1594,7 +1579,8 @@ If the tail did not previously exist in the current node, it is emplaced."
   :use 'skroad--text-mixin-renameable
   :match-number 0
   :regex-any "\\`.*\n"
-  :use 'skroad--text-mixin-findable-anywhere
+  :use 'skroad--text-mixin-findable
+  ;; :use 'skroad--text-mixin-findable-anywhere
   :use 'skroad--text-mixin-rendered-zoned
   )
 
