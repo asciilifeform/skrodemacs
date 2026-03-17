@@ -446,11 +446,17 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   '(lambda (start end fn)
      (skroad--re-foreach regex-any fn finder-filter start end))
   :get-match ;; TODO?
-  '(lambda ()
-     (string-clean-whitespace (match-string-no-properties match-number)))
+  '(lambda () (match-string-no-properties match-number))
+  :get-payload
+  '(lambda () (string-clean-whitespace (funcall get-match)))
+  :swap
+  '(lambda (payload &optional only-payload)
+     (replace-match payload t t nil (and only-payload match-number)))
   )
 
-(skroad--deftype skroad--text-mixin-delimited-findable
+(defvar skroad--text-types-delimited nil "Text types having delimiters.")
+
+(skroad--deftype skroad--text-mixin-delimited
   :doc "Base mixin for delimited text types. Define delimiters before using."
   :mixin t
   :require '(payload-regex finder-filter)
@@ -462,23 +468,19 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   '(if (string-empty-p end-delim) "" (concat "\s*" (regexp-quote end-delim)))
   :make-regex '(lambda (s) (concat start-delim-regex s end-delim-regex))
   :regex-any '(funcall make-regex payload-regex)
+  :use 'skroad--text-mixin-findable
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   :walk
   '(lambda (payload fn)
      (skroad--re-foreach (funcall make-regex payload) fn finder-filter))
   :zap '(lambda (payload) (funcall walk payload #'skroad--zap-match))
-  :change
+  :regen
   '(lambda (payload &optional new-type new-payload)
      (let ((new-text (funcall (if new-type (get new-type 'generate) generate)
                               (or new-payload payload))))
-       (funcall walk payload #'(lambda () (replace-match new-text t t)))))
-  :use 'skroad--text-mixin-findable
+       (funcall walk payload #'(lambda () (funcall swap new-text)))))
+  :register 'skroad--text-types-delimited
   )
-
-(defun skroad--transform-at (new-type)
-  "Transform the text item at point (including all duplicates) to NEW-TYPE."
-  (funcall
-   (skroad--prop-at 'change) (skroad--prop-at 'data) new-type))
 
 (defun skroad--type-action (text-type action-name &rest args)
   "If ACTION-NAME is not nil, and TEXT-TYPE has a defined action of that name,
@@ -560,13 +562,12 @@ call the action with ARGS."
 (skroad--deftype skroad--text-mixin-rendered-zoned
   :doc "Mixin for zoned text types rendered by font-lock."
   :mixin t
-  :require '(face face-function get-match)
-  ;; :require 'face
+  :require '(face face-function get-payload)
   :render
   '(lambda ()
      (set-text-properties
       (match-beginning 0) (match-end 0)
-      (let ((payload (funcall get-match)))
+      (let ((payload (funcall get-payload)))
         (list 'category type-name
               'zone (gensym)
               'face (if (functionp face-function)
@@ -596,7 +597,7 @@ call the action with ARGS."
 (skroad--deftype skroad--text-mixin-render-delimited-decorative
   :doc "Mixin for decorative delimited text types rendered by font-lock."
   :mixin t
-  :use 'skroad--text-mixin-delimited-findable
+  :use 'skroad--text-mixin-delimited
   :require 'face
   :render
   '(lambda () (add-face-text-property (match-beginning 0) (match-end 0) face))
@@ -784,7 +785,8 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
                (skroad--current-node-title)))
       (skroad--index-scan-region (point-min) (point-max) 1)
       (setq have-changes t)
-      (setq indices nil))
+      (setq indices nil)
+      (save-buffer)) ;; If we canonicalized anything, need to save
     (when have-changes
       (setq indices (skroad--indices-update
                      indices skroad--buf-indices-pending
@@ -794,13 +796,29 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
+(defvar-local skroad--buf-indices-scan-enable t "Toggle index scanning.")
+
 (skroad--deftype skroad--text-mixin-indexed
   :doc "Mixin for indexed text types."
   :mixin t
-  :require '(for-all-in-region-forward get-match)
+  :require '(for-all-in-region-forward get-match swap)
+  :scan-region
+  '(lambda (start end delta)
+     (let ((pending-index
+            (skroad--ensure-index skroad--buf-indices-pending type-name)))
+       (funcall
+        for-all-in-region-forward start end
+        #'(lambda ()
+            (let* ((raw-match (funcall get-match))
+                   (payload (string-clean-whitespace raw-match)))
+              (skroad--index-delta pending-index payload delta)
+              ;; Canonicalize the payload, if required:
+              (when (and (= delta 1) (not (string-equal raw-match payload)))
+                (message "Canonicalizing '%s' to '%s'" raw-match payload)
+                (let ((skroad--buf-indices-scan-enable nil) ;; Don't recurse
+                      (buffer-read-only nil)) ;; Force writable
+                  (funcall swap payload t))))))))
   :register 'skroad--text-types-indexed)
-
-(defvar-local skroad--buf-indices-scan-enable t "Toggle index scanning.")
 
 (defun skroad--index-scan-region (start end delta)
   "Apply DELTA (must be 1 or -1) to each indexed item found in START ... END
@@ -810,16 +828,8 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (when skroad--buf-indices-scan-enable
     (skroad--with-whole-lines start end
       (dolist (text-type skroad--text-types-indexed) ;; walk all indexed types
-        (let ((pending-index
-               (skroad--ensure-index skroad--buf-indices-pending text-type)))
-          (funcall
-           (get text-type 'for-all-in-region-forward)
-           start-expanded end-expanded
-           #'(lambda ()
-               (skroad--index-delta
-                pending-index
-                (funcall (get text-type 'get-match))
-                delta))))))))
+        (funcall
+         (get text-type 'scan-region) start-expanded end-expanded delta)))))
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in the buffer in region START...END."
@@ -1276,14 +1286,15 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :start-delim "[[" :end-delim "]]"
   :keymap (define-keymap
             "l" #'(lambda () (interactive)
-                    (skroad--transform-at 'skroad--text-link-node-dead))
+                    (funcall (skroad--prop-at 'regen) (skroad--prop-at 'data)
+                             'skroad--text-link-node-dead))
             "y" #'skroad--cmd-teleyank-at ;; Official teleyank trigger
             "<remap> <yank>" #'skroad--cmd-teleyank-at ;; Regular yank also
             )
   :renamer-overlay-type 'skroad--text-renamer-indirect
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-renameable
-  :use 'skroad--text-mixin-delimited-findable
+  :use 'skroad--text-mixin-delimited
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
 
@@ -1309,9 +1320,10 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :face 'skroad--dead-link-face
   :keymap (define-keymap
             "l" #'(lambda () (interactive)
-                    (skroad--transform-at 'skroad--text-link-node-live)))
+                    (funcall (skroad--prop-at 'regen) (skroad--prop-at 'data)
+                             'skroad--text-link-node-live)))
   :finder-filter #'skroad--in-node-body-p
-  :use 'skroad--text-mixin-delimited-findable
+  :use 'skroad--text-mixin-delimited
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
 
@@ -1332,8 +1344,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (defun skroad--link-deaden (node)
   "Transform all live links to NODE in the current node to dead links."
   (funcall
-   (get 'skroad--text-link-node-live 'change)
-   node 'skroad--text-link-node-dead))
+   (get 'skroad--text-link-node-live 'regen) node 'skroad--text-link-node-dead))
 
 (defun skroad--link-remove (node)
   "Remove all live links to NODE from the current node."
@@ -1342,8 +1353,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (defun skroad--reconnect (node)
   "Transform all dead links to NODE in the current node to live links."
   (funcall
-   (get 'skroad--text-link-node-dead 'change)
-   node 'skroad--text-link-node-live))
+   (get 'skroad--text-link-node-dead 'regen) node 'skroad--text-link-node-live))
 
 (defun skroad--connect (node)
   "Ensure that the current node has at least one live link to NODE."
