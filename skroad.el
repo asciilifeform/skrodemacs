@@ -176,6 +176,11 @@
   "If the point is currently on an empty line, delete the line."
   (when (and (bolp) (eolp)) (delete-line)))
 
+(defun skroad--zap-match ()
+  "Delete the current match, as well as the empty line which may result."
+  (delete-region (match-beginning 0) (match-end 0))
+  (skroad--delete-line-if-empty))
+
 (defun skroad--prop-at (prop &optional pos)
   "Determine value of PROP, if any, including overlays, at POS (or point.)"
   (get-char-property (or pos (point)) prop))
@@ -183,27 +188,6 @@
 (defun skroad--overlay-active-p (overlay)
   "Determine whether OVERLAY is currently active."
   (and (overlayp overlay) (eq (current-buffer) (overlay-buffer overlay))))
-
-;; ;; TODO: invalidate cache when changing title
-;; (defvar-local skroad--buf-node-body-start-cached nil)
-
-;; (defun skroad--node-body-start ()
-;;   "Return the first position in the buffer outside of the node title."
-;;   (unless skroad--buf-node-body-start-cached
-;;     (setq-local skroad--buf-node-body-start-cached
-;;                 (save-mark-and-excursion
-;;                   (goto-char (point-min))
-;;                   (goto-char (line-beginning-position 2))
-;;                   (point))))
-;;   skroad--buf-node-body-start-cached)
-
-;; (defun skroad--in-node-title-p (&optional pos)
-;;   "Return t if POS (or point, if not given) is inside the node title."
-;;   (< (or pos (point)) (skroad--node-body-start)))
-
-;; (defun skroad--in-node-body-p (&optional pos)
-;;   "Return t if POS (or point, if not given) is inside the node body."
-;;   (>= (or pos (point)) (skroad--node-body-start)))
 
 (defun skroad--in-node-title-p (&optional pos)
   "Return t if POS (or point, if not given) is inside the node title."
@@ -243,24 +227,6 @@ Return t if there were any matches, otherwise nil."
         (setq did-any t)
         (funcall fn))
       did-any)))
-
-(defun skroad--re-replace-all (regexp text &optional filter start end)
-  "Replace all matching REGEXP with TEXT; optionally filtered by FILTER.
-If START and/or END are given, replace only in that range."
-  (skroad--re-foreach
-   regexp
-   #'(lambda () (replace-match text) t t)
-   filter start end))
-
-(defun skroad--re-delete-all (regexp &optional filter start end)
-  "Delete all matching REGEXP, optionally filtered by FILTER.
-If START and/or END are given, delete only in that range."
-  (skroad--re-foreach
-   regexp
-   #'(lambda ()
-       (delete-region (match-beginning 0) (match-end 0))
-       (skroad--delete-line-if-empty))
-   filter start end))
 
 (defmacro skroad--silence-modifications (function)
   "Prevent FUNCTION from triggering modification hooks while in this mode."
@@ -489,7 +455,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :mixin t
   :require '(payload-regex finder-filter)
   :defaults '((start-delim "") (end-delim "") (match-number 1))
-  :make-text '(lambda (payload) (concat start-delim payload end-delim))
+  :generate '(lambda (payload) (concat start-delim payload end-delim))
   :start-delim-regex
   '(if (string-empty-p start-delim) "" (concat (regexp-quote start-delim) "\s*"))
   :end-delim-regex
@@ -497,25 +463,22 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :make-regex '(lambda (s) (concat start-delim-regex s end-delim-regex))
   :regex-any '(funcall make-regex payload-regex)
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  :delete-payload-all
-  '(lambda (payload)
-     (skroad--re-delete-all
-      (funcall make-regex payload) finder-filter))
-  :replace-payload-all
-  '(lambda (payload payload-new)
-     (skroad--re-replace-all
-      (funcall make-regex payload) payload-new finder-filter))
-  :payload-change-type
-  '(lambda (payload new-type)
-     (funcall replace-payload-all payload
-              (funcall (get new-type 'make-text) payload)))
+  :walk
+  '(lambda (payload fn)
+     (skroad--re-foreach (funcall make-regex payload) fn finder-filter))
+  :zap '(lambda (payload) (funcall walk payload #'skroad--zap-match))
+  :change
+  '(lambda (payload &optional new-type new-payload)
+     (let ((new-text (funcall (if new-type (get new-type 'generate) generate)
+                              (or new-payload payload))))
+       (funcall walk payload #'(lambda () (replace-match new-text t t)))))
   :use 'skroad--text-mixin-findable
   )
 
 (defun skroad--transform-at (new-type)
   "Transform the text item at point (including all duplicates) to NEW-TYPE."
   (funcall
-   (skroad--prop-at 'payload-change-type) (skroad--prop-at 'data) new-type))
+   (skroad--prop-at 'change) (skroad--prop-at 'data) new-type))
 
 (defun skroad--type-action (text-type action-name &rest args)
   "If ACTION-NAME is not nil, and TEXT-TYPE has a defined action of that name,
@@ -1326,7 +1289,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 
 (defun skroad--insert-live-link (node)
   "Insert a live link to NODE at the current point."
-  (insert (funcall (get 'skroad--text-link-node-live 'make-text) node)))
+  (insert (funcall (get 'skroad--text-link-node-live 'generate) node)))
 
 (defun skroad--connected-p (node)
   "Determine whether the current node has at least one live link to NODE."
@@ -1369,20 +1332,18 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 (defun skroad--link-deaden (node)
   "Transform all live links to NODE in the current node to dead links."
   (funcall
-   (get 'skroad--text-link-node-live 'payload-change-type)
-   node
-   'skroad--text-link-node-dead))
+   (get 'skroad--text-link-node-live 'change)
+   node 'skroad--text-link-node-dead))
 
 (defun skroad--link-remove (node)
   "Remove all live links to NODE from the current node."
-  (funcall (get 'skroad--text-link-node-live 'delete-payload-all) node))
+  (funcall (get 'skroad--text-link-node-live 'zap) node))
 
 (defun skroad--reconnect (node)
   "Transform all dead links to NODE in the current node to live links."
   (funcall
-   (get 'skroad--text-link-node-dead 'payload-change-type)
-   node
-   'skroad--text-link-node-live))
+   (get 'skroad--text-link-node-dead 'change)
+   node 'skroad--text-link-node-live))
 
 (defun skroad--connect (node)
   "Ensure that the current node has at least one live link to NODE."
@@ -1393,7 +1354,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
         (skroad--tail-jump-after) ;; If tail didn't exist, it does now
         (newline)
         (skroad--insert-live-link node)
-        (skroad--update-stub-status))))
+        (skroad--update-stub-status)))) ;; TODO: move this to tail finder
 
 (defun skroad--disconnect (node)
   "Ensure that the current node does NOT have any live links to NODE."
