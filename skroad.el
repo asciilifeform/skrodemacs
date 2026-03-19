@@ -609,6 +609,7 @@ call the action with ARGS."
   ;; :exclude-delims-from-titles t
   :begins "##" :ends "\n"
   :face 'skroad--heading-face
+  :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-render-delimited-decorative
   :order 999)
 
