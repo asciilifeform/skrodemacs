@@ -606,12 +606,11 @@ call the action with ARGS."
 
 (skroad--deftype skroad--text-decorative-heading
   :doc "Heading text."
-  ;; :exclude-delims-from-titles t
   :begins "##" :ends "\n"
   :face 'skroad--heading-face
   :finder-filter #'(lambda ()
                      (and (skroad--in-node-body-p)
-                          (not (text-property-any
+                          (not (text-property-any ;; May not overlap an atomic
                                 (match-beginning 0) (match-end 0) 'atomic t))))
   :use 'skroad--text-mixin-render-delimited-decorative
   :order 999)
