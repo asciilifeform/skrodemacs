@@ -460,8 +460,8 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
 (skroad--deftype skroad--text-mixin-delimited
   :doc "Base mixin for delimited text types. Define delimiters before using."
   :mixin t
-  :require '(payload-regex finder-filter)
-  :defaults '((begins "") (ends "") (match-number 1))
+  :require '(begins ends payload-regex finder-filter)
+  :defaults '((match-number 1))
   :generate '(lambda (payload) (concat begins payload ends))
   :make-regex
   '(lambda (payload)
@@ -612,7 +612,6 @@ call the action with ARGS."
   :use 'skroad--text-mixin-render-delimited-decorative
   :order 999)
 
-;; TODO: fix regexps
 (skroad--deftype skroad--text-decorative-italic
   :doc "Italicized text."
   :face 'italic
@@ -814,7 +813,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
               (when (and (= delta 1) (not (string-equal raw-match payload)))
                 (message "Canonicalizing '%s' to '%s'" raw-match payload)
                 (let ((skroad--buf-indices-scan-enable nil) ;; Don't recurse
-                      (buffer-read-only nil)) ;; Force writable
+                      (buffer-read-only nil)) ;; Force writability
                   (funcall swap payload t))))))))
   :register 'skroad--text-types-indexed)
 
