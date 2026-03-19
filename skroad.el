@@ -20,9 +20,6 @@
 
 ;;; Fonts. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defconst skroad--node-title-regex "\\([^][\n\r\f\t\s]+[^][\n\r\f\t]*?\\)"
-  "Regex for valid skroad node titles.")
-
 (defvar skroad--floating-title-enable t
   "Display floating title at the top of the window if title is not in view.")
 
@@ -84,7 +81,7 @@
 
 (defface skroad--heading-face
   '((t :inherit skroad--text-face
-       :weight bold :height 1.2 :inverse-video t))
+       :extend t :weight bold :height 1.2 :inverse-video t))
   "Face used for skroad heading text."
   :group 'skroad-faces)
 
@@ -228,6 +225,10 @@ Return t if there were any matches, otherwise nil."
         (funcall fn))
       did-any)))
 
+(defun skroad--clean-whitespace (s)
+  "Remove excess whitespace from S."
+  (save-match-data (string-clean-whitespace s)))
+
 (defmacro skroad--silence-modifications (function)
   "Prevent FUNCTION from triggering modification hooks while in this mode."
   `(advice-add ,function :around
@@ -286,7 +287,7 @@ stripped and interior whitespace runs collapsed.  Returns nil if NODE is nil,
 empty/whitespace-only, or if the result exceeds 255 UTF-8 bytes.
 The original NODE can be recovered using `skroad--file-path-to-node-title'."
   (when node
-    (let ((node-nowhite (string-clean-whitespace node)))
+    (let ((node-nowhite (string-clean-whitespace node))) ;; TODO
       (when (not (string-empty-p node-nowhite))
         (let* ((encoded
                 (replace-regexp-in-string
@@ -448,7 +449,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :get-match ;; TODO?
   '(lambda () (match-string-no-properties match-number))
   :get-payload
-  '(lambda () (string-clean-whitespace (funcall get-match)))
+  '(lambda () (skroad--clean-whitespace (funcall get-match)))
   :swap
   '(lambda (payload &optional only-payload)
      (replace-match payload t t nil (and only-payload match-number)))
@@ -460,13 +461,11 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :doc "Base mixin for delimited text types. Define delimiters before using."
   :mixin t
   :require '(payload-regex finder-filter)
-  :defaults '((start-delim "") (end-delim "") (match-number 1))
-  :generate '(lambda (payload) (concat start-delim payload end-delim))
-  :start-delim-regex
-  '(if (string-empty-p start-delim) "" (concat (regexp-quote start-delim) "\s*"))
-  :end-delim-regex
-  '(if (string-empty-p end-delim) "" (concat "\s*" (regexp-quote end-delim)))
-  :make-regex '(lambda (s) (concat start-delim-regex s end-delim-regex))
+  :defaults '((begins "") (ends "") (match-number 1))
+  :generate '(lambda (payload) (concat begins payload ends))
+  :make-regex
+  '(lambda (payload)
+     (rx (seq (literal begins) (group (regexp payload)) (literal ends))))
   :regex-any '(funcall make-regex payload-regex)
   :use 'skroad--text-mixin-findable
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -597,35 +596,35 @@ call the action with ARGS."
 (skroad--deftype skroad--text-mixin-render-delimited-decorative
   :doc "Mixin for decorative delimited text types rendered by font-lock."
   :mixin t
-  :use 'skroad--text-mixin-delimited
+  :payload-regex (rx (seq (* blank) (+ print) (* blank)))
   :require 'face
   :render
   '(lambda () (add-face-text-property (match-beginning 0) (match-end 0) face))
   :order 1000 ;; Render these last, so they can amend all other rendered faces
+  :use 'skroad--text-mixin-delimited
   :use 'skroad--text-mixin-rendered)
 
 ;; TODO: fix regexps
 (skroad--deftype skroad--text-decorative-italic
   :doc "Italicized text."
   :face 'italic
-  :start-delim "__" :end-delim "__"
-  :payload-regex "\\([^_]+\\)"
+  :begins "__" :ends "__"
   :use 'skroad--text-mixin-render-delimited-decorative)
 
 (skroad--deftype skroad--text-decorative-bold
   :doc "Bold text."
   :face 'bold
-  :start-delim "**" :end-delim "**"
-  :payload-regex "\\([^*]+\\)"
+  :begins "**" :ends "**"
   :use 'skroad--text-mixin-render-delimited-decorative)
 
 ;; TODO: should have actual delims
 (skroad--deftype skroad--text-decorative-heading
   :doc "Heading text."
-  :exclude-delims-from-titles t
+  ;; :exclude-delims-from-titles t
+  :begins "##" :ends "\n"
   :face 'skroad--heading-face
-  :payload-regex "^##\s*\\([^\n\r\f\t\s]+[^\n\r\f\t]*\\)"
-  :use 'skroad--text-mixin-render-delimited-decorative)
+  :use 'skroad--text-mixin-render-delimited-decorative
+)
 
 ;; Node indices cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -810,7 +809,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
         for-all-in-region-forward start end
         #'(lambda ()
             (let* ((raw-match (funcall get-match))
-                   (payload (string-clean-whitespace raw-match)))
+                   (payload (skroad--clean-whitespace raw-match)))
               (skroad--index-delta pending-index payload delta)
               ;; Canonicalize the payload, if required:
               (when (and (= delta 1) (not (string-equal raw-match payload)))
@@ -1044,6 +1043,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
 
 (defvar skroad--title-prohibited-regex-cached nil)
 
+;; TODO: fix
 (defun skroad--title-prohibited-regex ()
   "Memoized regex matching all strings prohibited in skroad node titles."
   (unless skroad--title-prohibited-regex-cached
@@ -1051,12 +1051,12 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
           (let ((prohib-strings skroad--strings-prohibited-in-titles))
             (dolist (type skroad--text-types-rendered)
               (when (get type 'exclude-delims-from-titles)
-                (let ((start-delim (get type 'start-delim))
-                      (end-delim (get type 'end-delim)))
-                  (unless (or (null start-delim) (string-empty-p start-delim))
-                    (push start-delim prohib-strings))
-                  (unless (or (null end-delim) (string-empty-p end-delim))
-                    (push end-delim prohib-strings)))))
+                (let ((begins (get type 'begins))
+                      (ends (get type 'ends)))
+                  (unless (or (null begins) (string-empty-p begins))
+                    (push begins prohib-strings))
+                  (unless (or (null ends) (string-empty-p ends))
+                    (push ends prohib-strings)))))
             (regexp-opt prohib-strings))))
   skroad--title-prohibited-regex-cached)
 
@@ -1211,6 +1211,13 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   (with-current-buffer buf
     (skroad--prop-at 'data position)))
 
+(defconst skroad--node-title-regex
+  (rx (seq (* blank)
+           (+ (not (any "[]" blank ?\n)))
+           (*? (not (any "[]\n")))
+           (* blank)))
+  "Regex for valid node titles.")
+
 (skroad--deftype skroad--text-link-node
   :doc "Fundamental type for skroad node links (live or dead)."
   :use 'skroad--text-link
@@ -1283,7 +1290,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
                          'skroad--stub-link-face
                        'skroad--live-link-face))
   :help-echo 'skroad--link-mouseover
-  :start-delim "[[" :end-delim "]]"
+  :begins "[[" :ends "]]"
   :keymap (define-keymap
             "l" #'(lambda () (interactive)
                     (funcall (skroad--prop-at 'regen) (skroad--prop-at 'data)
@@ -1316,7 +1323,7 @@ If `skroad--buf-indices-scan-enable` is nil, index scanning is disabled."
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
   :kbd-doc "<l> liven|<t> textify|<del> zap|<spc> pre-space"
   :use 'skroad--text-link-node
-  :start-delim "[-[" :end-delim "]-]"
+  :begins "[-[" :ends "]-]"
   :face 'skroad--dead-link-face
   :keymap (define-keymap
             "l" #'(lambda () (interactive)
@@ -1405,7 +1412,6 @@ YANK-ARGS (optional) are passed to yank."
       (search-forward "//" end)
       (insert " "))))
 
-;; TODO: require whitespace or start/end of line delimiters
 (skroad--deftype skroad-text-url-link
   :doc "URL."
   :kbd-doc "<return> go|<t> textify|<del> zap|<spc> pre-space"
@@ -1414,8 +1420,8 @@ YANK-ARGS (optional) are passed to yank."
   :help-echo "External link."
   :face 'skroad--url-link-face
   :match-number 0
-  :regex-any ;; TODO: needs whitespace to terminate
-  "\\(\\(?:http\\(?:s?://\\)\\|ftp://\\|file://\\|magnet:\\)[^\n\r\f\t\s]+\\)"
+  :regex-any
+  (rx (seq (or (seq "http" (? "s")) "file" "ftp" "magnet") "://") (+ graph) eow)
   :on-activate #'browse-url
   :keymap (define-keymap "t" #'skroad--cmd-url-comment)
   :finder-filter #'skroad--in-node-body-p
