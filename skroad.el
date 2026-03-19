@@ -81,7 +81,7 @@
 
 (defface skroad--heading-face
   '((t :inherit skroad--text-face
-       :extend t :weight bold :height 1.2 :inverse-video t))
+       :extend t :height 1.2 :inverse-video t))
   "Face used for skroad heading text."
   :group 'skroad-faces)
 
@@ -604,6 +604,14 @@ call the action with ARGS."
   :use 'skroad--text-mixin-delimited
   :use 'skroad--text-mixin-rendered)
 
+(skroad--deftype skroad--text-decorative-heading
+  :doc "Heading text."
+  ;; :exclude-delims-from-titles t
+  :begins "##" :ends "\n"
+  :face 'skroad--heading-face
+  :use 'skroad--text-mixin-render-delimited-decorative
+  :order 999)
+
 ;; TODO: fix regexps
 (skroad--deftype skroad--text-decorative-italic
   :doc "Italicized text."
@@ -616,15 +624,6 @@ call the action with ARGS."
   :face 'bold
   :begins "**" :ends "**"
   :use 'skroad--text-mixin-render-delimited-decorative)
-
-;; TODO: should have actual delims
-(skroad--deftype skroad--text-decorative-heading
-  :doc "Heading text."
-  ;; :exclude-delims-from-titles t
-  :begins "##" :ends "\n"
-  :face 'skroad--heading-face
-  :use 'skroad--text-mixin-render-delimited-decorative
-)
 
 ;; Node indices cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
