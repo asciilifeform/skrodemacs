@@ -813,8 +813,8 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
                    (payload (skroad--clean-whitespace raw-match)))
               (skroad--index-delta pending-index payload delta)
               ;; Canonicalize the payload, if required:
-              (when (and (= delta 1) (not (string-equal raw-match payload)))
-                (message "Canonicalizing '%s' to '%s'" raw-match payload)
+              (when (and (= delta 1) (not undo-in-progress)
+                         (not (string-equal raw-match payload)))
                 (let ((skroad--buf-indices-scan-enable nil) ;; Don't recurse
                       (buffer-read-only nil)) ;; Force writability
                   (funcall swap payload t))))))))
