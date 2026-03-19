@@ -609,7 +609,10 @@ call the action with ARGS."
   ;; :exclude-delims-from-titles t
   :begins "##" :ends "\n"
   :face 'skroad--heading-face
-  :finder-filter #'skroad--in-node-body-p
+  :finder-filter #'(lambda ()
+                     (and (skroad--in-node-body-p)
+                          (not (text-property-any
+                                (match-beginning 0) (match-end 0) 'atomic t))))
   :use 'skroad--text-mixin-render-delimited-decorative
   :order 999)
 
