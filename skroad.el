@@ -255,12 +255,12 @@ Return t if there were any matches, otherwise nil."
 (defvar skroad--idle-work-quantum 0.1
   "Max wall-clock seconds to spend draining per idle cycle.")
 
-(defmacro skroad--do-later (&rest body)
-  "Enqueue BODY to run later."
+(defmacro skroad--defer (&rest body)
+  "Schedule BODY to run later."
   `(skroad--idle-enqueue (lambda () ,@body)))
 
-(defmacro skroad--do-later-here (&rest body)
-  "Enqueue BODY to run later in the current buffer, supposing it remains live."
+(defmacro skroad--defer-in-current-buffer (&rest body)
+  "Schedule BODY to run later in the current buffer, supposing it remains live."
   `(let ((here (current-buffer)))
      (skroad--idle-enqueue
       (lambda ()
@@ -358,7 +358,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
      (char-to-string (string-to-number (substring match 1) 16)))
    (file-name-base file) t t))
 
-(defun skroad--current-node-title ()
+(defun skroad--current-node ()
   "Return the filename-derived title of the node in the current buffer."
   (skroad--file-path-to-node-title (buffer-file-name)))
 
@@ -768,7 +768,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
 `on-init-first': same as above, but during initial scan (INIT-SCAN is t).
 `on-destroy-last': the last payload of this type was removed from the buffer.
 `on-init-none': during initial scan, no payloads of this type were found."
-  (let ((origin (skroad--current-node-title)))
+  (let ((origin (skroad--current-node)))
     (dolist (change changes)
       (let ((text-type (car change)) (type-changes (cdr change)))
         (when (not (skroad--hash-empty-p type-changes))
@@ -783,7 +783,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
                         (skroad--index-delta type-index payload count
                                              t create-action 'on-destroy)))
                    (unless (or (null action) no-actions)
-                     (skroad--do-later
+                     (skroad--defer
                       (skroad--type-action text-type action origin payload)))))
              type-changes)
             (clrhash type-changes) ;; Empty the type's pending change index
@@ -797,7 +797,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
               ;; was: (or (null action) no-actions)
               (unless (or (null action)
                           (skroad--node-special-p))
-                (skroad--do-later
+                (skroad--defer
                  (skroad--type-action text-type action origin)))
               (when none-after ;; Don't waste cache space on empty indices
                 (setq indices (assq-delete-all text-type indices)))))))))
@@ -820,7 +820,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
   "Obtain the current node's text type indices."
   (when (eq skroad--buf-indices-table 'fetch-me) ;; Fetch from cache?
     (setq-local skroad--buf-indices-table
-                (skroad--cache-fetch (skroad--current-node-title))))
+                (skroad--cache-fetch (skroad--current-node))))
   skroad--buf-indices-table)
 
 (defun skroad--buf-indices-sync (&optional no-actions)
@@ -833,7 +833,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
     (when init
       (when have-changes
         (error "Tried to apply changes to unindexed node: '%s'"
-               (skroad--current-node-title)))
+               (skroad--current-node)))
       (skroad--index-scan-region (point-min) (point-max) 1)
       (setq have-changes t)
       (setq indices nil)
@@ -843,7 +843,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
                      indices skroad--buf-indices-pending
                      (or no-actions (skroad--node-special-p)) init)) ;; TODO?
       (setq-local skroad--buf-indices-table indices)
-      (skroad--cache-write (skroad--current-node-title) indices))))
+      (skroad--cache-write (skroad--current-node) indices))))
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
@@ -1298,12 +1298,12 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
 
 (defun skroad--action-orphaned (origin)
   "ORIGIN is an orphan (i.e. it has NO live links)."
-  (skroad--node-set-orphan t origin))
+  (skroad--node-set-orphan origin t))
 
 ;; TODO: links to specials and to self do not count!
 (defun skroad--action-unorphaned (origin)
   "ORIGIN is NOT an orphan (i.e. it has live links)."
-  (skroad--node-set-orphan nil origin))
+  (skroad--node-set-orphan origin nil))
 
 (skroad--deftype skroad--text-renamer-indirect
   :doc "Renamer for editing a node's title while standing on a link to the node."
@@ -1443,7 +1443,7 @@ YANK-ARGS (optional) are passed to yank."
       (ensure-empty-lines 1)
       (apply #'yank yank-args)
       (newline 2)
-      (skroad--node-set-stub nil)))) ;; TODO: display confirmation message?
+      (skroad--node-set-stub (skroad--current-node) nil))))
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1542,13 +1542,13 @@ YANK-ARGS (optional) are passed to yank."
 A stub is a node where only whitespace is found between the title and the tail.
 If the tail did not previously exist in the current node, it is emplaced."
   (unless (skroad--node-special-p)
-    (skroad--node-set-stub
-     (save-mark-and-excursion
-       (skroad--tail-jump-before)
-       (let ((before-tail (point)))
-         (skroad--goto-node-body-start)
-         (skip-syntax-forward " ")
-         (eq (point) before-tail))))))
+    (skroad--node-set-stub (skroad--current-node)
+                           (save-mark-and-excursion
+                             (skroad--tail-jump-before)
+                             (let ((before-tail (point)))
+                               (skroad--goto-node-body-start)
+                               (skip-syntax-forward " ")
+                               (eq (point) before-tail))))))
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1731,11 +1731,10 @@ If the tail did not previously exist in the current node, it is emplaced."
   (face-remap-set-base 'header-line 'skroad--title-face)
   (skroad--init-font-lock)
   (skroad--set-writability) ;; If special node, open it as read-only
-  (skroad--cache-intern (skroad--current-node-title)) ;; TODO?
+  (skroad--cache-intern (skroad--current-node)) ;; TODO?
   (skroad--update-visible)
   (skroad--update-stub-status) ;; TODO: do we want this here?
-  ;; (skroad--async-dispatch #'skroad--buf-indices-sync) ;; move this to enabler
-  (skroad--do-later-here (skroad--buf-indices-sync))
+  (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
   )
 
 ;; Back-end. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1749,9 +1748,9 @@ Return the path where the node is found on disk."
        ((file-exists-p node-path) ;; Found on disk, but needs internment
         (skroad--cache-intern-unindexed node)) ;; Intern, index on demand
        ((file-writable-p node-path) ;; Not found on disk, but can be made:
-        (write-region (concat node "\n") nil node-path nil 0) ;; only title
-        (skroad--cache-write node nil) ;; Intern with an empty index
-        (skroad--node-set-stub t node) ;; Becomes a stub (unless special)
+        (write-region (concat node "\n") nil node-path nil 0) ;; Insert title
+        (skroad--cache-write node nil) ;; Intern the node with an empty index
+        (skroad--node-set-stub node t) ;; It starts as a stub (unless special)
         ;; TODO: write journal entry
         (message "Created new node: '%s'" node)
         )
@@ -1796,88 +1795,85 @@ or edited interactively.  Special nodes are not subject to auto-backlinking.")
 
 (defun skroad--node-special-p (&optional node)
   "Return t if NODE (if given; else the current node) is a special node."
-  (member (or node (skroad--current-node-title)) skroad--special-nodes))
+  (member (or node (skroad--current-node)) skroad--special-nodes))
+
+(defun skroad--special-status-p (special &optional node)
+  "Test whether NODE (if given; else the current node) is linked from SPECIAL.
+SPECIAL is created if required.  If NODE itself is a special node, return nil."
+  (unless (skroad--node-special-p node)
+    (skroad--indices-has-p 'skroad--text-link-node-live
+                           (or node (skroad--current-node))
+                           (skroad--node-ensure-indices special))))
+
+(defun skroad--set-special-status (node special status)
+  "Set connection STATUS of NODE from the given SPECIAL (assumed) node.
+SPECIAL is created if required.  If NODE itself is a special node, do nothing.
+Return t when the connection status of NODE has actually changed."
+  (unless (or (skroad--node-special-p node) ;; If node itself is special, no-op
+              (eq (skroad--special-status-p special node) status)) ;; no change?
+    (skroad--in-node
+     special (if status #'skroad--connect #'skroad--disconnect) node t)
+    t))
+
+(skroad--define-special-node skroad--special-node-log "#Log"
+  "Operation log.")
+
+(skroad--define-special-node skroad--special-node-stubs "#Stubs"
+  "A node with links to all known stubs (non-specials containing only links.)")
+
+(defun skroad--node-stub-p (&optional node)
+  "Return t when NODE (if given; else the current node) is a known stub."
+  (skroad--special-status-p skroad--special-node-stubs node))
+
+;; TODO: write journal entry
+(defun skroad--node-set-stub (node status)
+  "Set the stub STATUS of NODE."
+  (when (skroad--set-special-status node skroad--special-node-stubs status)
+    (skroad--refontify-open-nodes)))
 
 (skroad--define-special-node skroad--special-node-orphans "#Orphans"
   "A node with links to all known orphans (non-specials without any live links.)
 Orphan nodes are candidates for deletion; and only an orphan may be deleted.")
 
-(skroad--define-special-node skroad--special-node-stubs "#Stubs"
-  "A node with links to all known stubs (non-specials containing only links.)")
-
-(skroad--define-special-node skroad--special-node-log "#Log"
-  "Operation log.")
-
-(defun skroad--special-has-p (special &optional node)
-  "Test whether NODE (if given; else the current node) is linked from SPECIAL.
-If NODE is a special node, return nil.  If SPECIAL does not exist, create it."
-  (unless (skroad--node-special-p node)
-    (skroad--indices-has-p 'skroad--text-link-node-live
-                           (or node (skroad--current-node-title))
-                           (skroad--node-ensure-indices special))))
-
-(defun skroad--node-stub-p (&optional node)
-  "Return t when NODE (if given; else the current node) is a known stub."
-  (skroad--special-has-p skroad--special-node-stubs node))
-
 (defun skroad--node-orphan-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known orphan."
-  (skroad--special-has-p skroad--special-node-orphans node))
-
-(defun skroad--set-special-linkage (special status &optional node)
-  "Set connection STATUS of NODE (if given; else the current node) from SPECIAL.
-If NODE is a special node, do nothing.  If SPECIAL does not exist, create it.
-Return t when the connection status has in fact changed as a result."
-  (unless (or (skroad--node-special-p node) ;; If node is special, do nothing
-              (eq (skroad--special-has-p special node) status)) ;; no change?
-    (let ((node-or-current (or node (skroad--current-node-title))))
-      (if status
-          (skroad--in-node special #'skroad--connect node-or-current t)
-        (skroad--in-node special #'skroad--disconnect node-or-current t)))
-    t))
+  (skroad--special-status-p skroad--special-node-orphans node))
 
 ;; TODO: write journal entry
-(defun skroad--node-set-stub (status &optional node)
-  "Set stub status of NODE (if given; else the current node) to STATUS."
-  (when (skroad--set-special-linkage skroad--special-node-stubs status node)
-    (skroad--refontify-open-nodes)))
+(defun skroad--node-set-orphan (node status)
+  "Set the orphan STATUS of NODE.  If it became an orphan stub, try deleting it.
+If deletion is blocked, no new auto-deletion attempt will be made until and
+unless the node stops being an orphan stub and then later becomes one again."
+  (when (and
+         (skroad--set-special-status node skroad--special-node-orphans status)
+         status (skroad--node-stub-p node))
+    (skroad--defer (skroad--maybe-delete-orphan node))))
 
 ;; TODO: write journal entry
 (defun skroad--maybe-delete-orphan (node)
-  "Delete orphan NODE.  If currently open in a buffer, prompt before deleting."
-  (when (skroad--node-orphan-p node)
-    (let* ((may-delete t)
-           (node-path (skroad--node-path node))
+  "Request deletion of NODE.  No-op if NODE does not exist or is not an orphan.
+If NODE is currently open in a buffer, request confirmation before deletion."
+  (when (and (skroad--cache-peek node) (skroad--node-orphan-p node))
+    (let* ((node-path (skroad--node-path node))
            (visiting-buffer (find-buffer-visiting node-path)))
-      (when visiting-buffer
-        (with-current-buffer visiting-buffer
-          (setq may-delete
-                (y-or-n-p "Delete this orphan (This cannot be undone!) ?"))
-          (when may-delete
-            (restore-buffer-modified-p nil)
-            (kill-buffer))))
-      (when may-delete
-        (skroad--node-set-orphan nil node)
-        (skroad--node-set-stub nil node)
+      (when (or (null visiting-buffer)
+                (with-current-buffer visiting-buffer
+                  (when (y-or-n-p ;; If node is open, user may veto deletion
+                         (format "Permanently delete orphan node '%s' ?" node))
+                    (kill-all-local-variables)
+                    (restore-buffer-modified-p nil)
+                    (kill-buffer))))
+        (skroad--node-set-orphan node nil)
+        (skroad--node-set-stub node nil)
         (skroad--cache-evict node)
         (delete-file node-path)
-        (message "Deleted orphan: '%s'" node)))))
-
-;; TODO: write journal entry
-(defun skroad--node-set-orphan (status node)
-  "Set orphan status of NODE (if given; else the current node) to STATUS.
-If NODE became an orphan stub, try to delete it (if open, will ask user first.)"
-  (when (and (skroad--set-special-linkage
-              skroad--special-node-orphans status node)
-             status
-             (skroad--node-stub-p node))
-    (skroad--do-later (skroad--maybe-delete-orphan node))))
+        (message "Deleted orphan node: '%s'" node)))))
 
 ;; TODO: write journal entry if changing
 (defun skroad--verify-node-title ()
   "Perform consistency check on the title of the current node."
   ;; Verify that the node's internal title matches the filename:
-  (let ((node (skroad--current-node-title))
+  (let ((node (skroad--current-node))
         (internal-title (skroad--current-internal-title)))
     (unless (string-equal internal-title node)
       (message
@@ -1885,11 +1881,11 @@ If NODE became an orphan stub, try to delete it (if open, will ask user first.)"
        node internal-title)
       )))
 
-(defun skroad--verify-all-nodes ()
-  "Perform consistency check on all nodes, updating the broken node list."
-  (skroad--cache-foreach ;; For every node, build indices and verify title
-   #'(lambda (node)
-       (skroad--with-node node t (skroad--verify-node-title))))
+;; (defun skroad--verify-all-nodes ()
+;;   "Perform consistency check on all nodes, updating the broken node list."
+;;   (skroad--cache-foreach ;; For every node, build indices and verify title
+;;    #'(lambda (node)
+;;        (skroad--with-node node t (skroad--verify-node-title))))
   
   ;; (skroad--cache-foreach
   ;;  #'(lambda (node)
@@ -1897,7 +1893,7 @@ If NODE became an orphan stub, try to delete it (if open, will ask user first.)"
   ;;        ;; Verify that each live link is reciprocal:
   ;;        )
   ;;      ))
-  )
+  ;; )
 
 ;;(defun skroad--current-indices-foreach (text-type fn &rest other-args)
 
