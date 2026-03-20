@@ -104,10 +104,6 @@
   "Return t if HASH is empty."
   (zerop (hash-table-count hash)))
 
-(defun skroad--nop (&rest args)
-  "Placeholder function, simply eats its ARGS and does absolutely nothing."
-  ())
-
 (defun skroad--mode-p ()
   "Determine whether skroad mode is currently active."
   (derived-mode-p 'skroad-mode))
@@ -577,7 +573,7 @@ call the action with ARGS."
   "Suspend font lock rendering in a skroad buffer, but don't depropertize text."
   (setq-local
    skroad--font-lock-unfontify-region font-lock-unfontify-region-function
-   font-lock-unfontify-region-function #'skroad--nop
+   font-lock-unfontify-region-function #'(lambda (&rest args) ())
    font-lock-defaults '(nil t))
   (font-lock-refresh-defaults))
 
