@@ -240,75 +240,65 @@ Return t if there were any matches, otherwise nil."
 
 ;; Idle queue for background ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar skroad--idle-queue nil
-  "FIFO queue of thunks to run during idle time.")
+(defvar skroad--idle-work-queue nil
+  "FIFO work queue of thunks to run during idle time.")
 
-(defvar skroad--idle-queue-tail nil
-  "Last cons cell of `skroad--idle-queue', for O(1) tail insertion.")
+(defvar skroad--idle-work-queue-tail nil
+  "Last cons cell of `skroad--idle-work-queue', for O(1) tail insertion.")
 
-(defvar skroad--idle-queue-timer nil
-  "The idle timer driving the queue, or nil if not scheduled.")
+(defvar skroad--idle-work-timer nil
+  "The idle timer driving the work queue, or nil if not scheduled.")
 
-(defvar skroad--idle-queue-epsilon 0.05
-  "Idle seconds before the queue starts draining.")
+(defvar skroad--idle-work-epsilon 0.05
+  "Idle seconds before the work queue starts draining.")
 
-(defvar skroad--idle-queue-quantum 0.1
+(defvar skroad--idle-work-quantum 0.1
   "Max wall-clock seconds to spend draining per idle cycle.")
 
-(defvar-local skroad--idle-queue-pending 0
-  "Number of idle queue thunks pending for this buffer.")
+(defmacro skroad--do-later (&rest body)
+  "Enqueue BODY to run later."
+  `(skroad--idle-enqueue (lambda () ,@body)))
 
-(defvar-local skroad--idle-queue-was-read-only nil
-  "Whether the buffer was read-only before the idle queue locked it.")
-
-(defmacro skroad--with-idle-dispatch (&rest body)
-  "Enqueue BODY to run later in the current buffer.
-The buffer becomes read-only until all its pending thunks have drained."
-  `(let ((skroad--idle-queue--buf (current-buffer)))
-     (with-current-buffer skroad--idle-queue--buf
-       (when (zerop skroad--idle-queue-pending)
-         (setq skroad--idle-queue-was-read-only buffer-read-only))
-       (setq skroad--idle-queue-pending (1+ skroad--idle-queue-pending))
-       (setq buffer-read-only t))
+(defmacro skroad--do-later-here (&rest body)
+  "Enqueue BODY to run later in the current buffer, supposing it remains live."
+  `(let ((here (current-buffer)))
      (skroad--idle-enqueue
       (lambda ()
-        (when (buffer-live-p skroad--idle-queue--buf)
-          (with-current-buffer skroad--idle-queue--buf
-            (unwind-protect
-                (let ((buffer-read-only nil))
-                  ,@body)
-              (setq skroad--idle-queue-pending
-                    (1- skroad--idle-queue-pending))
-              (when (zerop skroad--idle-queue-pending)
-                (setq buffer-read-only
-                      skroad--idle-queue-was-read-only)))))))))
+        (when (buffer-live-p here) (with-current-buffer here ,@body))))))
 
 (defun skroad--idle-enqueue (fn)
   "Push FN onto the back of the idle queue."
   (let ((cell (list fn)))
-    (if skroad--idle-queue-tail
-        (setcdr skroad--idle-queue-tail cell)
-      (setq skroad--idle-queue cell))
-    (setq skroad--idle-queue-tail cell))
+    (if skroad--idle-work-queue-tail
+        (setcdr skroad--idle-work-queue-tail cell)
+      (setq skroad--idle-work-queue cell))
+    (setq skroad--idle-work-queue-tail cell))
   (skroad--idle-ensure-timer))
 
 (defun skroad--idle-ensure-timer ()
   "Schedule the idle timer if it isn't already running."
-  (unless skroad--idle-queue-timer
-    (setq skroad--idle-queue-timer
-          (run-with-idle-timer skroad--idle-queue-epsilon nil
-                               #'skroad--idle-do-quantum))))
+  (unless skroad--idle-work-timer
+    (setq skroad--idle-work-timer
+          (run-with-idle-timer
+           skroad--idle-work-epsilon t #'skroad--idle-work))))
 
-(defun skroad--idle-do-quantum ()
+(defun skroad--idle-pop ()
+  "Pop the head of the queue, keeping tail consistent."
+  (let ((fn (pop skroad--idle-work-queue)))
+    (unless skroad--idle-work-queue
+      (setq skroad--idle-work-queue-tail nil))
+    fn))
+
+(defun skroad--idle-work ()
   "Pop and run thunks until the queue is empty or the quantum has elapsed."
-  (setq skroad--idle-queue-timer nil)
-  (let ((deadline (+ (float-time) skroad--idle-queue-quantum)))
-    (while (and skroad--idle-queue (< (float-time) deadline))
-      (with-demoted-errors "skroad--idle-queue: %S"
-        (funcall (pop skroad--idle-queue)))))
-  (if skroad--idle-queue
-      (skroad--idle-ensure-timer)
-    (setq skroad--idle-queue-tail nil)))
+  (let ((deadline (+ (float-time) skroad--idle-work-quantum)))
+    (while (and skroad--idle-work-queue (< (float-time) deadline))
+      (with-demoted-errors "skroad--idle-work: %S"
+        (funcall (skroad--idle-pop)))))
+  (unless skroad--idle-work-queue
+    (when skroad--idle-work-timer
+      (cancel-timer skroad--idle-work-timer)
+      (setq skroad--idle-work-timer nil))))
 
 ;; File and directory ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -778,37 +768,40 @@ Secondary type actions (run after a primary action has ran, if applicable) :
 `on-init-first': same as above, but during initial scan (INIT-SCAN is t).
 `on-destroy-last': the last payload of this type was removed from the buffer.
 `on-init-none': during initial scan, no payloads of this type were found."
-  (dolist (pending-change changes)
-    (let ((text-type (car pending-change)) (type-changes (cdr pending-change)))
-      (when (not (skroad--hash-empty-p type-changes))
-        (let* ((type-index (skroad--ensure-index indices text-type))
-               (none-before (skroad--hash-empty-p type-index))
-               (create-action (if init-scan 'on-init 'on-create))
-               (type-create-action
-                (if init-scan 'on-init-first 'on-create-first)))
-          (maphash
-           #'(lambda (payload count)
-               (let ((action
-                      (skroad--index-delta type-index payload count
-                                           t create-action 'on-destroy)))
-                 (unless (or (null action) no-actions)
-                   (skroad--type-action text-type action payload))))
-           type-changes)
-          (clrhash type-changes) ;; Empty the type's pending change index
-          ;; Created the first or destroyed the last item of this type?
-          (let*
-              ((none-after (skroad--hash-empty-p type-index))
-               (action
-                (cond ((and init-scan none-after) 'on-init-none)
-                      ((and none-before (not none-after)) type-create-action)
-                      ((and (not none-before) none-after) 'on-destroy-last))))
-            ;; was: (or (null action) no-actions)
-            (unless (or (null action)
-                        (skroad--node-special-p))
-              (skroad--type-action text-type action))
-            (when none-after ;; Don't waste cache space on empty indices
-              (setq indices (assq-delete-all text-type indices))))))))
-  indices)
+  (let ((origin (skroad--current-node-title)))
+    (dolist (change changes)
+      (let ((text-type (car change)) (type-changes (cdr change)))
+        (when (not (skroad--hash-empty-p type-changes))
+          (let* ((type-index (skroad--ensure-index indices text-type))
+                 (none-before (skroad--hash-empty-p type-index))
+                 (create-action (if init-scan 'on-init 'on-create))
+                 (type-create-action
+                  (if init-scan 'on-init-first 'on-create-first)))
+            (maphash
+             #'(lambda (payload count)
+                 (let ((action
+                        (skroad--index-delta type-index payload count
+                                             t create-action 'on-destroy)))
+                   (unless (or (null action) no-actions)
+                     (skroad--do-later
+                      (skroad--type-action origin text-type action payload)))))
+             type-changes)
+            (clrhash type-changes) ;; Empty the type's pending change index
+            ;; Created the first or destroyed the last item of this type?
+            (let*
+                ((none-after (skroad--hash-empty-p type-index))
+                 (action
+                  (cond ((and init-scan none-after) 'on-init-none)
+                        ((and none-before (not none-after)) type-create-action)
+                        ((and (not none-before) none-after) 'on-destroy-last))))
+              ;; was: (or (null action) no-actions)
+              (unless (or (null action)
+                          (skroad--node-special-p))
+                (skroad--do-later
+                 (skroad--type-action origin text-type action)))
+              (when none-after ;; Don't waste cache space on empty indices
+                (setq indices (assq-delete-all text-type indices)))))))))
+    indices)
 
 (defvar-local skroad--buf-indices-pending nil
   "Pending changes to the text type indices for the current node.")
@@ -1289,36 +1282,31 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
   (message (format "Live link pushed: '%s'" data)))
 
 ;; TODO: store the graph edge for lint
-(defun skroad--action-connected-on-init (node)
-  "The first instance of a live link to NODE was found during indexing."
+(defun skroad--action-connected-on-init (origin node)
+  "A live link to NODE was found for the first time in ORIGIN during indexing."
   ;; TODO: lint-only?
   ;; (skroad--node-ensure node)
-  ;; (skroad--in-node node #'skroad--connect)
+  ;; (skroad--in-node node #'skroad--connect origin)
   )
 
-(defun skroad--action-connected (node)
-  "The first instance of a live link to NODE was introduced."
+(defun skroad--action-connected (origin node)
+  "The first instance of a live link to NODE was introduced in ORIGIN."
   ;; (message "Link create: node='%s'" node)
-  (skroad--in-node node #'skroad--connect)
-  )
+  (skroad--in-node node #'skroad--connect origin))
 
-(defun skroad--action-disconnected (node)
-  "The last instance of a live link to NODE was removed."
+(defun skroad--action-disconnected (origin node)
+  "The last instance of a live link to NODE was removed from ORIGIN."
   ;; (message "Link destroy: node='%s'" node)
-  (skroad--in-node node #'skroad--disconnect)
-  )
+  (skroad--in-node node #'skroad--disconnect origin))
 
-(defun skroad--action-orphaned ()
-  "The current node is an orphan (i.e. it has NO live links)."
-  (message "Orphaned: '%s'" (skroad--current-node-title))
-  (skroad--node-set-orphan t)
-  )
+(defun skroad--action-orphaned (origin)
+  "ORIGIN is an orphan (i.e. it has NO live links)."
+  (skroad--node-set-orphan t origin))
 
 ;; TODO: links to specials and to self do not count!
-(defun skroad--action-unorphaned ()
-  "The current node is NOT an orphan (i.e. it has live links)."
-  (message "Unorphaned: '%s'" (skroad--current-node-title))
-  (skroad--node-set-orphan nil))
+(defun skroad--action-unorphaned (origin)
+  "ORIGIN is NOT an orphan (i.e. it has live links)."
+  (skroad--node-set-orphan nil origin))
 
 (skroad--deftype skroad--text-renamer-indirect
   :doc "Renamer for editing a node's title while standing on a link to the node."
@@ -1440,13 +1428,21 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
            (skroad--link-remove node) ;; If special or stub, simply remove links
          (skroad--link-deaden node)))) ;; ... otherwise, deaden.
 
+;; ;; TODO: override readonly only here, rather than in with-file ?
+;; (defun skroad--in-node (node op &optional target allow-special)
+;;   "Ensure that NODE exists, and run OP on TARGET (nil: current node) from it.
+;; If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
+;;   (when (or allow-special (not (skroad--node-special-p node)))
+;;     (let ((target-or-current (or target (skroad--current-node-title))))
+;;       (skroad--with-node node t (funcall op target-or-current)))))
+
 ;; TODO: override readonly only here, rather than in with-file ?
-(defun skroad--in-node (node op &optional target allow-special)
+(defun skroad--in-node (node op target &optional allow-special)
   "Ensure that NODE exists, and run OP on TARGET (nil: current node) from it.
 If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
+  ;; (message "in-node: %s %s" node target)
   (when (or allow-special (not (skroad--node-special-p node)))
-    (let ((target-or-current (or target (skroad--current-node-title))))
-      (skroad--with-node node t (funcall op target-or-current)))))
+    (skroad--with-node node t (funcall op target))))
 
 (defun skroad--yank-into (node &rest yank-args) ;; TODO: undo mechanism?
   "Ensure that NODE exists, and yank into it; then sync indices (with actions.)
@@ -1751,7 +1747,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--update-visible)
   (skroad--update-stub-status) ;; TODO: do we want this here?
   ;; (skroad--async-dispatch #'skroad--buf-indices-sync) ;; move this to enabler
-  (skroad--with-idle-dispatch (skroad--buf-indices-sync))
+  (skroad--do-later-here (skroad--buf-indices-sync))
   )
 
 ;; Back-end. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1879,17 +1875,19 @@ Return t when the connection status has in fact changed as a result."
         (message "Deleted orphan: '%s'" node)))))
 
 ;; TODO: write journal entry
-(defun skroad--node-set-orphan (status &optional node)
+(defun skroad--node-set-orphan (status node)
   "Set orphan status of NODE (if given; else the current node) to STATUS."
   (when (and (skroad--set-special-linkage
               skroad--special-node-orphans status node)
              status
              (skroad--node-stub-p node))
+    (message "'%s' orphan = %s" node status)
     ;; (skroad--async-dispatch
     ;;  #'skroad--delete-orphan (or node (skroad--current-node-title)))
     ;; (skroad--delete-orphan (or node (skroad--current-node-title)))
     t
-    ))
+    )
+  )
 
 ;; TODO: write journal entry if changing
 (defun skroad--verify-node-title ()
