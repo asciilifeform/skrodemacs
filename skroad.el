@@ -755,7 +755,7 @@ If FINAL is t, the count sum going negative will signal an error."
        (setf (alist-get ,text-type ,indices) (make-hash-table :test 'equal))))
 
 ;; TODO: `on-dupe` action?
-;; TODO: secondary actions should always execute, unless this is a special node
+;; TODO: fix on-init-none, which doesn't work because not in the changes
 (defun skroad--indices-update (indices changes &optional no-actions init-scan)
   "Apply a set of pending CHANGES to INDICES.  Return the updated INDICES.
 The tables in CHANGES are emptied out after being applied to the INDICES.
@@ -784,7 +784,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
                                              t create-action 'on-destroy)))
                    (unless (or (null action) no-actions)
                      (skroad--do-later
-                      (skroad--type-action origin text-type action payload)))))
+                      (skroad--type-action text-type action origin payload)))))
              type-changes)
             (clrhash type-changes) ;; Empty the type's pending change index
             ;; Created the first or destroyed the last item of this type?
@@ -798,7 +798,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
               (unless (or (null action)
                           (skroad--node-special-p))
                 (skroad--do-later
-                 (skroad--type-action origin text-type action)))
+                 (skroad--type-action text-type action origin)))
               (when none-after ;; Don't waste cache space on empty indices
                 (setq indices (assq-delete-all text-type indices)))))))))
     indices)
@@ -1281,7 +1281,6 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
 (defun skroad--action-open-link (data)
   (message (format "Live link pushed: '%s'" data)))
 
-;; TODO: store the graph edge for lint
 (defun skroad--action-connected-on-init (origin node)
   "A live link to NODE was found for the first time in ORIGIN during indexing."
   ;; TODO: lint-only?
@@ -1291,12 +1290,10 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
 
 (defun skroad--action-connected (origin node)
   "The first instance of a live link to NODE was introduced in ORIGIN."
-  ;; (message "Link create: node='%s'" node)
   (skroad--in-node node #'skroad--connect origin))
 
 (defun skroad--action-disconnected (origin node)
   "The last instance of a live link to NODE was removed from ORIGIN."
-  ;; (message "Link destroy: node='%s'" node)
   (skroad--in-node node #'skroad--disconnect origin))
 
 (defun skroad--action-orphaned (origin)
@@ -1428,20 +1425,11 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
            (skroad--link-remove node) ;; If special or stub, simply remove links
          (skroad--link-deaden node)))) ;; ... otherwise, deaden.
 
-;; ;; TODO: override readonly only here, rather than in with-file ?
-;; (defun skroad--in-node (node op &optional target allow-special)
-;;   "Ensure that NODE exists, and run OP on TARGET (nil: current node) from it.
-;; If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
-;;   (when (or allow-special (not (skroad--node-special-p node)))
-;;     (let ((target-or-current (or target (skroad--current-node-title))))
-;;       (skroad--with-node node t (funcall op target-or-current)))))
-
 ;; TODO: override readonly only here, rather than in with-file ?
 (defun skroad--in-node (node op target &optional allow-special)
   "Ensure that NODE exists, and run OP on TARGET (nil: current node) from it.
 If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
-  ;; (message "in-node: %s %s" node target)
-  (when (or allow-special (not (skroad--node-special-p node)))
+  (when (or (not (skroad--node-special-p node)) allow-special)
     (skroad--with-node node t (funcall op target))))
 
 (defun skroad--yank-into (node &rest yank-args) ;; TODO: undo mechanism?
@@ -1854,7 +1842,8 @@ Return t when the connection status has in fact changed as a result."
   (when (skroad--set-special-linkage skroad--special-node-stubs status node)
     (skroad--refontify-open-nodes)))
 
-(defun skroad--delete-orphan (node)
+;; TODO: write journal entry
+(defun skroad--maybe-delete-orphan (node)
   "Delete orphan NODE.  If currently open in a buffer, prompt before deleting."
   (when (skroad--node-orphan-p node)
     (let* ((may-delete t)
@@ -1876,18 +1865,13 @@ Return t when the connection status has in fact changed as a result."
 
 ;; TODO: write journal entry
 (defun skroad--node-set-orphan (status node)
-  "Set orphan status of NODE (if given; else the current node) to STATUS."
+  "Set orphan status of NODE (if given; else the current node) to STATUS.
+If NODE became an orphan stub, try to delete it (if open, will ask user first.)"
   (when (and (skroad--set-special-linkage
               skroad--special-node-orphans status node)
              status
              (skroad--node-stub-p node))
-    (message "'%s' orphan = %s" node status)
-    ;; (skroad--async-dispatch
-    ;;  #'skroad--delete-orphan (or node (skroad--current-node-title)))
-    ;; (skroad--delete-orphan (or node (skroad--current-node-title)))
-    t
-    )
-  )
+    (skroad--do-later (skroad--maybe-delete-orphan node))))
 
 ;; TODO: write journal entry if changing
 (defun skroad--verify-node-title ()
