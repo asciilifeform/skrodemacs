@@ -1753,7 +1753,6 @@ Return the path where the node is found on disk."
        (t (error "Could not activate node '%s'!" node))))
     node-path))
 
-;; TODO: use async dispatch?
 (defmacro skroad--with-node (node no-actions &rest body)
   "If NODE does not exist, it is created and interned in the cache.
 NODE's indices are synced with any pending changes (or, if absent, created.)
@@ -1804,18 +1803,20 @@ SPECIAL is created if required.  If NODE itself is a special node, return nil."
 (defun skroad--set-special-status (node special status)
   "Set connection STATUS of NODE from the given SPECIAL (assumed) node.
 SPECIAL is created if required.  If NODE itself is a special node, do nothing.
-Return t when the connection status of NODE has actually changed."
+Return t only when the connection status of NODE from SPECIAL actually changed."
   (unless (or (skroad--node-special-p node) ;; If node itself is special, no-op
               (eq (skroad--special-status-p special node) status)) ;; no change?
     (skroad--in-node
      special (if status #'skroad--connect #'skroad--disconnect) node t)
     t))
 
+;; TODO: make log work
 (skroad--define-special-node skroad--special-node-log "#Log"
   "Operation log.")
 
 (skroad--define-special-node skroad--special-node-stubs "#Stubs"
-  "A node with links to all known stubs (non-specials containing only links.)")
+  "A node with links to all known stub nodes.
+A stub node is a non-special node having only whitespace above the tail.")
 
 (defun skroad--node-stub-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known stub."
@@ -1829,7 +1830,8 @@ Return t when the connection status of NODE has actually changed."
 
 (skroad--define-special-node skroad--special-node-orphans "#Orphans"
   "A node with links to all known orphans (non-specials without any live links.)
-Orphan nodes are candidates for deletion; and only an orphan may be deleted.")
+Orphan nodes are candidates for deletion; and only an orphan may be deleted.
+An orphan stub is auto-deleted (after prompt, but only when open in a buffer.)")
 
 (defun skroad--node-orphan-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known orphan."
