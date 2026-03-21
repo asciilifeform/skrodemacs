@@ -1281,16 +1281,16 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
   "A live link to NODE was found for the first time in ORIGIN during indexing."
   ;; TODO: lint-only?
   ;; (skroad--node-ensure node)
-  ;; (skroad--in-node node #'skroad--connect origin)
+  ;; (skroad--in-node node #'skroad--connect-to origin)
   )
 
 (defun skroad--action-connected (origin node)
   "The first instance of a live link to NODE was introduced in ORIGIN."
-  (skroad--in-node node #'skroad--connect origin))
+  (skroad--in-node node #'skroad--connect-to origin))
 
 (defun skroad--action-disconnected (origin node)
   "The last instance of a live link to NODE was removed from ORIGIN."
-  (skroad--in-node node #'skroad--disconnect origin))
+  (skroad--in-node node #'skroad--disconnect-from origin))
 
 (defun skroad--action-orphaned (origin)
   "ORIGIN is an orphan (i.e. it has NO live links)."
@@ -1333,7 +1333,7 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
   :help-echo 'skroad--link-mouseover
   :begins "[[" :ends "]]"
   :keymap (define-keymap
-            "l" #'(lambda () (interactive)
+            "l" #'(lambda () (interactive) ;; TODO: unify with disconnect?
                     (funcall (skroad--prop-at 'regen) (skroad--prop-at 'data)
                              'skroad--text-link-node-dead))
             "y" #'skroad--cmd-teleyank-at ;; Official teleyank trigger
@@ -1346,11 +1346,11 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
 
-(defun skroad--insert-live-link (node)
+(defun skroad--link-insert-live (node)
   "Insert a live link to NODE at the current point."
   (insert (funcall (get 'skroad--text-link-node-live 'generate) node)))
 
-(defun skroad--connected-p (node)
+(defun skroad--link-has-live-p (node)
   "Determine whether the current node has at least one live link to NODE."
   (skroad--current-indices-have-p 'skroad--text-link-node-live node))
 
@@ -1367,7 +1367,7 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
   :begins "[-[" :ends "]-]"
   :face 'skroad--dead-link-face
   :keymap (define-keymap
-            "l" #'(lambda () (interactive)
+            "l" #'(lambda () (interactive) ;; TODO: unify with reconnect?
                     (funcall (skroad--prop-at 'regen) (skroad--prop-at 'data)
                              'skroad--text-link-node-live)))
   :finder-filter #'skroad--in-node-body-p
@@ -1385,7 +1385,7 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
   :use 'skroad--text-mixin-findable
   )
 
-(defun skroad--reconnectable-p (node)
+(defun skroad--link-has-dead-p (node)
   "Determine whether the current node has at least one dead link to NODE."
   (skroad--current-indices-have-p 'skroad--text-link-node-dead node))
 
@@ -1398,28 +1398,30 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
   "Remove all live links to NODE from the current node."
   (funcall (get 'skroad--text-link-node-live 'zap) node))
 
-(defun skroad--reconnect (node)
+(defun skroad--link-revive (node)
   "Transform all dead links to NODE in the current node to live links."
   (funcall
    (get 'skroad--text-link-node-dead 'regen) node 'skroad--text-link-node-live))
 
-(defun skroad--connect (node)
-  "Ensure that the current node has at least one live link to NODE."
-  (or (skroad--connected-p node) ;; Already has a live link to node?
-      (and (skroad--reconnectable-p node) ;; If not, any dead links to it?
-           (skroad--reconnect node)) ;; Try livening the dead links
-      (progn ;; If none of the above: create a new link below the tail:
-        (skroad--tail-jump-after) ;; If tail didn't exist, it does now
+(defun skroad--connect-to (node)
+  "Ensure that the current node has at least one live link to NODE.
+If it had dead links to NODE, liven them; if not, insert a link under the tail."
+  (or (skroad--link-has-live-p node) ;; Already has a live link to node?
+      (and (skroad--link-has-dead-p node) ;; If not, any dead links to it?
+           (skroad--link-revive node)) ;; Liven the dead links, and we're done.
+      (progn ;; If none of the above: create a new link to node below the tail:
+        (skroad--tail-jump-after) ;; If tail didn't exist before, it will now
         (newline)
-        (skroad--insert-live-link node)
+        (skroad--link-insert-live node)
         (skroad--update-stub-status)))) ;; TODO: move this to tail finder
 
-(defun skroad--disconnect (node)
-  "Ensure that the current node does NOT have any live links to NODE."
-  (and (skroad--connected-p node) ;; Actually has any live links to it?
+(defun skroad--disconnect-from (node)
+  "Ensure that the current node does NOT have any live links to NODE.
+If the former is neither special nor a stub, replace live links with dead ones."
+  (and (skroad--link-has-live-p node) ;; Actually has any live links to it?
        (if (or (skroad--node-special-p) (skroad--node-stub-p))
            (skroad--link-remove node) ;; If special or stub, simply remove links
-         (skroad--link-deaden node)))) ;; ... otherwise, deaden.
+         (skroad--link-deaden node)))) ;; ... otherwise, deaden them.
 
 ;; TODO: override readonly only here, rather than in with-file ?
 (defun skroad--in-node (node op target &optional allow-special)
@@ -1557,7 +1559,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (interactive)
   (let ((node (skroad--current-internal-title)))
     (with-temp-buffer
-      (skroad--insert-live-link node)
+      (skroad--link-insert-live node)
       (copy-region-as-kill (point-min) (point-max)))))
 
 (skroad--deftype skroad--text-renamer-direct
@@ -1807,7 +1809,7 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
   (unless (or (skroad--node-special-p node) ;; If node itself is special, no-op
               (eq (skroad--special-status-p special node) status)) ;; no change?
     (skroad--in-node
-     special (if status #'skroad--connect #'skroad--disconnect) node t)
+     special (if status #'skroad--connect-to #'skroad--disconnect-from) node t)
     t))
 
 ;; TODO: make log work
@@ -1815,8 +1817,10 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
   "Operation log.")
 
 (skroad--define-special-node skroad--special-node-stubs "#Stubs"
-  "A node with links to all known stub nodes.
-A stub node is a non-special node having only whitespace above the tail.")
+  "A node with links to all known stub nodes. A stub node is a non-special node
+without any text between the title and the tail.  All nodes begin life as stubs.
+Stubs which are disconnected do not retain dead links; when orphaned, a stub
+will be queued for auto-deletion (see `skroad--node-set-orphan' below.)")
 
 (defun skroad--node-stub-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known stub."
@@ -1898,7 +1902,7 @@ If NODE is currently open in a buffer, request confirmation before deletion."
 ;; (skroad--verify-all-nodes)
 ;; skroad--cache-table
 
-;; (skroad--in-node "xyz" #'skroad--connect "qqq1")
+;; (skroad--in-node "xyz" #'skroad--connect-to "qqq1")
 
 ;; ;; TODO: handle stub
 ;; (defun skroad--rename-node (node node-new) ;; TODO: proper renamer
