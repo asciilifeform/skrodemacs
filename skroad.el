@@ -1413,7 +1413,7 @@ If it had dead links to NODE, liven them; if not, insert a link under the tail."
         (skroad--tail-jump-after) ;; If tail didn't exist before, it will now
         (newline)
         (skroad--link-insert-live node)
-        (skroad--update-stub-status)))) ;; TODO: move this to tail finder
+        (skroad--update-stub-status)))) ;; TODO: move this to tail finder?
 
 (defun skroad--disconnect-from (node)
   "Ensure that the current node does NOT have any live links to NODE.
@@ -1430,18 +1430,16 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
   (when (or (not (skroad--node-special-p node)) allow-special)
     (skroad--with-node node t (funcall op target))))
 
-(defun skroad--yank-into (node &rest yank-args) ;; TODO: undo mechanism?
+(defun skroad--yank-into (node &rest yank-args)
   "Ensure that NODE exists, and yank into it; then sync indices (with actions.)
-Do nothing if NODE is a special node, or if the current kill is empty or blank.
 YANK-ARGS (optional) are passed to yank."
-  (unless (or (skroad--node-special-p node) ;; Don't teleyank into special nodes
-              (string-blank-p (skroad--current-kill-text)))
+  (unless (skroad--node-special-p node) ;; Don't teleyank into special nodes
     (skroad--with-node node nil ;; Yank could contain links, so actions must run
       (skroad--tail-jump-before)
       (ensure-empty-lines 1)
       (apply #'yank yank-args)
       (newline 2)
-      (skroad--node-set-stub (skroad--current-node) nil))))
+      (skroad--update-stub-status))))
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
