@@ -1431,8 +1431,7 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
     (skroad--with-node node t (funcall op target))))
 
 (defun skroad--yank-into (node &rest yank-args)
-  "Ensure that NODE exists, and yank into it; then sync indices (with actions.)
-YANK-ARGS (optional) are passed to yank."
+  "Ensure that NODE exists, and yank into it.  YANK-ARGS are passed to yank."
   (unless (skroad--node-special-p node) ;; Don't teleyank into special nodes
     (skroad--with-node node nil ;; Yank could contain links, so actions must run
       (skroad--tail-jump-before)
