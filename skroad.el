@@ -354,10 +354,6 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
      (char-to-string (string-to-number (substring match 1) 16)))
    (file-name-base file) t t))
 
-(defun skroad--current-node ()
-  "Return the filename-derived title of the node in the current buffer."
-  (skroad--file-path-to-node-title (buffer-file-name)))
-
 (defun skroad--file-path-in-data-directory (file)
   "Generate the path where FILE would reside in the data directory."
   (when (null file)
@@ -833,6 +829,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
   :doc "Mixin for indexed text types."
   :mixin t
   :require '(for-all-in-region-forward get-match swap)
+  :defaults '((index-filter nil))
   :scan-region
   '(lambda (start end delta)
      (let ((pending-index
@@ -842,8 +839,10 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
         #'(lambda ()
             (let* ((raw-match (funcall get-match))
                    (payload (skroad--clean-whitespace raw-match)))
-              (skroad--index-delta pending-index payload delta)
-              ;; Canonicalize the payload, if required:
+              ;; If there's an index filter, indexing is predicated on it:
+              (when (or (null index-filter) (funcall index-filter payload))
+                (skroad--index-delta pending-index payload delta))
+              ;; Always canonicalize the payload, if required:
               (when (and (= delta 1) (not undo-in-progress)
                          (not (string-equal raw-match payload)))
                 (let ((skroad--buf-indices-scan-enable nil) ;; Don't recurse
@@ -910,7 +909,7 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
     (save-match-data (when (funcall (get type method) pos) (match-data t)))))
 
 (defun skroad--link-find-from (pos &optional backwards)
-  "Try to find a link (alive or dead) from POS.  BACKWARDS triggers reverse."
+  "Try to find the next (or previous, if BACKWARDS) live or dead link from POS."
   (let* ((method (if backwards 'find-any-backward 'find-any-forward))
          (live (skroad--find-any-from 'skroad--text-link-node-live method pos))
          (dead (skroad--find-any-from 'skroad--text-link-node-dead method pos))
@@ -923,15 +922,15 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
       (set-match-data match)
       (match-beginning 0))))
 
-(defun skroad--link-jump-from (pos &optional backwards roll)
-  "Try to jump to a link (alive or dead) found from POS.
-If BACKWARDS is t, search backwards.  If ROLL is t, cycle through whole buffer."
-  (goto-char
-   (or
-    (skroad--link-find-from pos backwards)
-    (and roll (skroad--link-find-from
-               (if backwards (point-max) (point-min)) backwards))
-    pos)))
+(defun skroad--link-jump-from (pos &optional backwards wrap)
+  "Jump to the next (or previous, if BACKWARDS) live or dead link from POS.
+If WRAP is t, wrap if there are no further links in the current direction.
+Return the new position if the jump actually happened; otherwise nil."
+  (let ((found
+         (or (skroad--link-find-from pos backwards)
+             (and wrap (skroad--link-find-from
+                        (if backwards (point-max) (point-min)) backwards)))))
+    (when found (goto-char found))))
 
 (defun skroad--cmd-top-jump-to-next-link ()
   "Jump to the next link after the point; try to cycle to first if none."
@@ -1282,6 +1281,10 @@ If BACKWARDS is t, search backwards.  If ROLL is t, cycle through whole buffer."
   :use 'skroad--text-link
   :mouse-face 'skroad--highlight-link-face
   :payload-regex skroad--node-title-regex
+  :index-filter ;; Do not index self-links or links to special nodes
+  #'(lambda (node)
+      (not (or (string-equal node (skroad--current-node))
+               (skroad--node-special-p node))))
   :keymap (define-keymap "t" #'skroad--cmd-link-comment))
 
 ;; TODO: ensure and open the node
@@ -1497,8 +1500,7 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
     (goto-char (point-max))
     (let ((tail (point)))
       (while (and
-              (let ((prev-link (skroad--link-find-from (point) t)))
-                (when prev-link (goto-char prev-link)))
+              (skroad--link-jump-from (point) t)
               (eq (match-end 0)
                   (save-mark-and-excursion
                     (goto-char tail)
@@ -1547,6 +1549,16 @@ If the tail did not previously exist in the current node, it is emplaced."
                                (eq (point) before-tail))))))
 
 ;; Node title. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; TODO: zap when renaming
+(defvar-local skroad--current-node-title nil
+  "Cached title of the node in the current buffer (Do not access directly).")
+
+(defun skroad--current-node ()
+  "Return the filename-derived title of the node in the current buffer."
+  (or skroad--current-node-title
+      (setq-local skroad--current-node-title
+                  (skroad--file-path-to-node-title (buffer-file-name)))))
 
 (defun skroad--current-internal-title ()
   "Get the current node title from the buffer."
@@ -1830,6 +1842,7 @@ will be queued for auto-deletion (see `skroad--node-set-orphan' below.)")
 
 (skroad--define-special-node skroad--special-node-orphans "#Orphans"
   "A node with links to all known orphans (non-specials without any live links.)
+A node with live links only to special nodes or to itself is still an orphan.
 Orphan nodes are candidates for deletion; and only an orphan may be deleted.
 An orphan stub is auto-deleted (after prompt, but only when open in a buffer.)")
 
