@@ -839,7 +839,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
         #'(lambda ()
             (let* ((raw-match (funcall get-match))
                    (payload (skroad--clean-whitespace raw-match)))
-              ;; If there's an index filter, indexing is predicated on it:
+              ;; If there's an index filter, use it:
               (when (or (null index-filter) (funcall index-filter payload))
                 (skroad--index-delta pending-index payload delta))
               ;; Always canonicalize the payload, if required:
@@ -1347,9 +1347,8 @@ Return the new position if the jump actually happened; otherwise nil."
   :help-echo 'skroad--link-mouseover
   :begins "[[" :ends "]]"
   :keymap (define-keymap
-            "l" #'(lambda () (interactive) ;; TODO: unify with disconnect?
-                    (funcall (skroad--prop-at 'regen) (skroad--prop-at 'data)
-                             'skroad--text-link-node-dead))
+            "l" #'(lambda () (interactive)
+                    (skroad--link-deaden (skroad--prop-at 'data)))
             "y" #'skroad--cmd-teleyank-at ;; Official teleyank trigger
             "<remap> <yank>" #'skroad--cmd-teleyank-at ;; Regular yank also
             )
@@ -1381,9 +1380,8 @@ Return the new position if the jump actually happened; otherwise nil."
   :begins "[-[" :ends "]-]"
   :face 'skroad--dead-link-face
   :keymap (define-keymap
-            "l" #'(lambda () (interactive) ;; TODO: unify with reconnect?
-                    (funcall (skroad--prop-at 'regen) (skroad--prop-at 'data)
-                             'skroad--text-link-node-live)))
+            "l" #'(lambda () (interactive)
+                    (skroad--link-revive (skroad--prop-at 'data))))
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-delimited
   :use 'skroad--text-mixin-rendered-zoned
