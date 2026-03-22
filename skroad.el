@@ -471,22 +471,6 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   '(lambda (&optional start end)
      (when start (goto-char start))
      (skroad--re-search #'re-search-backward regex-any end finder-filter))
-  :find-any-first '(lambda () (funcall find-any-forward (point-min)))
-  :find-any-last '(lambda () (funcall find-any-backward (point-max)))
-  :jump-next-from
-  '(lambda (pos)
-     (goto-char
-      (or (save-mark-and-excursion
-            (when (or (funcall find-any-forward pos) (funcall find-any-first))
-              (match-beginning 0)))
-          (point))))
-  :jump-prev-from
-  '(lambda (pos)
-     (goto-char
-      (or (save-mark-and-excursion
-            (when (or (funcall find-any-backward pos) (funcall find-any-last))
-              (match-beginning 0)))
-          (point))))
   :for-all-in-region-forward
   '(lambda (start end fn)
      (skroad--re-foreach regex-any fn finder-filter start end))
@@ -920,15 +904,44 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
                    (delete-region (skroad--zone-start left) p) ;; ... delete it;
                  (delete-backward-char 1))))))) ;; ... if not: normal backspace.
 
+(defun skroad--find-any-from (type method pos)
+  "Search for TYPE from POS via METHOD; return match data (nil if not found)."
+  (save-mark-and-excursion
+    (save-match-data (when (funcall (get type method) pos) (match-data t)))))
+
+(defun skroad--link-find-from (pos &optional backwards)
+  "Try to find a link (alive or dead) from POS.  BACKWARDS triggers reverse."
+  (let* ((method (if backwards 'find-any-backward 'find-any-forward))
+         (live (skroad--find-any-from 'skroad--text-link-node-live method pos))
+         (dead (skroad--find-any-from 'skroad--text-link-node-dead method pos))
+         (match
+          (or
+           (and live dead ;; If both, get the nearest one in the given direction
+                (or (and (xor backwards (<= (car live) (car dead))) live) dead))
+           live dead))) ;; If only one, take that one; or nil if neither
+    (when match
+      (set-match-data match)
+      (match-beginning 0))))
+
+(defun skroad--link-jump-from (pos &optional backwards roll)
+  "Try to jump to a link (alive or dead) found from POS.
+If BACKWARDS is t, search backwards.  If ROLL is t, cycle through whole buffer."
+  (goto-char
+   (or
+    (skroad--link-find-from pos backwards)
+    (and roll (skroad--link-find-from
+               (if backwards (point-max) (point-min)) backwards))
+    pos)))
+
 (defun skroad--cmd-top-jump-to-next-link ()
-  "Jump to the next link following point; cycle to first if no more."
+  "Jump to the next link after the point; try to cycle to first if none."
   (interactive)
-  (funcall (get 'skroad--text-link-node-alive-or-dead 'jump-next-from) (point)))
+  (skroad--link-jump-from (point) nil t))
 
 (defun skroad--cmd-top-jump-to-prev-link ()
-  "Jump to the previous link preceding point; cycle to last if no more."
+  "Jump to the previous link before the point; try to cycle to last if none."
   (interactive)
-  (funcall (get 'skroad--text-link-node-alive-or-dead 'jump-prev-from) (point)))
+  (skroad--link-jump-from (point) t t))
 
 (defvar skroad--mode-keymap
   (define-keymap
@@ -1010,9 +1023,7 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
 (defun skroad--cmd-atomic-jump-to-next-link ()
   "Jump to the next link following this atomic; cycle to first after the last."
   (interactive)
-  (funcall
-   (get 'skroad--text-link-node-alive-or-dead 'jump-next-from)
-   (skroad--zone-end)))
+  (skroad--link-jump-from (skroad--zone-end) nil t))
 
 ;; TODO: require zone?
 ;; TODO: allow mouse click point motion by default
@@ -1375,16 +1386,6 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
 
-(skroad--deftype skroad--text-link-node-alive-or-dead
-  :doc "Leaf type exclusively for searching for either live/dead node links."
-  :match-number 0
-  :regex-any
-  (concat "\\(" (get 'skroad--text-link-node-live 'regex-any)
-          "\\)\\|\\(" (get 'skroad--text-link-node-dead 'regex-any) "\\)")
-  :finder-filter #'skroad--in-node-body-p ;; TODO: use both
-  :use 'skroad--text-mixin-findable
-  )
-
 (defun skroad--link-has-dead-p (node)
   "Determine whether the current node has at least one dead link to NODE."
   (skroad--current-indices-have-p 'skroad--text-link-node-dead node))
@@ -1492,12 +1493,12 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
 
 (defun skroad--tail-find-or-emplace ()
   "Find or emplace the tail in the current node, and store its location."
-  (unless (funcall (get 'skroad--text-node-tail 'find-any-first))
+  (unless (funcall (get 'skroad--text-node-tail 'find-any-forward) (point-min))
     (goto-char (point-max))
     (let ((tail (point)))
       (while (and
-              (funcall
-               (get 'skroad--text-link-node-alive-or-dead 'find-any-backward))
+              (let ((prev-link (skroad--link-find-from (point) t)))
+                (when prev-link (goto-char prev-link)))
               (eq (match-end 0)
                   (save-mark-and-excursion
                     (goto-char tail)
@@ -1746,8 +1747,7 @@ Return the path where the node is found on disk."
         (write-region (concat node "\n") nil node-path nil 0) ;; Insert title
         (skroad--cache-write node nil) ;; Intern the node with an empty index
         (skroad--node-set-stub node t) ;; It starts as a stub (unless special)
-        ;; TODO: write journal entry
-        (message "Created new node: '%s'" node)
+        (message "Created new node: '%s'" node) ;; TODO: write log entry
         )
        (t (error "Could not activate node '%s'!" node))))
     node-path))
@@ -1811,7 +1811,7 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
 
 ;; TODO: make log work
 (skroad--define-special-node skroad--special-node-log "#Log"
-  "Operation log.")
+  "Record of node creation, modification, renaming; and lint output.")
 
 (skroad--define-special-node skroad--special-node-stubs "#Stubs"
   "A node with links to all known stub nodes. A stub node is a non-special node
@@ -1823,7 +1823,6 @@ will be queued for auto-deletion (see `skroad--node-set-orphan' below.)")
   "Return t when NODE (if given; else the current node) is a known stub."
   (skroad--special-status-p skroad--special-node-stubs node))
 
-;; TODO: write journal entry
 (defun skroad--node-set-stub (node status)
   "Set the stub STATUS of NODE."
   (when (skroad--set-special-status node skroad--special-node-stubs status)
@@ -1838,7 +1837,6 @@ An orphan stub is auto-deleted (after prompt, but only when open in a buffer.)")
   "Return t when NODE (if given; else the current node) is a known orphan."
   (skroad--special-status-p skroad--special-node-orphans node))
 
-;; TODO: write journal entry
 (defun skroad--node-set-orphan (node status)
   "Set the orphan STATUS of NODE.  If it became an orphan stub, try deleting it.
 If deletion is blocked, no new auto-deletion attempt will be made until and
@@ -1848,7 +1846,6 @@ unless the node stops being an orphan stub and then later becomes one again."
          status (skroad--node-stub-p node))
     (skroad--defer (skroad--maybe-delete-orphan node))))
 
-;; TODO: write journal entry
 (defun skroad--maybe-delete-orphan (node)
   "Request deletion of NODE.  No-op if NODE does not exist or is not an orphan.
 If NODE is currently open in a buffer, request confirmation before deletion."
@@ -1866,9 +1863,9 @@ If NODE is currently open in a buffer, request confirmation before deletion."
         (skroad--node-set-stub node nil)
         (skroad--cache-evict node)
         (delete-file node-path)
-        (message "Deleted orphan node: '%s'" node)))))
+        (message "Deleted orphan node: '%s'" node))))) ;; TODO: write log entry
 
-;; TODO: write journal entry if changing
+;; TODO: write log entry if changing
 (defun skroad--verify-node-title ()
   "Perform consistency check on the title of the current node."
   ;; Verify that the node's internal title matches the filename:
