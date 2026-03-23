@@ -251,17 +251,6 @@ Return t if there were any matches, otherwise nil."
 (defvar skroad--idle-work-quantum 0.1
   "Max wall-clock seconds to spend draining per idle cycle.")
 
-(defmacro skroad--defer (&rest body)
-  "Schedule BODY to run later."
-  `(skroad--idle-enqueue (lambda () ,@body)))
-
-(defmacro skroad--defer-in-current-buffer (&rest body)
-  "Schedule BODY to run later in the current buffer, supposing it remains live."
-  `(let ((here (current-buffer)))
-     (skroad--idle-enqueue
-      (lambda ()
-        (when (buffer-live-p here) (with-current-buffer here ,@body))))))
-
 (defun skroad--idle-enqueue (fn)
   "Push FN onto the back of the idle queue."
   (let ((cell (list fn)))
@@ -276,7 +265,7 @@ Return t if there were any matches, otherwise nil."
   (unless skroad--idle-work-timer
     (setq skroad--idle-work-timer
           (run-with-idle-timer
-           skroad--idle-work-epsilon t #'skroad--idle-work))))
+           skroad--idle-work-epsilon t #'skroad--idle-work-run-slice))))
 
 (defun skroad--idle-pop ()
   "Pop the head of the queue, keeping tail consistent."
@@ -285,16 +274,33 @@ Return t if there were any matches, otherwise nil."
       (setq skroad--idle-work-queue-tail nil))
     fn))
 
-(defun skroad--idle-work ()
-  "Pop and run thunks until the queue is empty or the quantum has elapsed."
+(defun skroad--idle-work-run-slice (&optional flush)
+  "Pop and run thunks until the queue is empty or the quantum has elapsed.
+If FLUSH is true, ignore the quantum and work until the queue is empty."
   (let ((deadline (+ (float-time) skroad--idle-work-quantum)))
-    (while (and skroad--idle-work-queue (< (float-time) deadline))
+    (while (and skroad--idle-work-queue
+                (or flush (< (float-time) deadline)))
       (with-demoted-errors "skroad--idle-work: %S"
         (funcall (skroad--idle-pop)))))
   (unless skroad--idle-work-queue
     (when skroad--idle-work-timer
       (cancel-timer skroad--idle-work-timer)
       (setq skroad--idle-work-timer nil))))
+
+(defmacro skroad--defer (&rest body)
+  "Schedule BODY to run later."
+  `(skroad--idle-enqueue (lambda () ,@body)))
+
+(defmacro skroad--defer-in-current-buffer (&rest body)
+  "Schedule BODY to run later in the current buffer, supposing it remains live."
+  `(let ((here (current-buffer)))
+     (skroad--idle-enqueue
+      (lambda ()
+        (when (buffer-live-p here) (with-current-buffer here ,@body))))))
+
+(defun skroad--complete-all-deferred ()
+  "Ensure that the work queue is empty by running all pending work immediately."
+  (skroad--idle-work-run-slice t))
 
 ;; File and directory ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1287,9 +1293,29 @@ Return the new position if the jump actually happened; otherwise nil."
                (skroad--node-special-p node))))
   :keymap (define-keymap "t" #'skroad--cmd-link-comment))
 
-;; TODO: ensure and open the node
-(defun skroad--action-open-link (data)
-  (message (format "Live link pushed: '%s'" data)))
+(defun skroad--action-open-node (node)
+  "Navigate to NODE.  If visible, go there; else open in the current window."
+  (unless (skroad--cache-peek node) ;; Possibly node creation is still pending?
+    (skroad--complete-all-deferred)) ;; ... if so, let all deferred work finish.
+  (let* ((orig-node (skroad--current-node)) ;; Node we triggered the action in
+         (orig-buf (current-buffer)) ;; Buffer we triggered the action in
+         (node-path (skroad--node-path node))
+         (node-buf (find-buffer-visiting node-path)))
+    (unless (skroad--cache-peek node) ;; Suppose the node still doesn't exist?
+      (skroad--in-node node #'skroad--connect-to orig-node)) ;; ... create it.
+    (if node-buf ;; If node is already open in a buffer, use that buffer:
+        (let ((node-win (get-buffer-window node-buf t)))
+          (if node-win ;; If it already has a visible window, go there
+              (select-window node-win)
+            (switch-to-buffer node-buf))) ;; ... else, unbury in current window
+      (find-file node-path)) ;; If node wasn't open, open it, burying the orig
+    ;; TODO: If at pos-min, jump to the first live link to orig-node
+    
+    (unless (get-buffer-window orig-buf t) ;; Kill orig if we had buried it
+      (with-current-buffer orig-buf
+        (skroad--buf-indices-sync)
+        (save-buffer)
+        (kill-buffer)))))
 
 (defun skroad--action-connected-on-init (origin node)
   "A live link to NODE was found for the first time in ORIGIN during indexing."
@@ -1339,7 +1365,7 @@ Return the new position if the jump actually happened; otherwise nil."
   :on-init #'skroad--action-connected-on-init
   :on-create #'skroad--action-connected
   :on-destroy #'skroad--action-disconnected
-  :on-activate #'skroad--action-open-link
+  :on-activate #'skroad--action-open-node
   :face-function #'(lambda (payload) ;; If a link to a stub, use stub link face
                      (if (skroad--node-stub-p payload)
                          'skroad--stub-link-face
@@ -1735,13 +1761,28 @@ If the tail did not previously exist in the current node, it is emplaced."
 (defun skroad--open-node ()
   "Open a skroad node."
   (face-remap-set-base 'header-line 'skroad--title-face)
+  (skroad--deactivate-mark) ;; Zap spurious mark from opening links via mouse
   (skroad--init-font-lock)
   (skroad--set-writability) ;; If special node, open it as read-only
   (skroad--cache-intern (skroad--current-node)) ;; TODO?
   (skroad--update-visible)
   (skroad--update-stub-status) ;; TODO: do we want this here?
+  (skroad--maybe-restore-cached-point)
   (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
   )
+
+(defvar skroad--point-cache (make-hash-table :test 'equal)
+  "Cache storing the last known interactive point position in a node.")
+
+(defun skroad--before-kill-buffer-hook ()
+  "Triggers prior to a skroad buffer being killed."
+  (puthash (skroad--current-node) (point) skroad--point-cache))
+
+(defun skroad--maybe-restore-cached-point ()
+  "If the current node had been visited in this session, restore the point."
+  (let ((cached-point (gethash (skroad--current-node) skroad--point-cache)))
+    (when (integerp cached-point)
+      (goto-char cached-point))))
 
 ;; Back-end. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1944,8 +1985,9 @@ If NODE is currently open in a buffer, request confirmation before deletion."
   (add-hook 'pre-command-hook 'skroad--pre-command-hook nil t)
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
   (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
+  (add-hook 'kill-buffer-hook 'skroad--before-kill-buffer-hook nil t)
   (add-hook 'window-scroll-functions 'skroad--scroll-hook nil t)
-
+  
   ;; Overlay for when an atomic is under the point. Initially inactive:
   (setq-local skroad--buf-selector (make-overlay (point-min) (point-min)))
   (skroad--selector-deactivate)
