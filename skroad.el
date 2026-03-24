@@ -1253,16 +1253,16 @@ Return the new position if the jump actually happened; otherwise nil."
       (select-frame-set-input-focus frame))
     (unless (eq window (selected-window))
       (select-window window))
-    (goto-char click-pos)
+    (goto-char click-pos) ;; Move the point to the link start before jumping
     (skroad--save-cache-point)
-    (skroad--do-link-action click-pos)
+    (skroad--do-link-action click-pos) ;; After this, we're in the target
     (let* ((target-window (selected-window))
            (target-frame (window-frame target-window)))
       (unless (eq target-frame source-frame)
         (select-frame-set-input-focus target-frame)
         (select-window target-window)
-        (let* ((pos (posn-x-y (posn-at-point))))
-          (set-mouse-pixel-position target-frame
+        (let* ((pos (posn-x-y (posn-at-point)))) ;; TODO: jump to middle of zone?
+          (set-mouse-pixel-position target-frame ;; Nudge mouse into the link
                                     (+ (car pos) 8)
                                     (+ (cdr pos) 4)))))))
 
