@@ -282,7 +282,9 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
                 (or flush (< (float-time) deadline)))
       (with-demoted-errors "skroad--idle-work: %S"
         (funcall (skroad--idle-pop)))))
-  (unless skroad--idle-work-queue
+  (if skroad--idle-work-queue ;; If the work queue did not empty:
+      (when skroad--debug
+        (message "Remaining work items: %s" (length skroad--idle-work-queue)))
     (when skroad--idle-work-timer
       (cancel-timer skroad--idle-work-timer)
       (setq skroad--idle-work-timer nil))))
@@ -1242,9 +1244,27 @@ Return the new position if the jump actually happened; otherwise nil."
 (defun skroad--cmd-link-left-click (click)
   "Perform the action attribute of the link that got the CLICK."
   (interactive "e")
-  (let ((estart (event-start click)))
-    (select-window (posn-window estart))
-    (skroad--do-link-action (posn-point estart))))
+  (let* ((posn (event-start click))
+         (click-pos (skroad--zone-start (posn-point posn)))
+         (window (posn-window posn))
+         (frame (window-frame window))
+         (source-frame (selected-frame)))
+    (unless (eq frame source-frame)
+      (select-frame-set-input-focus frame))
+    (unless (eq window (selected-window))
+      (select-window window))
+    (goto-char click-pos)
+    (skroad--save-cache-point)
+    (skroad--do-link-action click-pos)
+    (let* ((target-window (selected-window))
+           (target-frame (window-frame target-window)))
+      (unless (eq target-frame source-frame)
+        (select-frame-set-input-focus target-frame)
+        (select-window target-window)
+        (let* ((pos (posn-x-y (posn-at-point))))
+          (set-mouse-pixel-position target-frame
+                                    (+ (car pos) 8)
+                                    (+ (cdr pos) 4)))))))
 
 (defun skroad--cmd-link-activate ()
   "Perform the action attribute of the link at point."
@@ -1256,7 +1276,7 @@ Return the new position if the jump actually happened; otherwise nil."
   :use 'skroad--text-atomic
   :exclude-delims-from-titles t
   :keymap (define-keymap
-            "<down-mouse-1>" #'skroad--cmd-link-left-click
+            "<mouse-1>" #'skroad--cmd-link-left-click
             "RET" #'skroad--cmd-link-activate))
 
 (defun skroad--cmd-link-comment ()
@@ -1309,7 +1329,8 @@ Return the new position if the jump actually happened; otherwise nil."
               (select-window node-win)
             (switch-to-buffer node-buf))) ;; ... else, unbury in current window
       (find-file node-path)) ;; If node wasn't open, open it, burying the orig
-    ;; TODO: If at pos-min, jump to the first live link to orig-node
+    ;; TODO: If at pos-min, jump to a non-tail live link to orig-node, if exists
+    (skroad--maybe-restore-cached-point)
     
     (unless (get-buffer-window orig-buf t) ;; Kill orig if we had buried it
       (with-current-buffer orig-buf
@@ -1688,7 +1709,8 @@ If the tail did not previously exist in the current node, it is emplaced."
     ;; TODO: do it in the change hook?
     (skroad--update-stub-status) ;; TODO: don't do it if renamer active here?
     )
-  (unless mark-active (setq-local mouse-highlight t)))
+  (unless mark-active (setq-local mouse-highlight t))
+  (skroad--save-cache-point))
 
 (defun skroad--before-save-hook ()
   "Triggers prior to a skroad buffer save."
@@ -1750,10 +1772,6 @@ If the tail did not previously exist in the current node, it is emplaced."
     (font-lock-ensure start-expanded end-expanded))
   (skroad--deactivate-mark))
 
-(defun skroad--kill-handler (string)
-  "Filter any STRING that enters the kill ring."
-  (substring-no-properties string))
-
 (defun skroad--set-writability ()
   "If the current node is a special node, interactive editing is prohibited."
   (setq-local buffer-read-only (skroad--node-special-p)))
@@ -1767,21 +1785,26 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--cache-intern (skroad--current-node)) ;; TODO?
   (skroad--update-visible)
   (skroad--update-stub-status) ;; TODO: do we want this here?
-  (skroad--maybe-restore-cached-point)
   (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
+  (skroad--goto-node-body-start)
+  (skip-syntax-forward " ")
   )
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
   "Cache storing the last known interactive point position in a node.")
 
+(defun skroad--save-cache-point ()
+  "Save the current node's point to the point cache."
+  (puthash (skroad--current-node) (point) skroad--point-cache))
+
 (defun skroad--before-kill-buffer-hook ()
   "Triggers prior to a skroad buffer being killed."
-  (puthash (skroad--current-node) (point) skroad--point-cache))
+  (skroad--save-cache-point))
 
 (defun skroad--maybe-restore-cached-point ()
   "If the current node had been visited in this session, restore the point."
   (let ((cached-point (gethash (skroad--current-node) skroad--point-cache)))
-    (when (integerp cached-point)
+    (when cached-point
       (goto-char cached-point))))
 
 ;; Back-end. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1975,7 +1998,7 @@ If NODE is currently open in a buffer, request confirmation before deletion."
   (setq-local yank-handled-properties '((id . skroad--yank-handler)))
 
   ;; Prevent text properties from infesting the kill ring (emacs 28+) :
-  (setq-local kill-transform-function #'skroad--kill-handler)
+  (setq-local kill-transform-function #'substring-no-properties)
   
   ;; Buffer-local hooks:
   
