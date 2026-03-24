@@ -1245,26 +1245,20 @@ Return the new position if the jump actually happened; otherwise nil."
   "Perform the action attribute of the link that got the CLICK."
   (interactive "e")
   (let* ((posn (event-start click))
-         (click-pos (skroad--zone-start (posn-point posn)))
+         (click-pos (posn-point posn))
          (window (posn-window posn))
-         (frame (window-frame window))
-         (source-frame (selected-frame)))
-    (unless (eq frame source-frame)
+         (frame (window-frame window)))
+    (unless (eq frame (selected-frame))
       (select-frame-set-input-focus frame))
     (unless (eq window (selected-window))
       (select-window window))
     (goto-char click-pos) ;; Move the point to the link start before jumping
     (skroad--save-cache-point)
-    (skroad--do-link-action click-pos) ;; After this, we're in the target
-    (let* ((target-window (selected-window))
-           (target-frame (window-frame target-window)))
-      (unless (eq target-frame source-frame)
-        (select-frame-set-input-focus target-frame)
-        (select-window target-window)
-        (let* ((pos (posn-x-y (posn-at-point)))) ;; TODO: jump to middle of zone?
-          (set-mouse-pixel-position target-frame ;; Nudge mouse into the link
-                                    (+ (car pos) 8)
-                                    (+ (cdr pos) 4)))))))
+    (skroad--do-link-action click-pos) ;; After this, we're in the target:
+    (let* ((posn (posn-x-y (posn-at-point))) ;; Warp the mouse to the new point.
+           (x (+ (window-pixel-left) (car posn) 8))
+           (y (+ (window-pixel-top) (cdr posn) (/ (line-pixel-height) 2))))
+      (set-mouse-pixel-position (selected-frame) x y))))
 
 (defun skroad--cmd-link-activate ()
   "Perform the action attribute of the link at point."
@@ -1324,9 +1318,13 @@ Return the new position if the jump actually happened; otherwise nil."
     (unless (skroad--cache-peek node) ;; Suppose the node still doesn't exist?
       (skroad--in-node node #'skroad--connect-to orig-node)) ;; ... create it.
     (if node-buf ;; If node is already open in a buffer, use that buffer:
-        (let ((node-win (get-buffer-window node-buf t)))
+        (let* ((node-win (get-buffer-window node-buf t))
+               (node-frame (window-frame node-win)))
           (if node-win ;; If it already has a visible window, go there
-              (select-window node-win)
+              (progn
+                (unless (eq (window-frame) node-frame)
+                  (select-frame-set-input-focus node-frame))
+                (select-window node-win))
             (switch-to-buffer node-buf))) ;; ... else, unbury in current window
       (find-file node-path)) ;; If node wasn't open, open it, burying the orig
     ;; TODO: If at pos-min, jump to a non-tail live link to orig-node, if exists
@@ -1337,6 +1335,7 @@ Return the new position if the jump actually happened; otherwise nil."
         (skroad--buf-indices-sync)
         (save-buffer)
         (kill-buffer)))))
+
 
 (defun skroad--action-connected-on-init (origin node)
   "A live link to NODE was found for the first time in ORIGIN during indexing."
