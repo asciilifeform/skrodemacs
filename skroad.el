@@ -1034,6 +1034,7 @@ Return the new position if the jump actually happened; otherwise nil."
 
 ;; TODO: require zone?
 ;; TODO: allow mouse click point motion by default
+;; TODO: process enter/leave between buffers?
 (skroad--deftype skroad--text-atomic
   :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
   :atomic t ;; TODO: check
@@ -1307,6 +1308,7 @@ Return the new position if the jump actually happened; otherwise nil."
                (skroad--node-special-p node))))
   :keymap (define-keymap "t" #'skroad--cmd-link-comment))
 
+;; TODO: activate selector, if required, in target, and deactivate in source
 (defun skroad--action-open-node (node)
   "Navigate to NODE.  If visible, go there; else open in the current window."
   (unless (skroad--cache-peek node) ;; Possibly node creation is still pending?
@@ -1322,20 +1324,19 @@ Return the new position if the jump actually happened; otherwise nil."
                (node-frame (window-frame node-win)))
           (if node-win ;; If it already has a visible window, go there
               (progn
-                (unless (eq (window-frame) node-frame)
-                  (select-frame-set-input-focus node-frame))
+                (unless (eq (window-frame) node-frame) ;; If in different frame:
+                  (select-frame-set-input-focus node-frame)) ;; ... focus it.
                 (select-window node-win))
             (switch-to-buffer node-buf))) ;; ... else, unbury in current window
       (find-file node-path)) ;; If node wasn't open, open it, burying the orig
     ;; TODO: If at pos-min, jump to a non-tail live link to orig-node, if exists
-    (skroad--maybe-restore-cached-point)
+    (skroad--maybe-restore-cached-point) ;; TODO: only do this if first visit?
     
     (unless (get-buffer-window orig-buf t) ;; Kill orig if we had buried it
       (with-current-buffer orig-buf
         (skroad--buf-indices-sync)
         (save-buffer)
         (kill-buffer)))))
-
 
 (defun skroad--action-connected-on-init (origin node)
   "A live link to NODE was found for the first time in ORIGIN during indexing."
