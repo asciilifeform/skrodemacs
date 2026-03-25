@@ -1254,8 +1254,8 @@ Return the new position if the jump actually happened; otherwise nil."
     (when posn
       (let* ((pos-xy (posn-x-y posn))
              (x (+ (window-pixel-left) (car pos-xy)))
-             (y (+ (window-pixel-top) (cdr pos-xy)
-                   (/ (line-pixel-height) 2) (window-header-line-height))))
+             (y (+ (window-pixel-top) (window-header-line-height) (cdr pos-xy)
+                   (/ (line-pixel-height) 2))))
         (set-mouse-pixel-position (selected-frame) x y)))))
 
 (defun skroad--cmd-link-left-click (click)
