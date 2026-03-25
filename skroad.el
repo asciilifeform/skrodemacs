@@ -1257,8 +1257,10 @@ Return the new position if the jump actually happened; otherwise nil."
     (skroad--save-cache-point)
     (skroad--do-link-action click-pos) ;; After this, we're in the target:
     (let* ((posn (posn-x-y (posn-at-point))) ;; Warp the mouse to the new point.
+           (header-height (window-header-line-height))
            (x (+ (window-pixel-left) (car posn) 8))
-           (y (+ (window-pixel-top) (cdr posn) (/ (line-pixel-height) 2))))
+           (y (+ (window-pixel-top) (cdr posn)
+                 (/ (line-pixel-height) 2) header-height)))
       (set-mouse-pixel-position (selected-frame) x y))))
 
 (defun skroad--cmd-link-activate ()
