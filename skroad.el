@@ -1242,6 +1242,22 @@ Return the new position if the jump actually happened; otherwise nil."
     (skroad--type-action
      (skroad--prop-at 'category pos) 'on-activate (skroad--prop-at 'data pos))))
 
+(defun skroad--mouse-warp ()
+  "Warp mouse to the middle of the current zone, if possible; else, to point."
+  (skroad--refontify-current-line)
+  (let ((posn (or (and (skroad--prop-at 'zone)
+                       (posn-at-point
+                        (+ (point)
+                           (skroad--with-current-zone (/ (- end start) 2)))))
+                  (posn-at-point))))
+    (when posn
+      (let* ((pos-xy (posn-x-y posn))
+             (header-height (window-header-line-height))
+             (x (+ (window-pixel-left) (car pos-xy)))
+             (y (+ (window-pixel-top) (cdr pos-xy)
+                   (/ (line-pixel-height) 2) header-height)))
+        (set-mouse-pixel-position (selected-frame) x y)))))
+
 (defun skroad--cmd-link-left-click (click)
   "Perform the action attribute of the link that got the CLICK."
   (interactive "e")
@@ -1253,15 +1269,10 @@ Return the new position if the jump actually happened; otherwise nil."
       (select-frame-set-input-focus frame))
     (unless (eq window (selected-window))
       (select-window window))
-    (goto-char click-pos) ;; Move the point to the link start before jumping
+    (goto-char (skroad--zone-start click-pos))
     (skroad--save-cache-point)
     (skroad--do-link-action click-pos) ;; After this, we're in the target:
-    (let* ((posn (posn-x-y (posn-at-point))) ;; Warp the mouse to the new point.
-           (header-height (window-header-line-height))
-           (x (+ (window-pixel-left) (car posn) 8))
-           (y (+ (window-pixel-top) (cdr posn)
-                 (/ (line-pixel-height) 2) header-height)))
-      (set-mouse-pixel-position (selected-frame) x y))))
+    (skroad--mouse-warp)))
 
 (defun skroad--cmd-link-activate ()
   "Perform the action attribute of the link at point."
