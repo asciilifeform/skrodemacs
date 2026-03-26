@@ -1354,7 +1354,7 @@ Return the new position if the jump actually happened; otherwise nil."
             (switch-to-buffer node-buf))) ;; ... else, unbury in current window
       (find-file node-path)) ;; If node wasn't open, open it, burying the orig
     ;; TODO: this should be configurable
-    (unless (skroad--maybe-restore-cached-point) ;; If node not visited before:
+    (unless (skroad--maybe-restore-cached-point) ;; Use cached point if possible
       (when (funcall (get 'skroad--text-link-node-live 'search) orig-node)
         (goto-char (match-beginning 0))))
     (unless (get-buffer-window orig-buf t) ;; Kill orig if we had buried it
