@@ -476,18 +476,19 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :doc "Mixin for all findable text types. (Internal use only.)"
   :mixin t
   :require '(regex-any finder-filter)
+  :find
+  '(lambda (method regex &optional lim)
+     (skroad--re-search method regex lim finder-filter))
   :find-any-forward
-  '(lambda (&optional start end)
-     (when start (goto-char start))
-     (skroad--re-search #'re-search-forward regex-any end finder-filter))
+  '(lambda (&optional lim)
+     (funcall find #'re-search-forward regex-any lim))
   :find-any-backward
-  '(lambda (&optional start end)
-     (when start (goto-char start))
-     (skroad--re-search #'re-search-backward regex-any end finder-filter))
+  '(lambda (&optional lim)
+     (funcall find #'re-search-backward regex-any lim))
   :for-all-in-region-forward
   '(lambda (start end fn)
      (skroad--re-foreach regex-any fn finder-filter start end))
-  :get-match ;; TODO?
+  :get-match
   '(lambda () (match-string-no-properties match-number))
   :get-payload
   '(lambda () (skroad--clean-whitespace (funcall get-match)))
@@ -510,6 +511,9 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :regex-any '(funcall make-regex payload-regex)
   :use 'skroad--text-mixin-findable
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  :search
+  '(lambda (payload)
+     (funcall find #'re-search-forward (funcall make-regex payload)))
   :walk
   '(lambda (payload fn)
      (skroad--re-foreach (funcall make-regex payload) fn finder-filter))
@@ -538,7 +542,7 @@ call the action with ARGS."
   :require '(find-any-forward render)
   :render-next
   '(lambda (limit)
-     (when (funcall find-any-forward nil limit)
+     (when (funcall find-any-forward limit)
        (with-silent-modifications (funcall render) t)))
   :font-lock-rule '(lambda () (list render-next '(0 nil append)))
   :register 'skroad--text-types-rendered)
@@ -923,16 +927,17 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
                    (delete-region (skroad--zone-start left) p) ;; ... delete it;
                  (delete-backward-char 1))))))) ;; ... if not: normal backspace.
 
-(defun skroad--find-any-from (type method pos)
+(defun skroad--match-any-from (type method pos)
   "Search for TYPE from POS via METHOD; return match data (nil if not found)."
   (save-mark-and-excursion
-    (save-match-data (when (funcall (get type method) pos) (match-data t)))))
+    (goto-char pos)
+    (save-match-data (when (funcall (get type method)) (match-data t)))))
 
 (defun skroad--link-find-from (pos &optional backwards)
   "Try to find the next (or previous, if BACKWARDS) live or dead link from POS."
   (let* ((method (if backwards 'find-any-backward 'find-any-forward))
-         (live (skroad--find-any-from 'skroad--text-link-node-live method pos))
-         (dead (skroad--find-any-from 'skroad--text-link-node-dead method pos))
+         (live (skroad--match-any-from 'skroad--text-link-node-live method pos))
+         (dead (skroad--match-any-from 'skroad--text-link-node-dead method pos))
          (match
           (or
            (and live dead ;; If both, get the nearest one in the given direction
@@ -1258,7 +1263,7 @@ Return the new position if the jump actually happened; otherwise nil."
   "Warp mouse to the middle of the current zone, if possible; else, to point."
   (skroad--refontify-current-line)
   (redisplay t)
-  (let ((posn (or (and (skroad--mode-p)
+  (let ((posn (or (and (skroad--mode-p) ;; Could be in a non-skroad buffer
                        (skroad--prop-at 'zone)
                        (posn-at-point
                         (+ (point)
@@ -1567,7 +1572,8 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
 
 (defun skroad--tail-find-or-emplace ()
   "Find or emplace the tail in the current node, and store its location."
-  (unless (funcall (get 'skroad--text-node-tail 'find-any-forward) (point-min))
+  (goto-char (point-min))
+  (unless (funcall (get 'skroad--text-node-tail 'find-any-forward))
     (goto-char (point-max))
     (let ((tail (point)))
       (while (and
@@ -1790,7 +1796,6 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--init-font-lock)
   (skroad--set-writability) ;; If special node, open it as read-only
   (skroad--cache-intern (skroad--current-node)) ;; TODO?
-  (skroad--update-visible)
   (skroad--update-stub-status) ;; TODO: do we want this here?
   (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
   (skroad--goto-node-body-start)
