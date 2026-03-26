@@ -1332,7 +1332,7 @@ Return the new position if the jump actually happened; otherwise nil."
                (skroad--node-special-p node))))
   :keymap (define-keymap "t" #'skroad--cmd-link-comment))
 
-;; TODO: activate selector, if required, in target, and deactivate in source
+;; TODO: somehow generalize to file links, www (when emacs handles), help, etc.
 (defun skroad--action-open-node (node)
   "Navigate to NODE.  If visible, go there; else open in the current window."
   (unless (skroad--cache-peek node) ;; Possibly node creation is still pending?
