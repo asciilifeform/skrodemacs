@@ -2037,9 +2037,6 @@ If NODE is currently open in a buffer, request confirmation before deletion."
   (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
   (add-hook 'kill-buffer-hook 'skroad--before-kill-buffer-hook nil t)
   (add-hook 'window-scroll-functions 'skroad--scroll-hook nil t)
-
-  ;; (add-hook 'pre-redisplay-functions #'skroad--update-header-line nil t)
-
   (add-hook 'window-scroll-functions #'skroad--update-header-line nil t)
   (add-hook 'window-state-change-functions #'skroad--update-header-line nil t)
   
