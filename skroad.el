@@ -185,24 +185,17 @@
 (defun skroad--goto-node-body-start ()
   "Jump to the position at the start of the node body."
   (goto-char (point-min))
-  (forward-line 1)
-  (point))
+  (forward-line 1))
 
 (defun skroad--in-node-title-p (&optional pos)
   "Return t if POS (or point, if not given) is inside the node title."
-  (< (or pos (point)) (save-excursion (skroad--goto-node-body-start))))
+  (save-mark-and-excursion
+    (when pos (goto-char pos))
+    (= (pos-bol) (point-min))))
 
 (defun skroad--in-node-body-p (&optional pos)
   "Return t if POS (or point, if not given) is inside the node body."
-  (>= (or pos (point)) (save-excursion (skroad--goto-node-body-start))))
-
-;; (defun skroad--in-node-title-p (&optional pos)
-;;   "Return t if POS (or point, if not given) is inside the node title."
-;;   (= (line-number-at-pos pos t) 1))
-
-;; (defun skroad--in-node-body-p (&optional pos)
-;;   "Return t if POS (or point, if not given) is inside the node body."
-;;   (> (line-number-at-pos pos t) 1))
+  (not (skroad--in-node-title-p pos)))
 
 (defun skroad--re-search (finder regexp &optional limit filter)
   "Find REGEXP using FINDER, to LIMIT; filter by FILTER, if given."
