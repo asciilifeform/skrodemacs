@@ -182,18 +182,27 @@
   "Determine whether OVERLAY is currently active."
   (and (overlayp overlay) (eq (current-buffer) (overlay-buffer overlay))))
 
-(defun skroad--in-node-title-p (&optional pos)
-  "Return t if POS (or point, if not given) is inside the node title."
-  (= (line-number-at-pos pos t) 1))
-
-(defun skroad--in-node-body-p (&optional pos)
-  "Return t if POS (or point, if not given) is inside the node body."
-  (> (line-number-at-pos pos t) 1))
-
 (defun skroad--goto-node-body-start ()
   "Jump to the position at the start of the node body."
   (goto-char (point-min))
-  (forward-line 1))
+  (forward-line 1)
+  (point))
+
+(defun skroad--in-node-title-p (&optional pos)
+  "Return t if POS (or point, if not given) is inside the node title."
+  (< (or pos (point)) (save-excursion (skroad--goto-node-body-start))))
+
+(defun skroad--in-node-body-p (&optional pos)
+  "Return t if POS (or point, if not given) is inside the node body."
+  (>= (or pos (point)) (save-excursion (skroad--goto-node-body-start))))
+
+;; (defun skroad--in-node-title-p (&optional pos)
+;;   "Return t if POS (or point, if not given) is inside the node title."
+;;   (= (line-number-at-pos pos t) 1))
+
+;; (defun skroad--in-node-body-p (&optional pos)
+;;   "Return t if POS (or point, if not given) is inside the node body."
+;;   (> (line-number-at-pos pos t) 1))
 
 (defun skroad--re-search (finder regexp &optional limit filter)
   "Find REGEXP using FINDER, to LIMIT; filter by FILTER, if given."
@@ -1742,10 +1751,6 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 (defun skroad--scroll-hook (window start)
   "Triggers when a buffer scrolls."
-  (setq-local header-line-format ;; Float the title if it isn't in view
-              (when (and skroad--floating-title-enable (> start 1))
-                (buffer-substring (point-min)
-                                  (skroad--get-end-of-line 1))))
   (skroad--update-visible))
 
 (when skroad--debug
@@ -1802,6 +1807,15 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--goto-node-body-start)
   (skip-syntax-forward " ")
   )
+
+(defun skroad--update-header-line (window &optional _start)
+  "Update the header line for the given WINDOW."
+  (set-window-parameter
+   window 'header-line-format
+   (if (skroad--in-node-title-p (window-start window))
+       nil
+     (buffer-substring (point-min) (skroad--get-end-of-line 1))
+     )))
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
   "Cache storing the last known interactive point position in a node.")
@@ -2023,6 +2037,11 @@ If NODE is currently open in a buffer, request confirmation before deletion."
   (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
   (add-hook 'kill-buffer-hook 'skroad--before-kill-buffer-hook nil t)
   (add-hook 'window-scroll-functions 'skroad--scroll-hook nil t)
+
+  ;; (add-hook 'pre-redisplay-functions #'skroad--update-header-line nil t)
+
+  (add-hook 'window-scroll-functions #'skroad--update-header-line nil t)
+  (add-hook 'window-state-change-functions #'skroad--update-header-line nil t)
   
   ;; Overlay for when an atomic is under the point. Initially inactive:
   (setq-local skroad--buf-selector (make-overlay (point-min) (point-min)))
