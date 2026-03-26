@@ -302,6 +302,7 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
       (lambda ()
         (when (buffer-live-p here) (with-current-buffer here ,@body))))))
 
+;; TODO: display message while this is happening
 (defun skroad--complete-all-deferred ()
   "Ensure that the work queue is empty by running all pending work immediately."
   (skroad--idle-work-run-slice t))
@@ -1339,8 +1340,8 @@ Return the new position if the jump actually happened; otherwise nil."
     (skroad--complete-all-deferred)) ;; ... if so, let all deferred work finish.
   (let* ((orig-node (skroad--current-node)) ;; Node we triggered the action in
          (orig-buf (current-buffer)) ;; Buffer we triggered the action in
-         (node-path (skroad--node-path node))
-         (node-buf (find-buffer-visiting node-path)))
+         (node-path (skroad--node-path node)) ;; Target path
+         (node-buf (find-buffer-visiting node-path))) ;; Target buf (maybe nil)
     (unless (skroad--cache-peek node) ;; Suppose the node still doesn't exist?
       (skroad--in-node node #'skroad--connect-to orig-node)) ;; ... create it.
     (if node-buf ;; If node is already open in a buffer, use that buffer:
