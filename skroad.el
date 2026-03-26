@@ -587,8 +587,8 @@ call the action with ARGS."
     (font-lock-ensure (line-beginning-position) (line-end-position))))
 
 (defun skroad--refontify-current-buffer ()
-  "Refresh fontification in the current buffer."
-  (font-lock-flush)
+  "Refresh fontification in the visible portion of the current buffer."
+  (font-lock-flush) ;; Flush whole thing, JIT will regen when scrolling
   (let ((windows (get-buffer-window-list (current-buffer) nil t)))
     (when windows
       (let ((start (apply #'min (mapcar #'window-start windows)))
