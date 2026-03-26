@@ -1258,7 +1258,8 @@ Return the new position if the jump actually happened; otherwise nil."
   "Warp mouse to the middle of the current zone, if possible; else, to point."
   (skroad--refontify-current-line)
   (redisplay t)
-  (let ((posn (or (and (skroad--prop-at 'zone)
+  (let ((posn (or (and (skroad--mode-p)
+                       (skroad--prop-at 'zone)
                        (posn-at-point
                         (+ (point)
                            (skroad--with-current-zone (/ (- end start) 2)))))
