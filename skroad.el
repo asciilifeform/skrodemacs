@@ -589,7 +589,7 @@ call the action with ARGS."
 (defun skroad--refontify-current-buffer ()
   "Refresh fontification in the current buffer."
   (font-lock-flush)
-  (let ((windows (get-buffer-window-list buffer nil t)))
+  (let ((windows (get-buffer-window-list (current-buffer) nil t)))
     (when windows
       (let ((start (apply #'min (mapcar #'window-start windows)))
             (end (apply #'max
