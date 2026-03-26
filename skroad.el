@@ -589,9 +589,12 @@ call the action with ARGS."
 (defun skroad--refontify-current-buffer ()
   "Refresh fontification in the current buffer."
   (font-lock-flush)
-  (font-lock-ensure
-   (or skroad--visible-start (point-min))
-   (or skroad--visible-end (point-max))))
+  (let ((windows (get-buffer-window-list buffer nil t)))
+    (when windows
+      (let ((start (apply #'min (mapcar #'window-start windows)))
+            (end (apply #'max
+                        (mapcar #'(lambda (w) (window-end w t)) windows))))
+        (font-lock-ensure start end)))))
 
 (defun skroad--refontify-open-nodes ()
   "Refresh fontification in all currently-open nodes."
@@ -1738,21 +1741,6 @@ If the tail did not previously exist in the current node, it is emplaced."
   "Triggers prior to a skroad buffer save."
   (skroad--renamer-deactivate))
 
-(defvar-local skroad--visible-start nil
-  "Start of last known visible text interval in the current buffer.")
-
-(defvar-local skroad--visible-end nil
-  "End of last known visible text interval in the current buffer.")
-
-(defun skroad--update-visible ()
-  "Update the last known visible text interval of the current node."
-  (setq-local skroad--visible-start (window-start))
-  (setq-local skroad--visible-end (window-end)))
-
-(defun skroad--scroll-hook (window start)
-  "Triggers when a buffer scrolls."
-  (skroad--update-visible))
-
 (when skroad--debug
   (defadvice skroad--post-command-hook (around intercept activate)
     (condition-case err
@@ -2036,7 +2024,6 @@ If NODE is currently open in a buffer, request confirmation before deletion."
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
   (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
   (add-hook 'kill-buffer-hook 'skroad--before-kill-buffer-hook nil t)
-  (add-hook 'window-scroll-functions 'skroad--scroll-hook nil t)
   (add-hook 'window-scroll-functions #'skroad--update-header-line nil t)
   (add-hook 'window-state-change-functions #'skroad--update-header-line nil t)
   
