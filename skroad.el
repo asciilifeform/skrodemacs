@@ -1696,7 +1696,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   :renamer-overlay-type 'skroad--text-renamer-direct
   :use 'skroad--text-mixin-renameable
   :match-number 0
-  :regex-any "\\`.*\n"
+  :regex-any (rx string-start (* anything) "\n")
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-rendered-zoned
   )
