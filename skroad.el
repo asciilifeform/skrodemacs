@@ -94,6 +94,11 @@
 
 ;;; Utility functions. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun skroad--ephemeral-message (status)
+  "Display STATUS in the echo bar without polluting the message buffer."
+  (let ((message-log-max nil))
+    (message status)))
+
 (defmacro measure-time (&rest body)
   "Measure the time it takes to evaluate BODY."
   `(let ((time (current-time)))
@@ -266,37 +271,27 @@ Return t if there were any matches, otherwise nil."
       (setq skroad--idle-work-queue-tail nil))
     fn))
 
-(defvar skroad--work-message "Skroad is working..."
-  "Message to display when work queue items are executing.")
+(defun skroad--idle-report ()
+  "Display a message reporting the work remaining in the queue."
+  (skroad--ephemeral-message
+   (format "Waiting on %d background tasks..." skroad--idle-work-count)))
 
 (defun skroad--idle-work-run-slice (&optional flush)
   "Pop and run thunks until the queue is empty or the quantum has elapsed.
 If FLUSH is true, ignore the quantum and work until the queue is empty."
-  (let ((progress (when flush
-                    (make-progress-reporter
-                     (concat skroad--work-message ", please wait... ")
-                     0 skroad--idle-work-count)))
-        (done 0)
-        (deadline (+ (float-time) skroad--idle-work-quantum)))
-    (unless flush
-      (let ((message-log-max nil))
-        (message skroad--work-message)))
+  (let ((deadline (+ (float-time) skroad--idle-work-quantum)))
     (while (and skroad--idle-work-queue
                 (or flush (< (float-time) deadline)))
+      (when flush (skroad--idle-report))
       (with-demoted-errors "skroad--idle-work: %S"
-        (funcall (skroad--idle-pop)))
-      (setq done (1+ done))
-      (when progress
-        (progress-reporter-update progress done)))
+        (funcall (skroad--idle-pop))))
     (when skroad--idle-work-timer
       (cancel-timer skroad--idle-work-timer)
       (setq skroad--idle-work-timer nil))
-    (if skroad--idle-work-queue
-        (run-at-time 0 nil #'skroad--idle-ensure-timer)
-      (if progress
-          (progress-reporter-done progress)
-        (let ((message-log-max nil))
-          (message nil))))))
+    (cond (skroad--idle-work-queue
+           (skroad--idle-report)
+           (run-at-time 0 nil #'skroad--idle-ensure-timer))
+          (t (skroad--ephemeral-message nil)))))
 
 (defmacro skroad--defer (&rest body)
   "Schedule BODY to run later."
@@ -1061,8 +1056,7 @@ Return the new position if the jump actually happened; otherwise nil."
                (let ((kbd-doc
                       (skroad--prop-at
                        (if buffer-read-only 'kbd-doc-readonly 'kbd-doc))))
-                 (when kbd-doc
-                   (message kbd-doc))))
+                 (skroad--ephemeral-message kbd-doc)))
   :on-leave '(lambda (pos-from auto) (skroad--selector-deactivate))
   :on-move '(lambda (pos-from auto)
               (goto-char ;; if went forward, jump to the end; else, to the start.
@@ -1147,7 +1141,8 @@ Return the new position if the jump actually happened; otherwise nil."
 (defun skroad--renamer-activate (renamer-type start end)
   "Activate the renamer in the current zone, unless already active."
   (unless (skroad--overlay-active-p skroad--buf-renamer)
-    (message "Rename node: press <return> to rename, or leave field to cancel.")
+    (skroad--ephemeral-message
+     "Rename node: press <return> to rename, or leave field to cancel.")
     (skroad--suspend-font-lock)
     (skroad--deactivate-mark)
     (skroad--snapshot-prepare)
