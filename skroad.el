@@ -266,18 +266,21 @@ Return t if there were any matches, otherwise nil."
       (setq skroad--idle-work-queue-tail nil))
     fn))
 
+(defvar skroad--work-message "Skroad is working..."
+  "Message to display when work queue items are executing.")
+
 (defun skroad--idle-work-run-slice (&optional flush)
   "Pop and run thunks until the queue is empty or the quantum has elapsed.
 If FLUSH is true, ignore the quantum and work until the queue is empty."
   (let ((progress (when flush
                     (make-progress-reporter
-                     "Skroad is working, please wait..."
+                     (concat skroad--work-message ", please wait... ")
                      0 skroad--idle-work-count)))
         (done 0)
         (deadline (+ (float-time) skroad--idle-work-quantum)))
     (unless flush
       (let ((message-log-max nil))
-        (message "Skroad is working...")))
+        (message skroad--work-message)))
     (while (and skroad--idle-work-queue
                 (or flush (< (float-time) deadline)))
       (with-demoted-errors "skroad--idle-work: %S"
