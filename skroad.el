@@ -182,21 +182,6 @@
   "Determine whether OVERLAY is currently active."
   (and (overlayp overlay) (eq (current-buffer) (overlay-buffer overlay))))
 
-(defun skroad--goto-node-body-start ()
-  "Jump to the position at the start of the node body."
-  (goto-char (point-min))
-  (forward-line 1))
-
-(defun skroad--in-node-title-p (&optional pos)
-  "Return t if POS (or point, if not given) is inside the current node title."
-  (save-mark-and-excursion
-    (when pos (goto-char pos))
-    (= (pos-bol) (point-min))))
-
-(defun skroad--in-node-body-p (&optional pos)
-  "Return t if POS (or point, if not given) is inside the node body."
-  (not (skroad--in-node-title-p pos)))
-
 (defun skroad--re-search (finder regexp &optional limit filter)
   "Find REGEXP using FINDER, to LIMIT; filter by FILTER, if given."
   (if (functionp filter)
@@ -1633,8 +1618,23 @@ If the tail did not previously exist in the current node, it is emplaced."
       (setq-local skroad--current-node-title
                   (skroad--file-path-to-node-title (buffer-file-name)))))
 
+(defun skroad--goto-node-body-start ()
+  "Jump to the position at the start of the current node's body."
+  (goto-char (point-min))
+  (forward-line 1))
+
+(defun skroad--in-node-title-p (&optional pos)
+  "Return t if POS (or point, if not given) is inside the current node's title."
+  (save-mark-and-excursion
+    (when pos (goto-char pos))
+    (= (pos-bol) (point-min))))
+
+(defun skroad--in-node-body-p (&optional pos)
+  "Return t if POS (or point, if not given) is inside the current node's body."
+  (not (skroad--in-node-title-p pos)))
+
 (defun skroad--current-internal-title ()
-  "Get the current node title from the buffer."
+  "Get the current node's title from the buffer."
   (buffer-substring-no-properties (point-min) (skroad--get-end-of-line 1)))
 
 (defun skroad--cmd-title-kill-ring-save ()
