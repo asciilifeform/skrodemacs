@@ -188,7 +188,7 @@
   (forward-line 1))
 
 (defun skroad--in-node-title-p (&optional pos)
-  "Return t if POS (or point, if not given) is inside the node title."
+  "Return t if POS (or point, if not given) is inside the current node title."
   (save-mark-and-excursion
     (when pos (goto-char pos))
     (= (pos-bol) (point-min))))
