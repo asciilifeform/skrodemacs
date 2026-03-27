@@ -229,6 +229,9 @@ Return t if there were any matches, otherwise nil."
 (defvar skroad--idle-work-queue-tail nil
   "Last cons cell of `skroad--idle-work-queue', for O(1) tail insertion.")
 
+(defvar skroad--idle-work-count 0
+  "Number of work items currently queued.")
+
 (defvar skroad--idle-work-timer nil
   "The idle timer driving the work queue, or nil if not scheduled.")
 
@@ -240,6 +243,7 @@ Return t if there were any matches, otherwise nil."
 
 (defun skroad--idle-enqueue (fn)
   "Push FN onto the back of the idle queue."
+  (setq skroad--idle-work-count (1+ skroad--idle-work-count))
   (let ((cell (list fn)))
     (if skroad--idle-work-queue-tail
         (setcdr skroad--idle-work-queue-tail cell)
@@ -248,14 +252,15 @@ Return t if there were any matches, otherwise nil."
   (skroad--idle-ensure-timer))
 
 (defun skroad--idle-ensure-timer ()
-  "Schedule the idle timer if it isn't already running."
-  (unless skroad--idle-work-timer
+  "Schedule the idle timer if it isn't already running and work exists."
+  (unless (or skroad--idle-work-timer (null skroad--idle-work-queue))
     (setq skroad--idle-work-timer
           (run-with-idle-timer
            skroad--idle-work-epsilon t #'skroad--idle-work-run-slice))))
 
 (defun skroad--idle-pop ()
   "Pop the head of the queue, keeping tail consistent."
+  (setq skroad--idle-work-count (1- skroad--idle-work-count))
   (let ((fn (pop skroad--idle-work-queue)))
     (unless skroad--idle-work-queue
       (setq skroad--idle-work-queue-tail nil))
@@ -264,17 +269,31 @@ Return t if there were any matches, otherwise nil."
 (defun skroad--idle-work-run-slice (&optional flush)
   "Pop and run thunks until the queue is empty or the quantum has elapsed.
 If FLUSH is true, ignore the quantum and work until the queue is empty."
-  (let ((deadline (+ (float-time) skroad--idle-work-quantum)))
+  (let ((progress (when flush
+                    (make-progress-reporter
+                     "Skroad is working, please wait..."
+                     0 skroad--idle-work-count)))
+        (done 0)
+        (deadline (+ (float-time) skroad--idle-work-quantum)))
+    (unless flush
+      (let ((message-log-max nil))
+        (message "Skroad is working...")))
     (while (and skroad--idle-work-queue
                 (or flush (< (float-time) deadline)))
       (with-demoted-errors "skroad--idle-work: %S"
-        (funcall (skroad--idle-pop)))))
-  (if skroad--idle-work-queue ;; If the work queue did not empty:
-      (when skroad--debug
-        (message "Remaining work items: %s" (length skroad--idle-work-queue)))
+        (funcall (skroad--idle-pop)))
+      (setq done (1+ done))
+      (when progress
+        (progress-reporter-update progress done)))
     (when skroad--idle-work-timer
       (cancel-timer skroad--idle-work-timer)
-      (setq skroad--idle-work-timer nil))))
+      (setq skroad--idle-work-timer nil))
+    (if skroad--idle-work-queue
+        (run-at-time 0 nil #'skroad--idle-ensure-timer)
+      (if progress
+          (progress-reporter-done progress)
+        (let ((message-log-max nil))
+          (message nil))))))
 
 (defmacro skroad--defer (&rest body)
   "Schedule BODY to run later."
@@ -287,7 +306,6 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
       (lambda ()
         (when (buffer-live-p here) (with-current-buffer here ,@body))))))
 
-;; TODO: display message while this is happening
 (defun skroad--complete-all-deferred ()
   "Ensure that the work queue is empty by running all pending work immediately."
   (skroad--idle-work-run-slice t))
@@ -491,8 +509,8 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :use 'skroad--text-mixin-findable
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   :search
-  '(lambda (payload)
-     (funcall find #'re-search-forward (funcall make-regex payload)))
+  '(lambda (payload &optional lim)
+     (funcall find #'re-search-forward (funcall make-regex payload) lim))
   :walk
   '(lambda (payload fn)
      (skroad--re-foreach (funcall make-regex payload) fn finder-filter))
