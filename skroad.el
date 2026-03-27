@@ -1083,7 +1083,8 @@ Return the new position if the jump actually happened; otherwise nil."
                    (skroad--zone-end) (skroad--zone-start))))
   :keymap
   (define-keymap
-    "<tab>" #'skroad--cmd-atomic-jump-to-next-link
+    "<remap> <skroad--cmd-top-jump-to-next-link>"
+    #'skroad--cmd-atomic-jump-to-next-link
     "SPC" #'skroad--cmd-atomic-prepend-space
     "<remap> <set-mark-command>" #'skroad--cmd-atomic-set-mark
     "<remap> <self-insert-command>" #'ignore
@@ -1246,7 +1247,7 @@ Return the new position if the jump actually happened; otherwise nil."
                        (delete-region (region-beginning) (region-end)))
                       ((> (point) (field-beginning))
                        (delete-char -1))))
-            "RET" #'skroad--cmd-renamer-accept-changes
+            "<return>" #'skroad--cmd-renamer-accept-changes
             "<remap> <keyboard-quit>"
             #'(lambda () (interactive) (skroad--renamer-deactivate)))
   :on-leave '(lambda (pos-from auto) (skroad--renamer-deactivate)))
@@ -1317,7 +1318,7 @@ Return the new position if the jump actually happened; otherwise nil."
   :exclude-delims-from-titles t
   :keymap (define-keymap
             "<mouse-1>" #'skroad--cmd-link-left-click
-            "RET" #'skroad--cmd-link-activate))
+            "<return>" #'skroad--cmd-link-activate))
 
 (defun skroad--cmd-link-comment ()
   "Transform the link under the point to plain text by removing delimiters."
@@ -1678,7 +1679,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   :order 500
   :keymap
   (define-keymap
-    "RET" #'ignore "SPC" #'ignore
+    "<return>" #'ignore "SPC" #'ignore
     "<deletechar>" #'ignore "<backspace>" #'ignore
     "<remap> <set-mark-command>" #'ignore
     "<remap> <yank>" #'ignore
