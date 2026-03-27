@@ -1378,7 +1378,7 @@ Return the new position if the jump actually happened; otherwise nil."
     ;; TODO: this should be configurable
     (unless (or (skroad--maybe-restore-cached-point) ;; If no cached point...
                 (skroad--node-special-p orig-node)) ;; ... and not from special
-      (skroad--link-maybe-jump-to orig-node))
+      (skroad--link-maybe-jump-to-live orig-node))
     (unless (get-buffer-window orig-buf t) ;; Kill orig if we had buried it
       (with-current-buffer orig-buf
         (skroad--buf-indices-sync)
@@ -1453,8 +1453,8 @@ Return the new position if the jump actually happened; otherwise nil."
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
 
-(defun skroad--link-maybe-jump-to (node)
-  "Try to jump to the next live link to NODE after the point if one exists."
+(defun skroad--link-maybe-jump-to-live (node)
+  "Try to jump to the next live link to NODE after the point, if one exists."
   (when (funcall (get 'skroad--text-link-node-live 'search) node)
     (goto-char (match-beginning 0))))
 
