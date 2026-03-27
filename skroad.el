@@ -94,7 +94,7 @@
 
 ;;; Utility functions. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--ephemeral-message (status)
+(defun skroad--ephemeral-message (&optional status)
   "Display STATUS in the echo bar without polluting the message buffer."
   (let ((message-log-max nil))
     (message status)))
@@ -225,6 +225,23 @@ Return t if there were any matches, otherwise nil."
                      (with-silent-modifications
                        (apply orig-fun args))
                    (apply orig-fun args)))))
+
+;; Title/body positions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun skroad--goto-node-body-start ()
+  "Jump to the position at the start of the current node's body."
+  (goto-char (point-min))
+  (forward-line 1))
+
+(defun skroad--in-node-title-p (&optional pos)
+  "Return t if POS (or point, if not given) is inside the current node's title."
+  (save-mark-and-excursion
+    (when pos (goto-char pos))
+    (= (pos-bol) (point-min))))
+
+(defun skroad--in-node-body-p (&optional pos)
+  "Return t if POS (or point, if not given) is inside the current node's body."
+  (not (skroad--in-node-title-p pos)))
 
 ;; Idle queue for background ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1056,8 +1073,10 @@ Return the new position if the jump actually happened; otherwise nil."
                (let ((kbd-doc
                       (skroad--prop-at
                        (if buffer-read-only 'kbd-doc-readonly 'kbd-doc))))
-                 (skroad--ephemeral-message kbd-doc)))
-  :on-leave '(lambda (pos-from auto) (skroad--selector-deactivate))
+                 (skroad--ephemeral-message kbd-doc))) ;; Display doc, if any
+  :on-leave '(lambda (pos-from auto)
+               (skroad--selector-deactivate)
+               (skroad--ephemeral-message)) ;; Clear the echo bar
   :on-move '(lambda (pos-from auto)
               (goto-char ;; if went forward, jump to the end; else, to the start.
                (if (> (point) pos-from)
@@ -1633,21 +1652,6 @@ If the tail did not previously exist in the current node, it is emplaced."
   (or skroad--current-node-title
       (setq-local skroad--current-node-title
                   (skroad--file-path-to-node-title (buffer-file-name)))))
-
-(defun skroad--goto-node-body-start ()
-  "Jump to the position at the start of the current node's body."
-  (goto-char (point-min))
-  (forward-line 1))
-
-(defun skroad--in-node-title-p (&optional pos)
-  "Return t if POS (or point, if not given) is inside the current node's title."
-  (save-mark-and-excursion
-    (when pos (goto-char pos))
-    (= (pos-bol) (point-min))))
-
-(defun skroad--in-node-body-p (&optional pos)
-  "Return t if POS (or point, if not given) is inside the current node's body."
-  (not (skroad--in-node-title-p pos)))
 
 (defun skroad--current-internal-title ()
   "Get the current node's title from the buffer."
