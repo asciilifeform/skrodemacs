@@ -1829,7 +1829,16 @@ If the tail did not previously exist in the current node, it is emplaced."
      window 'header-line-format
      (when (and (skroad--mode-p)
                 (skroad--in-node-body-p (window-start window)))
-       (buffer-substring (point-min) (skroad--get-end-of-line 1))))))
+       (let* ((eol (save-excursion (goto-char (point-min))
+                                   (line-end-position)))
+              (wrap-pos (with-selected-window window
+                          (save-excursion
+                            (goto-char (point-min))
+                            (vertical-motion 1)
+                            (point)))))
+         (if (>= wrap-pos eol) ;; Indicate truncation with unicode ellipsis
+             (buffer-substring (point-min) eol)
+           (concat (buffer-substring (point-min) (- wrap-pos 1)) "…")))))))
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
   "Cache storing the last known interactive point position in a node.")
