@@ -412,7 +412,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
 
 (defun skroad--validate-title (title)
   "Return t when TITLE represents a valid node title."
-  (when (funcall (get 'skroad--text-link-node-live 'validate) title)
+  (when (skroad--link-valid-p title)
     (let ((encoded-title (skroad--node-title-to-filename title)))
       (and encoded-title
            (equal (skroad--file-path-to-node-title encoded-title) title)))))
@@ -1444,6 +1444,11 @@ Return the new position if the jump actually happened; otherwise nil."
   :use 'skroad--text-mixin-delimited
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
+
+;; TODO: do this in title def?
+(defun skroad--link-valid-p (string)
+  "Determine whether STRING represents a valid link payload."
+  (funcall (get 'skroad--text-link-node-live 'validate) string))
 
 (defun skroad--link-maybe-jump-to-live (node)
   "Try to jump to the next live link to NODE after the point, if one exists."
