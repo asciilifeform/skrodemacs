@@ -1837,14 +1837,11 @@ If the tail did not previously exist in the current node, it is emplaced."
        (when (and skroad--floating-title-enable
                   (skroad--mode-p)
                   (skroad--in-node-body-p (window-start)))
-         (let* ((eol (save-mark-and-excursion
-                       (goto-char (point-min)) (line-end-position)))
-                (title (buffer-substring (point-min) eol))
-                (wrap-pos (save-mark-and-excursion ;; presumes monospace
-                            (goto-char (point-min))
-                            (vertical-motion 1)
-                            (point))))
-           (skroad--abbrev-string title wrap-pos)))))))
+         (save-mark-and-excursion
+           (goto-char (point-min))
+           (let* ((title (buffer-substring (point) (line-end-position)))
+                  (wrap-pos (progn (vertical-motion 1) (point))))
+             (skroad--abbrev-string title wrap-pos)))))))) ;; presumes monospace
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
   "Cache storing the last known interactive point position in a node.")
