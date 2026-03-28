@@ -1830,8 +1830,7 @@ If the tail did not previously exist in the current node, it is emplaced."
      (when (and skroad--floating-title-enable
                 (skroad--mode-p)
                 (skroad--in-node-body-p (window-start window)))
-       (let* ((eol (save-excursion (goto-char (point-min))
-                                   (line-end-position)))
+       (let* ((eol (save-excursion (goto-char (point-min)) (line-end-position)))
               (wrap-pos (with-selected-window window
                           (save-excursion
                             (goto-char (point-min))
