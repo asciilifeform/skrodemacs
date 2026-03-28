@@ -1839,7 +1839,7 @@ If the tail did not previously exist in the current node, it is emplaced."
                   (skroad--in-node-body-p (window-start)))
          (save-mark-and-excursion
            (goto-char (point-min))
-           (skroad--abbrev-string ;; presumes monospace
+           (skroad--abbrev-string
             (buffer-substring (point) (line-end-position)) ;; Fontified title
             (progn (vertical-motion 1) (point))))))))) ;; Abbrev'd to width
 
