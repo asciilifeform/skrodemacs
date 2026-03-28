@@ -18,6 +18,13 @@
 (defconst skroad--file-extension "skroad"
   "File extension denoting a skroad node.")
 
+(defconst skroad--node-title-regex
+  (rx (seq (* blank)
+           (+ (not (any "[]" blank ?\n)))
+           (*? (not (any "[]\n")))
+           (* blank)))
+  "Regex for valid node titles.")
+
 ;;; Fonts. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--floating-title-enable t
@@ -353,6 +360,10 @@ If OVERWRITE is t, allow overwriting.  Return success."
   (unless (skroad--ensure-directory skroad--data-directory)
     (error "Unable to access or create skroad data directory!")))
 
+(defun skroad--append-extension (filename)
+  "Append the Skroad file extension to FILENAME."
+  (concat filename "." skroad--file-extension))
+
 (defun skroad--node-title-to-filename (node)
   "Encode the NODE title into an appropriate filename (with our extension).
 Reserved characters are percent-encoded (%XX).  Leading/trailing spaces are
@@ -370,8 +381,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
                  #'(lambda (m)
                      (mapconcat (lambda (ch) (format "%%%02X" ch)) m ""))
                  node-nowhite t t))
-               (filename
-                (concat encoded "." skroad--file-extension)))
+               (filename (skroad--append-extension encoded)))
           (when (<= (length (encode-coding-string filename 'utf-8 t)) 255)
             filename))))))
 
@@ -394,11 +404,18 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   (skroad--storage-ensure)
   (file-expand-wildcards
    (skroad--file-path-in-data-directory
-    (concat "*." skroad--file-extension))))
+    (skroad--append-extension "*"))))
 
 (defun skroad--node-path (node)
   "Generate the canonical file path where NODE would be found if it exists."
   (skroad--file-path-in-data-directory (skroad--node-title-to-filename node)))
+
+(defun skroad--validate-title (title)
+  "Return t when TITLE represents a valid node title."
+  (when (funcall (get 'skroad--text-link-node-live 'validate) title)
+    (let ((encoded-title (skroad--node-title-to-filename title)))
+      (and encoded-title
+           (equal (skroad--file-path-to-node-title encoded-title) title)))))
 
 ;; TODO: alarm unreachables to log
 ;; TODO: unreachables should not open in skroad mode
@@ -523,6 +540,10 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :regex-any '(funcall make-regex payload-regex)
   :use 'skroad--text-mixin-findable
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  :regex-validator '(rx (seq bos (regexp payload-regex) eos))
+  :validate
+  '(lambda (string)
+     (and t (string-match-p regex-validator string)))
   :search
   '(lambda (payload &optional lim)
      (funcall find #'re-search-forward (funcall make-regex payload) lim))
@@ -1137,27 +1158,6 @@ Return the new position if the jump actually happened; otherwise nil."
 (defvar-local skroad--buf-renamer-original nil "Original name.")
 (defvar-local skroad--buf-renamer-valid nil "Whether proposed rename is valid.")
 
-(defconst skroad--strings-prohibited-in-titles '("\n" "\r" "\f" "\t" "~"))
-
-(defvar skroad--title-prohibited-regex-cached nil)
-
-;; TODO: fix
-(defun skroad--title-prohibited-regex ()
-  "Memoized regex matching all strings prohibited in skroad node titles."
-  (unless skroad--title-prohibited-regex-cached
-    (setq skroad--title-prohibited-regex-cached
-          (let ((prohib-strings skroad--strings-prohibited-in-titles))
-            (dolist (type skroad--text-types-rendered)
-              (when (get type 'exclude-delims-from-titles)
-                (let ((begins (get type 'begins))
-                      (ends (get type 'ends)))
-                  (unless (or (null begins) (string-empty-p begins))
-                    (push begins prohib-strings))
-                  (unless (or (null ends) (string-empty-p ends))
-                    (push ends prohib-strings)))))
-            (regexp-opt prohib-strings))))
-  skroad--title-prohibited-regex-cached)
-
 (defun skroad--renamer-activate (renamer-type start end)
   "Activate the renamer in the current zone, unless already active."
   (unless (skroad--overlay-active-p skroad--buf-renamer)
@@ -1215,14 +1215,14 @@ Return the new position if the jump actually happened; otherwise nil."
               :background ,skroad--renamer-faces-invalid-background))
   nil)
 
-;; TODO: bring out the title validator
 (defun skroad--renamer-validate-if-active ()
   "If a renamer is active, validate the proposed text."
   (setq-local
    skroad--buf-renamer-valid
    (when (skroad--overlay-active-p skroad--buf-renamer)
-     (if (string-match (skroad--title-prohibited-regex) (skroad--renamer-text))
-         (skroad--renamer-mark-invalid) (skroad--renamer-mark-valid)))))
+     (if (skroad--validate-title (skroad--renamer-text))
+         (skroad--renamer-mark-valid)
+       (skroad--renamer-mark-invalid)))))
 
 (defun skroad--cmd-renamer-accept-changes () ;; TODO: actually rename anything
   "Accept the current renaming."
@@ -1315,7 +1315,6 @@ Return the new position if the jump actually happened; otherwise nil."
 (skroad--deftype skroad--text-link
   :doc "Fundamental type from which all skroad links are derived."
   :use 'skroad--text-atomic
-  :exclude-delims-from-titles t
   :keymap (define-keymap
             "<mouse-1>" #'skroad--cmd-link-left-click
             "<return>" #'skroad--cmd-link-activate))
@@ -1335,13 +1334,6 @@ Return the new position if the jump actually happened; otherwise nil."
   "User is mousing over a link in WINDOW, BUF, at POSITION."
   (with-current-buffer buf
     (skroad--prop-at 'data position)))
-
-(defconst skroad--node-title-regex
-  (rx (seq (* blank)
-           (+ (not (any "[]" blank ?\n)))
-           (*? (not (any "[]\n")))
-           (* blank)))
-  "Regex for valid node titles.")
 
 (skroad--deftype skroad--text-link-node
   :doc "Fundamental type for skroad node links (live or dead)."
@@ -1588,6 +1580,8 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
   :use 'skroad--text-mixin-rendered-zoned
   )
 
+;; (rx (seq line-start (literal skroad--node-tail) line-end))
+
 (defvar-local skroad--buf-tail-marker nil
   "Marker which points after the current node's tail, if known.")
 
@@ -1696,8 +1690,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   :renamer-overlay-type 'skroad--text-renamer-direct
   :use 'skroad--text-mixin-renameable
   :match-number 0
-  ;; :regex-any (rx string-start (* anything) "\n")
-  :regex-any "\\`.*\n"
+  :regex-any (rx (seq string-start (* not-newline) "\n"))
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-rendered-zoned
   )
@@ -2025,16 +2018,25 @@ If NODE is currently open in a buffer, request confirmation before deletion."
 ;;     (error "Could not rename node '%s' to '%s'!" node node-new))
 ;;   t)
 
+(defvar skroad--mode-global-init-done nil
+  "Set to t when the Skroad mode global init was completed in this session.")
+
+(defun skroad--mode-global-init ()
+  "Perform the mode global init if it has not been done in this session."
+  (unless skroad--mode-global-init-done
+    ;; Prohibit change hooks firing when only text properties have changed:
+    (skroad--silence-modifications 'put-text-property)
+    (skroad--silence-modifications 'add-text-properties)
+    (skroad--silence-modifications 'remove-text-properties)
+    (skroad--silence-modifications 'remove-list-of-text-properties)
+    (skroad--silence-modifications 'set-text-properties)
+    (skroad--silence-modifications 'add-face-text-property)
+    (setq skroad--mode-global-init-done t)))
+
 ;; TODO: proper mode exit cleanup
 ;; TODO: do NOT set the mode if file is not in the data dir
 (define-derived-mode skroad-mode text-mode "Skroad"
-  ;; Prohibit change hooks firing when only text properties have changed:
-  (skroad--silence-modifications 'put-text-property)
-  (skroad--silence-modifications 'add-text-properties)
-  (skroad--silence-modifications 'remove-text-properties)
-  (skroad--silence-modifications 'remove-list-of-text-properties)
-  (skroad--silence-modifications 'set-text-properties)
-  (skroad--silence-modifications 'add-face-text-property)
+  (skroad--mode-global-init)
 
   ;; TODO?
   ;; Zap properties and refontify during yank.
@@ -2044,10 +2046,7 @@ If NODE is currently open in a buffer, request confirmation before deletion."
   (setq-local kill-transform-function #'substring-no-properties)
   
   ;; Buffer-local hooks:
-  
-  ;; TODO: allow these in temp mode?
   (skroad--buf-indices-install-tracker)
-  
   (add-hook 'pre-command-hook 'skroad--pre-command-hook nil t)
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
   (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
