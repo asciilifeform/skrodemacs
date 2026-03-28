@@ -289,9 +289,9 @@ Return t if there were any matches, otherwise nil."
     fn))
 
 (defun skroad--idle-report ()
-  "Display a message reporting the work remaining in the queue."
+  "Display a message reporting the amount of work remaining in the queue."
   (skroad--ephemeral-message
-   (format "Waiting on %d background tasks..." skroad--idle-work-count)))
+   (format "%d Skroad tasks queued..." skroad--idle-work-count)))
 
 (defun skroad--idle-work-run-slice (&optional flush)
   "Pop and run thunks until the queue is empty or the quantum has elapsed.
@@ -344,7 +344,7 @@ If OVERWRITE is t, allow overwriting.  Return success."
       t)))
 
 (defun skroad--ensure-directory (dir)
-  "Ensure that DIR exists, and return t on succeess."
+  "Ensure that DIR exists, and return t on success."
   (or (file-accessible-directory-p dir)
       (progn (make-directory dir) (file-accessible-directory-p dir))))
 
@@ -604,7 +604,7 @@ call the action with ARGS."
 
 (defun skroad--refontify-current-buffer ()
   "Refresh fontification in the visible portion of the current buffer."
-  (font-lock-flush) ;; Flush whole thing, JIT will regen when scrolling
+  (font-lock-flush) ;; Flush all fontification, will get refontified on demand
   (let ((windows (get-buffer-window-list (current-buffer) nil t)))
     (when windows
       (let ((start (apply #'min (mapcar #'window-start windows)))
