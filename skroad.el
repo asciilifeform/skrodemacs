@@ -1696,7 +1696,8 @@ If the tail did not previously exist in the current node, it is emplaced."
   :renamer-overlay-type 'skroad--text-renamer-direct
   :use 'skroad--text-mixin-renameable
   :match-number 0
-  :regex-any (rx string-start (* anything) "\n")
+  ;; :regex-any (rx string-start (* anything) "\n")
+  :regex-any "\\`.*\n"
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-rendered-zoned
   )
@@ -1825,12 +1826,12 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 (defun skroad--update-header-line (window &optional _start)
   "Update the header line for the given WINDOW."
-  (set-window-parameter
-   window 'header-line-format
-   (if (skroad--in-node-title-p (window-start window))
-       nil
-     (buffer-substring (point-min) (skroad--get-end-of-line 1))
-     )))
+  (with-current-buffer (window-buffer window)
+    (set-window-parameter
+     window 'header-line-format
+     (when (and (skroad--mode-p)
+                (skroad--in-node-body-p (window-start window)))
+       (buffer-substring (point-min) (skroad--get-end-of-line 1))))))
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
   "Cache storing the last known interactive point position in a node.")
