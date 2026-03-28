@@ -1827,7 +1827,8 @@ If the tail did not previously exist in the current node, it is emplaced."
   (with-current-buffer (window-buffer window)
     (set-window-parameter
      window 'header-line-format
-     (when (and (skroad--mode-p)
+     (when (and skroad--floating-title-enable
+                (skroad--mode-p)
                 (skroad--in-node-body-p (window-start window)))
        (let* ((eol (save-excursion (goto-char (point-min))
                                    (line-end-position)))
