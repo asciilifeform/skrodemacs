@@ -224,6 +224,12 @@ Return t if there were any matches, otherwise nil."
   "Remove excess whitespace from S."
   (save-match-data (string-clean-whitespace s)))
 
+(defun skroad--abbrev-string (string lim)
+  "If STRING is LIM or more characters long, truncate it with an ellipsis."
+  (if (< (length string) lim)
+      string
+    (concat (substring string 0 (max 0 (1- lim))) "…")))
+
 (defmacro skroad--silence-modifications (function)
   "Prevent FUNCTION from triggering modification hooks while in this mode."
   `(advice-add ,function :around
@@ -1833,13 +1839,12 @@ If the tail did not previously exist in the current node, it is emplaced."
                   (skroad--in-node-body-p (window-start)))
          (let* ((eol (save-mark-and-excursion
                        (goto-char (point-min)) (line-end-position)))
-                (wrap-pos (save-mark-and-excursion
+                (title (buffer-substring (point-min) eol))
+                (wrap-pos (save-mark-and-excursion ;; presumes monospace
                             (goto-char (point-min))
                             (vertical-motion 1)
                             (point))))
-           (if (>= wrap-pos eol) ;; Indicate truncation with unicode ellipsis
-               (buffer-substring (point-min) eol)
-             (concat (buffer-substring (point-min) (- wrap-pos 1)) "…"))))))))
+           (skroad--abbrev-string title wrap-pos)))))))
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
   "Cache storing the last known interactive point position in a node.")
