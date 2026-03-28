@@ -1824,21 +1824,22 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 (defun skroad--update-header-line (window &optional _start)
   "Update the header line for the given WINDOW."
-  (with-current-buffer (window-buffer window)
-    (set-window-parameter
-     window 'header-line-format
-     (when (and skroad--floating-title-enable
-                (skroad--mode-p)
-                (skroad--in-node-body-p (window-start window)))
-       (let* ((eol (save-excursion (goto-char (point-min)) (line-end-position)))
-              (wrap-pos (with-selected-window window
-                          (save-excursion
+  (with-selected-window window
+    (with-current-buffer (window-buffer)
+      (set-window-parameter
+       nil 'header-line-format
+       (when (and skroad--floating-title-enable
+                  (skroad--mode-p)
+                  (skroad--in-node-body-p (window-start)))
+         (let* ((eol (save-mark-and-excursion
+                       (goto-char (point-min)) (line-end-position)))
+                (wrap-pos (save-mark-and-excursion
                             (goto-char (point-min))
                             (vertical-motion 1)
-                            (point)))))
-         (if (>= wrap-pos eol) ;; Indicate truncation with unicode ellipsis
-             (buffer-substring (point-min) eol)
-           (concat (buffer-substring (point-min) (- wrap-pos 1)) "…")))))))
+                            (point))))
+           (if (>= wrap-pos eol) ;; Indicate truncation with unicode ellipsis
+               (buffer-substring (point-min) eol)
+             (concat (buffer-substring (point-min) (- wrap-pos 1)) "…"))))))))
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
   "Cache storing the last known interactive point position in a node.")
