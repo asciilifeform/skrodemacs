@@ -1840,7 +1840,7 @@ If the tail did not previously exist in the current node, it is emplaced."
          (save-mark-and-excursion
            (goto-char (point-min))
            (skroad--abbrev-string ;; presumes monospace
-            (buffer-substring (point) (line-end-position)) ;; Node title
+            (buffer-substring (point) (line-end-position)) ;; Fontified title
             (progn (vertical-motion 1) (point))))))))) ;; Abbrev'd to width
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
