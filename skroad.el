@@ -840,8 +840,6 @@ Secondary type actions (run after a primary action has ran, if applicable) :
                 (setq indices (assq-delete-all text-type indices)))))))))
   indices)
 
-;; (skroad--cache-invalidate "test of orphan")
-
 (defvar-local skroad--buf-indices-pending nil
   "Pending changes to the text type indices for the current node.")
 
