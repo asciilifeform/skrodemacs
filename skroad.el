@@ -1831,6 +1831,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   "Update the header line for the given WINDOW."
   (with-selected-window window
     (with-current-buffer (window-buffer)
+      (skroad--renamer-deactivate)
       (set-window-parameter
        nil 'header-line-format
        (when (and skroad--floating-title-enable
