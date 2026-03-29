@@ -1942,7 +1942,7 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
 
 (skroad--define-special-node skroad--special-node-stubs "#Stubs"
   "A node with links to all known stub nodes. A stub node is a non-special node
-without any text between the title and the tail.  All nodes begin life as stubs.
+without any text between the title and the tail.  New nodes start out as stubs.
 Stubs which are disconnected do not retain dead links; when orphaned, a stub
 will be queued for auto-deletion (see `skroad--node-set-orphan' below.)")
 
@@ -1956,10 +1956,11 @@ will be queued for auto-deletion (see `skroad--node-set-orphan' below.)")
     (skroad--refontify-open-nodes)))
 
 (skroad--define-special-node skroad--special-node-orphans "#Orphans"
-  "A node with links to all known orphans (non-specials without any live links.)
-A node with live links only to special nodes or to itself is still an orphan.
-Orphan nodes are candidates for deletion; and only an orphan may be deleted.
-An orphan stub is auto-deleted (after prompt, but only when open in a buffer.)")
+  "A node with links to all known orphans (non-special nodes that have no live
+links other than to special nodes and/or to themselves.)  A node found to be an
+orphan becomes a candidate for deletion (and the only nodes that may be deleted
+are orphan nodes.) A node found to be an orphan stub is auto-deleted if it is
+not currently open in any buffer; but if it is, the user is prompted first.")
 
 (defun skroad--node-orphan-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known orphan."
