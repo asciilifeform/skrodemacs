@@ -793,7 +793,6 @@ If FINAL is t, the count sum going negative will signal an error."
        (setf (alist-get ,text-type ,indices) (make-hash-table :test 'equal))))
 
 ;; TODO: `on-dupe` action?
-;; TODO: fix on-init-none, which doesn't work because not in the changes
 (defun skroad--indices-update (indices changes &optional no-actions init-scan)
   "Apply a set of pending CHANGES to INDICES.  Return the updated INDICES.
 The tables in CHANGES are emptied out after being applied to the INDICES.
@@ -809,7 +808,7 @@ Secondary type actions (run after a primary action has ran, if applicable) :
   (let ((origin (skroad--current-node)))
     (dolist (change changes)
       (let ((text-type (car change)) (type-changes (cdr change)))
-        (when (not (skroad--hash-empty-p type-changes))
+        (when (or init-scan (not (skroad--hash-empty-p type-changes)))
           (let* ((type-index (skroad--ensure-index indices text-type))
                  (none-before (skroad--hash-empty-p type-index))
                  (create-action (if init-scan 'on-init 'on-create))
@@ -839,7 +838,9 @@ Secondary type actions (run after a primary action has ran, if applicable) :
                  (skroad--type-action text-type action origin)))
               (when none-after ;; Don't waste cache space on empty indices
                 (setq indices (assq-delete-all text-type indices)))))))))
-    indices)
+  indices)
+
+;; (skroad--cache-invalidate "test of orphan")
 
 (defvar-local skroad--buf-indices-pending nil
   "Pending changes to the text type indices for the current node.")
