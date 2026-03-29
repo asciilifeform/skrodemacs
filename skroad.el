@@ -800,7 +800,7 @@ Also execute the following text type actions (unless NO-ACTIONS) :
 `on-create': a particular payload of this type first appeared in the buffer.
 `on-init': same as above, but during initial scan (INIT-SCAN is t).
 `on-destroy': a particular payload of this type no longer appears in the buffer.
-Secondary type actions (always run, if applicable) :
+Secondary type actions (always run, except for special nodes) :
 `on-create-first': the first payload of this type has appeared in the buffer.
 `on-init-first': same as above, but during initial scan (INIT-SCAN is t).
 `on-destroy-last': the last payload of this type was removed from the buffer.
@@ -831,9 +831,7 @@ Secondary type actions (always run, if applicable) :
                   (cond ((and init-scan none-after) 'on-init-none)
                         ((and none-before (not none-after)) type-create-action)
                         ((and (not none-before) none-after) 'on-destroy-last))))
-              ;; was: (or (null action) no-actions)
-              (unless (or (null action)
-                          (skroad--node-special-p))
+              (unless (or (null action) (skroad--node-special-p))
                 (skroad--defer
                  (skroad--type-action text-type action origin)))
               (when none-after ;; Don't waste cache space on empty indices
