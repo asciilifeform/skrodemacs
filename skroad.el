@@ -2015,7 +2015,7 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
             )))))
   (skroad--defer (message "Lint completed.")))
 
-(skroad--lint)
+;; (skroad--lint)
 
 
 ;; ;; TODO: write log entry if changing
@@ -2060,12 +2060,12 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
 ;;     (error "Could not rename node '%s' to '%s'!" node node-new))
 ;;   t)
 
-(defvar skroad--mode-global-init-done nil
+(defvar skroad--global-init-done nil
   "Set to t when the Skroad mode global init was completed in this session.")
 
-(defun skroad--mode-global-init ()
+(defun skroad--global-init ()
   "Perform the mode global init if it has not been done in this session."
-  (unless skroad--mode-global-init-done
+  (unless skroad--global-init-done
     ;; Prohibit change hooks firing when only text properties have changed:
     (skroad--silence-modifications 'put-text-property)
     (skroad--silence-modifications 'add-text-properties)
@@ -2073,12 +2073,14 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
     (skroad--silence-modifications 'remove-list-of-text-properties)
     (skroad--silence-modifications 'set-text-properties)
     (skroad--silence-modifications 'add-face-text-property)
-    (setq skroad--mode-global-init-done t)))
+    ;; Perform a lint on boot:
+    (skroad--lint)
+    (setq skroad--global-init-done t)))
 
 ;; TODO: proper mode exit cleanup
 ;; TODO: do NOT set the mode if file is not in the data dir
 (define-derived-mode skroad-mode text-mode "Skroad"
-  (skroad--mode-global-init)
+  (skroad--global-init)
 
   ;; TODO?
   ;; Zap properties and refontify during yank.
