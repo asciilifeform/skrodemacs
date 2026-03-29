@@ -843,6 +843,9 @@ Secondary type actions (always run, except for special nodes) :
                 (setq indices (assq-delete-all text-type indices)))))))))
   indices)
 
+(defvar skroad--lint-in-progress nil
+  "Indicates that a lint is currently in progress.")
+
 (defvar-local skroad--buf-indices-pending nil
   "Pending changes to the text type indices for the current node.")
 
@@ -858,7 +861,8 @@ Secondary type actions (always run, except for special nodes) :
 
 (defun skroad--buf-indices ()
   "Obtain the current node's text type indices."
-  (when (eq skroad--buf-indices-table 'fetch-me) ;; Fetch from cache?
+  (when (or skroad--lint-in-progress
+            (eq skroad--buf-indices-table 'fetch-me)) ;; Fetch from cache?
     (setq-local skroad--buf-indices-table
                 (skroad--cache-fetch (skroad--current-node))))
   skroad--buf-indices-table)
@@ -2003,14 +2007,15 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
   (skroad--cache-foreach ;; Dispatch for each known non-special node:
    #'(lambda (node)
        (skroad--defer
-        (message "Linting node: %s" node)
-        (skroad--cache-invalidate node)
-        (skroad--with-node node t
-          (skroad--update-stub-status)
-          ))))
+        (let ((skroad--lint-in-progress t))
+          (message "Linting node: %s" node)
+          (skroad--cache-invalidate node)
+          (skroad--with-node node t
+            (skroad--update-stub-status)
+            )))))
   (skroad--defer (message "Lint completed.")))
 
-;; (skroad--lint)
+(skroad--lint)
 
 
 ;; ;; TODO: write log entry if changing
