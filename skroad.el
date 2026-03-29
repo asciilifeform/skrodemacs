@@ -340,6 +340,11 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
 
 ;; File and directory ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: prevent backup files litter?
+(defun skroad--save-current-node ()
+  "Save the current node."
+  (save-buffer))
+
 (defun skroad--mv-file (old-file new-file &optional overwrite)
   "Move OLD-FILE to NEW-FILE (may NOT be equal), updating buffers if required.
 If OVERWRITE is t, allow overwriting.  Return success."
@@ -872,7 +877,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
       (skroad--index-scan-region (point-min) (point-max) 1)
       (setq have-changes t)
       (setq indices nil)
-      (save-buffer)) ;; If we canonicalized anything, need to save
+      (skroad--save-current-node)) ;; We may have rectified links, so save it
     (when have-changes
       (setq indices (skroad--indices-update
                      indices skroad--buf-indices-pending
@@ -901,7 +906,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
               ;; If there's an index filter, use it:
               (when (or (null index-filter) (funcall index-filter payload))
                 (skroad--index-delta pending-index payload delta))
-              ;; Always canonicalize the payload, if required:
+              ;; Always rectify the payload, if not already canonical:
               (when (and (= delta 1) (not undo-in-progress)
                          (not (string-equal raw-match payload)))
                 (let ((skroad--buf-indices-scan-enable nil) ;; Don't recurse
@@ -1373,7 +1378,7 @@ Return the new position if the jump actually happened; otherwise nil."
     (unless (get-buffer-window orig-buf t) ;; Kill orig if we had buried it
       (with-current-buffer orig-buf
         (skroad--buf-indices-sync)
-        (save-buffer)
+        (skroad--save-current-node)
         (kill-buffer)))))
 
 (defun skroad--action-connected-on-init (origin node)
@@ -1886,7 +1891,7 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
              (unwind-protect ,@body
                (when (buffer-modified-p)
                  (skroad--buf-indices-sync ,no-actions)
-                 (save-buffer))))
+                 (skroad--save-current-node))))
         t)))
 
 (defun skroad--node-ensure-indices (node)
@@ -1948,7 +1953,7 @@ will be queued for auto-deletion (see `skroad--node-set-orphan' below.)")
   (when (skroad--set-special-status node skroad--special-node-stubs status)
     (skroad--refontify-open-nodes) ;; Refontify links if stub status changed
     (when (and status (skroad--node-orphan-p node)) ;; Became an orphan stub?
-      (skroad--defer (skroad--maybe-delete-orphan node))))) ;; ... try deleting.
+      (skroad--defer (skroad--delete-node node))))) ;; ... try deleting.
 
 (skroad--define-special-node skroad--special-node-orphans "#Orphans"
   "A node with links to all known orphans (non-special nodes that have no live
@@ -1968,18 +1973,19 @@ unless the node stops being an orphan stub and then later becomes one again."
   (when (and
          (skroad--set-special-status node skroad--special-node-orphans status)
          status (skroad--node-stub-p node))
-    (skroad--defer (skroad--maybe-delete-orphan node))))
+    (skroad--defer (skroad--delete-node node))))
 
-(defun skroad--maybe-delete-orphan (node)
-  "Request deletion of NODE.  No-op if NODE does not exist or is not an orphan.
-If NODE is currently open in a buffer, request confirmation before deletion."
-  (when (and (skroad--cache-peek node) (skroad--node-orphan-p node))
+(defun skroad--delete-node (node &optional force)
+  "Request deletion of NODE.  No-op if NODE does not exist.
+If NODE is currently open in a buffer, request confirmation (unless FORCE)."
+  (when (skroad--cache-peek node)
     (let* ((node-path (skroad--node-path node))
            (visiting-buffer (find-buffer-visiting node-path)))
       (when (or (null visiting-buffer)
-                (with-current-buffer visiting-buffer
-                  (when (y-or-n-p ;; If node is open, user may veto deletion
-                         (format "Permanently delete orphan node '%s' ?" node))
+                (with-current-buffer visiting-buffer ;; If node is open:
+                  (when (or force ;; If force is t, just close it immediately;
+                            (y-or-n-p ;; ... otherwise, user may veto deletion.
+                             (format "Permanently delete node '%s' ?" node)))
                     (kill-all-local-variables)
                     (restore-buffer-modified-p nil)
                     (kill-buffer))))
@@ -1987,19 +1993,37 @@ If NODE is currently open in a buffer, request confirmation before deletion."
         (skroad--node-set-stub node nil)
         (skroad--cache-evict node)
         (delete-file node-path)
-        (message "Deleted orphan node: '%s'" node))))) ;; TODO: write log entry
+        (message "Deleted node: '%s'" node))))) ;; TODO: write log entry
 
-;; TODO: write log entry if changing
-(defun skroad--verify-node-title ()
-  "Perform consistency check on the title of the current node."
-  ;; Verify that the node's internal title matches the filename:
-  (let ((node (skroad--current-node))
-        (internal-title (skroad--current-internal-title)))
-    (unless (string-equal internal-title node)
-      (message
-       "Node '%s' internal title '%s' does not match filename!"
-       node internal-title)
-      )))
+(defun skroad--lint ()
+  "Perform a full rescan of all known nodes."
+  ;; Delete orphans and stubs nodes, as we will regenerate them:
+  (skroad--delete-node skroad--special-node-orphans t)
+  (skroad--delete-node skroad--special-node-stubs t)
+
+  (skroad--cache-foreach ;; For every node, build indices and verify title
+   #'(lambda (node)
+       (message "rescanning node: %s" node)
+       (skroad--cache-invalidate node)
+       (skroad--with-node node t
+         (skroad--update-stub-status)
+         )))
+  )
+
+
+(skroad--lint)
+
+;; ;; TODO: write log entry if changing
+;; (defun skroad--verify-node-title ()
+;;   "Perform consistency check on the title of the current node."
+;;   ;; Verify that the node's internal title matches the filename:
+;;   (let ((node (skroad--current-node))
+;;         (internal-title (skroad--current-internal-title)))
+;;     (unless (string-equal internal-title node)
+;;       (message
+;;        "Node '%s' internal title '%s' does not match filename!"
+;;        node internal-title)
+;;       )))
 
 ;; (defun skroad--verify-all-nodes ()
 ;;   "Perform consistency check on all nodes, updating the broken node list."
