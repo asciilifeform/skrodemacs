@@ -101,10 +101,10 @@
 
 ;;; Utility functions. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--ephemeral-message (&optional status)
-  "Display STATUS in the echo bar without polluting the message buffer."
+(defun skroad--ephemeral-message (&rest args)
+  "Message with ARGS in the echo bar without polluting the message buffer."
   (let ((message-log-max nil))
-    (message status)))
+    (apply #'message (or args '(nil)))))
 
 (defmacro measure-time (&rest body)
   "Measure the time it takes to evaluate BODY."
@@ -844,7 +844,7 @@ Secondary type actions (always run, except for special nodes) :
   indices)
 
 (defvar skroad--lint-in-progress nil
-  "Indicates that a lint is currently in progress.")
+  "Indicates that lint is currently in progress.")
 
 (defvar-local skroad--buf-indices-pending nil
   "Pending changes to the text type indices for the current node.")
@@ -1176,8 +1176,6 @@ Return the new position if the jump actually happened; otherwise nil."
     (let ((renamer-type (skroad--prop-at 'renamer-overlay-type)))
       (when renamer-type
         (skroad--with-current-zone
-          (skroad--ephemeral-message
-           "Rename node: press <return> to rename, or leave field to cancel.")
           (skroad--suspend-font-lock)
           (skroad--deactivate-mark)
           (skroad--snapshot-prepare)
@@ -1236,9 +1234,19 @@ Return the new position if the jump actually happened; otherwise nil."
   (setq-local
    skroad--buf-renamer-valid
    (when (skroad--overlay-active-p skroad--buf-renamer)
-     (if (skroad--validate-title (skroad--renamer-text))
-         (skroad--renamer-mark-valid)
-       (skroad--renamer-mark-invalid)))))
+     (let ((proposed (skroad--renamer-text)))
+       (cond ((string-equal proposed skroad--buf-renamer-original)
+              (skroad--ephemeral-message "No changes")
+              (skroad--renamer-mark-valid))
+             ((skroad--cache-peek proposed)
+              (skroad--ephemeral-message "Node '%s' already exists!" proposed)
+              (skroad--renamer-mark-invalid))
+             ((not (skroad--validate-title proposed))
+              (skroad--ephemeral-message "Proposed name is invalid!")
+              (skroad--renamer-mark-invalid))
+             (t (skroad--ephemeral-message
+                 "Press <return> to rename, or leave field to cancel.")
+              (skroad--renamer-mark-valid)))))))
 
 (defun skroad--cmd-renamer-accept-changes () ;; TODO: actually rename anything
   "Accept the current renaming."
@@ -2029,27 +2037,6 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
 ;;        "Node '%s' internal title '%s' does not match filename!"
 ;;        node internal-title)
 ;;       )))
-
-;; (defun skroad--verify-all-nodes ()
-;;   "Perform consistency check on all nodes, updating the broken node list."
-;;   (skroad--cache-foreach ;; For every node, build indices and verify title
-;;    #'(lambda (node)
-;;        (skroad--with-node node t (skroad--verify-node-title))))
-  
-  ;; (skroad--cache-foreach
-  ;;  #'(lambda (node)
-  ;;      (skroad--with-node node t
-  ;;        ;; Verify that each live link is reciprocal:
-  ;;        )
-  ;;      ))
-  ;; )
-
-;;(defun skroad--current-indices-foreach (text-type fn &rest other-args)
-
-;; (skroad--verify-all-nodes)
-;; skroad--cache-table
-
-;; (skroad--in-node "xyz" #'skroad--connect-to "qqq1")
 
 ;; ;; TODO: handle stub
 ;; (defun skroad--rename-node (node node-new) ;; TODO: proper renamer
