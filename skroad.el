@@ -800,7 +800,7 @@ Also execute the following text type actions (unless NO-ACTIONS) :
 `on-create': a particular payload of this type first appeared in the buffer.
 `on-init': same as above, but during initial scan (INIT-SCAN is t).
 `on-destroy': a particular payload of this type no longer appears in the buffer.
-Secondary type actions (run after a primary action has ran, if applicable) :
+Secondary type actions (always run, if applicable) :
 `on-create-first': the first payload of this type has appeared in the buffer.
 `on-init-first': same as above, but during initial scan (INIT-SCAN is t).
 `on-destroy-last': the last payload of this type was removed from the buffer.
