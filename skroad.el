@@ -144,7 +144,7 @@
            ,@body)))))
 
 (defun skroad--keyword-to-symbol (exp)
-  "If EXP is a keyword, convert it to a symbol. If not, return it as-is."
+  "If EXP is a keyword, convert it to a symbol.  If not, return it as-is."
   (unless (keywordp exp) (error "%s is not a keyword!" exp))
   (read (substring (symbol-name exp) 1)))
 
@@ -548,8 +548,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   :regex-validator '(rx (seq bos (regexp payload-regex) eos))
   :validate
-  '(lambda (string)
-     (and t (string-match-p regex-validator string)))
+  '(lambda (string) (string-match-p regex-validator string))
   :search
   '(lambda (payload &optional lim)
      (funcall find #'re-search-forward (funcall make-regex payload) lim))
