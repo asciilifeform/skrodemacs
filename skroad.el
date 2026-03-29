@@ -382,7 +382,7 @@ stripped and interior whitespace runs collapsed.  Returns nil if NODE is nil,
 empty/whitespace-only, or if the result exceeds 255 UTF-8 bytes.
 The original NODE can be recovered using `skroad--file-path-to-node-title'."
   (when node
-    (let ((node-nowhite (string-clean-whitespace node))) ;; TODO
+    (let ((node-nowhite (skroad--clean-whitespace node)))
       (when (not (string-empty-p node-nowhite))
         (let* ((encoded
                 (replace-regexp-in-string
@@ -1209,7 +1209,7 @@ Return the new position if the jump actually happened; otherwise nil."
 
 (defun skroad--renamer-text ()
   "Get the proposed text in the current renamer."
-  (string-clean-whitespace
+  (skroad--clean-whitespace
    (field-string-no-properties (overlay-start skroad--buf-renamer))))
 
 (defun skroad--renamer-get-default-face ()
