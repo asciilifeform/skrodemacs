@@ -1951,9 +1951,11 @@ will be queued for auto-deletion (see `skroad--node-set-orphan' below.)")
   (skroad--special-status-p skroad--special-node-stubs node))
 
 (defun skroad--node-set-stub (node status)
-  "Set the stub STATUS of NODE."
+  "Set the stub STATUS of NODE.  See also `skroad--node-set-orphan'."
   (when (skroad--set-special-status node skroad--special-node-stubs status)
-    (skroad--refontify-open-nodes)))
+    (skroad--refontify-open-nodes) ;; Refontify links if stub status changed
+    (when (and status (skroad--node-orphan-p node)) ;; Became an orphan stub?
+      (skroad--defer (skroad--maybe-delete-orphan node))))) ;; ... try deleting.
 
 (skroad--define-special-node skroad--special-node-orphans "#Orphans"
   "A node with links to all known orphans (non-special nodes that have no live
