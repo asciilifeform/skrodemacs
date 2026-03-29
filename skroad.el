@@ -1163,26 +1163,31 @@ Return the new position if the jump actually happened; otherwise nil."
 (defvar-local skroad--buf-renamer-original nil "Original name.")
 (defvar-local skroad--buf-renamer-valid nil "Whether proposed rename is valid.")
 
-(defun skroad--renamer-activate (renamer-type start end)
+(defun skroad--cmd-renamer-activate-here ()
   "Activate the renamer in the current zone, unless already active."
+  (interactive)
   (unless (skroad--overlay-active-p skroad--buf-renamer)
-    (skroad--ephemeral-message
-     "Rename node: press <return> to rename, or leave field to cancel.")
-    (skroad--suspend-font-lock)
-    (skroad--deactivate-mark)
-    (skroad--snapshot-prepare)
-    (setq-local skroad--buf-indices-scan-enable nil
-                cursor-type t
-                skroad--buf-renamer-original
-                (skroad--prop-at 'data start))
-    (skroad--hide-text start end)
-    (goto-char end)
-    (insert (concat " " skroad--buf-renamer-original " "))
-    (setq-local skroad--buf-renamer
-                (make-overlay end (point) (current-buffer)))
-    (overlay-put skroad--buf-renamer 'category renamer-type)
-    (set-buffer-modified-p nil)
-    (goto-char end)))
+    (let ((renamer-type (skroad--prop-at 'renamer-overlay-type)))
+      (when renamer-type
+        (skroad--with-current-zone
+          (skroad--ephemeral-message
+           "Rename node: press <return> to rename, or leave field to cancel.")
+          (skroad--suspend-font-lock)
+          (skroad--deactivate-mark)
+          (skroad--snapshot-prepare)
+          (setq-local
+           skroad--buf-indices-scan-enable nil
+           cursor-type t
+           skroad--buf-renamer-original (skroad--prop-at 'data start))
+          (skroad--hide-text start end)
+          (goto-char end)
+          (insert (concat " " skroad--buf-renamer-original " "))
+          (setq-local skroad--buf-renamer
+                      (make-overlay end (point) (current-buffer)))
+          (overlay-put skroad--buf-renamer 'category renamer-type)
+          (set-buffer-modified-p nil)
+          (goto-char end))
+        (skroad--renamer-validate-if-active)))))
 
 (defun skroad--renamer-deactivate ()
   "Deactivate the renamer if it is currently active."
@@ -1256,14 +1261,6 @@ Return the new position if the jump actually happened; otherwise nil."
             "<remap> <keyboard-quit>"
             #'(lambda () (interactive) (skroad--renamer-deactivate)))
   :on-leave '(lambda (pos-from auto) (skroad--renamer-deactivate)))
-
-(defun skroad--cmd-renamer-activate-here ()
-  "Activate the renamer for the current zone and type."
-  (interactive)
-  (skroad--with-current-zone
-    (skroad--renamer-activate
-     (skroad--prop-at 'renamer-overlay-type) start end)
-    (skroad--renamer-validate-if-active)))
 
 (skroad--deftype skroad--text-mixin-renameable
   :doc "Mixin for allowing the use of the rename command with an atomic type."
@@ -1401,7 +1398,6 @@ Return the new position if the jump actually happened; otherwise nil."
   "ORIGIN is an orphan (i.e. it has NO live links)."
   (skroad--node-set-orphan origin t))
 
-;; TODO: links to specials and to self do not count!
 (defun skroad--action-unorphaned (origin)
   "ORIGIN is NOT an orphan (i.e. it has live links)."
   (skroad--node-set-orphan origin nil))
