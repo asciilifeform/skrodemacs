@@ -1383,10 +1383,10 @@ Return the new position if the jump actually happened; otherwise nil."
 
 (defun skroad--action-connected-on-init (origin node)
   "A live link to NODE was found for the first time in ORIGIN during indexing."
-  ;; TODO: lint-only?
-  ;; (skroad--node-ensure node)
-  ;; (skroad--in-node node #'skroad--connect-to origin)
-  )
+  (unless (and (skroad--cache-peek node) ;; Node doesn't exist?
+               (skroad--connected-p node origin)) ;; ... or it has no backlink?
+    (skroad--in-node origin #'skroad--disconnect-from node)
+    (message "Non-reciprocal link in '%s' to '%s' disabled." origin node)))
 
 (defun skroad--action-connected (origin node)
   "The first instance of a live link to NODE was introduced in ORIGIN."
@@ -1916,20 +1916,20 @@ or edited interactively.  Special nodes are not subject to auto-backlinking.")
   "Return t if NODE (if given; else the current node) is a special node."
   (member (or node (skroad--current-node)) skroad--special-nodes))
 
-(defun skroad--special-status-p (special &optional node)
-  "Test whether NODE (if given; else the current node) is linked from SPECIAL.
-SPECIAL is created if required.  If NODE itself is a special node, return nil."
+(defun skroad--connected-p (origin &optional node)
+  "Test whether NODE (if given; else the current node) is linked from ORIGIN.
+ORIGIN is indexed/created if required.  If NODE is a special node, return nil."
   (unless (skroad--node-special-p node)
     (skroad--indices-has-p 'skroad--text-link-node-live
                            (or node (skroad--current-node))
-                           (skroad--node-ensure-indices special))))
+                           (skroad--node-ensure-indices origin))))
 
 (defun skroad--set-special-status (node special status)
   "Set connection STATUS of NODE from the given SPECIAL (assumed) node.
 SPECIAL is created if required.  If NODE itself is a special node, do nothing.
 Return t only when the connection status of NODE from SPECIAL actually changed."
   (unless (or (skroad--node-special-p node) ;; If node itself is special, no-op
-              (eq (skroad--special-status-p special node) status)) ;; no change?
+              (eq (skroad--connected-p special node) status)) ;; no change?
     (skroad--in-node
      special (if status #'skroad--connect-to #'skroad--disconnect-from) node t)
     t))
@@ -1946,7 +1946,7 @@ will be queued for auto-deletion (see `skroad--node-set-orphan' below.)")
 
 (defun skroad--node-stub-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known stub."
-  (skroad--special-status-p skroad--special-node-stubs node))
+  (skroad--connected-p skroad--special-node-stubs node))
 
 (defun skroad--node-set-stub (node status)
   "Set the stub STATUS of NODE.  See also `skroad--node-set-orphan'."
@@ -1964,7 +1964,7 @@ not currently open in any buffer; but if it is, the user is prompted first.")
 
 (defun skroad--node-orphan-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known orphan."
-  (skroad--special-status-p skroad--special-node-orphans node))
+  (skroad--connected-p skroad--special-node-orphans node))
 
 (defun skroad--node-set-orphan (node status)
   "Set the orphan STATUS of NODE.  If it became an orphan stub, try deleting it.
@@ -1997,21 +1997,21 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
 
 (defun skroad--lint ()
   "Perform a full rescan of all known nodes."
-  ;; Delete orphans and stubs nodes, as we will regenerate them:
-  (skroad--delete-node skroad--special-node-orphans t)
-  (skroad--delete-node skroad--special-node-stubs t)
-
-  (skroad--cache-foreach ;; For every node, build indices and verify title
+  (message "Lint started...")
+  (skroad--delete-node skroad--special-node-orphans t) ;; We'll regen it
+  (skroad--delete-node skroad--special-node-stubs t) ;; We'll regen it
+  (skroad--cache-foreach ;; Dispatch for each known non-special node:
    #'(lambda (node)
-       (message "rescanning node: %s" node)
-       (skroad--cache-invalidate node)
-       (skroad--with-node node t
-         (skroad--update-stub-status)
-         )))
-  )
+       (skroad--defer
+        (message "Linting node: %s" node)
+        (skroad--cache-invalidate node)
+        (skroad--with-node node t
+          (skroad--update-stub-status)
+          ))))
+  (skroad--defer (message "Lint completed.")))
 
+;; (skroad--lint)
 
-(skroad--lint)
 
 ;; ;; TODO: write log entry if changing
 ;; (defun skroad--verify-node-title ()
