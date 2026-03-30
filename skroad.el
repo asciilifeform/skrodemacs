@@ -1244,9 +1244,12 @@ Return the new position if the jump actually happened; otherwise nil."
   "Accept the current renaming."
   (interactive)
   (when (skroad--renamer-validate)
-    (message (format "renaming: '%s' -> '%s'"
-                     skroad--buf-renamer-original (skroad--renamer-text)))
-    (skroad--renamer-deactivate)))
+    (let ((orig-title skroad--buf-renamer-original)
+          (new-title (skroad--renamer-text)))
+      (skroad--renamer-deactivate)
+      (unless (string-equal orig-title new-title)
+        (message (format "renaming: '%s' -> '%s'"
+                         orig-title new-title))))))
 
 (skroad--deftype skroad--text-mixin-renamer-overlay
   :doc "Base mixin for renamer overlays."
