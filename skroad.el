@@ -1175,22 +1175,25 @@ Return the new position if the jump actually happened; otherwise nil."
     (let ((renamer-type (skroad--prop-at 'renamer-overlay-type)))
       (when renamer-type
         (skroad--with-current-zone
-          (skroad--suspend-font-lock)
-          (skroad--deactivate-mark)
-          (skroad--snapshot-prepare)
-          (setq-local
-           skroad--buf-indices-scan-enable nil
-           cursor-type t
-           skroad--buf-renamer-original (skroad--prop-at 'data start))
-          (skroad--hide-text start end)
-          (goto-char end)
-          (insert (concat " " skroad--buf-renamer-original " "))
-          (setq-local skroad--buf-renamer
-                      (make-overlay end (point) (current-buffer)))
-          (overlay-put skroad--buf-renamer 'category renamer-type)
-          (set-buffer-modified-p nil)
-          (goto-char end))
-        (skroad--renamer-validate)))))
+          (let ((current-title (skroad--prop-at 'data start)))
+            (if (skroad--node-special-p current-title)
+                (skroad--info "Special nodes cannot be renamed!")
+              (skroad--suspend-font-lock)
+              (skroad--deactivate-mark)
+              (skroad--snapshot-prepare)
+              (setq-local
+               skroad--buf-indices-scan-enable nil
+               cursor-type t
+               skroad--buf-renamer-original current-title)
+              (skroad--hide-text start end)
+              (goto-char end)
+              (insert (concat " " skroad--buf-renamer-original " "))
+              (setq-local skroad--buf-renamer
+                          (make-overlay end (point) (current-buffer)))
+              (overlay-put skroad--buf-renamer 'category renamer-type)
+              (set-buffer-modified-p nil)
+              (goto-char end)
+              (skroad--renamer-validate))))))))
 
 (defun skroad--renamer-deactivate ()
   "Deactivate the renamer if it is currently active."
@@ -1509,6 +1512,12 @@ Return the new position if the jump actually happened; otherwise nil."
   "Transform all dead links to NODE in the current node to live links."
   (funcall
    (get 'skroad--text-link-node-dead 'regen) node 'skroad--text-link-node-live))
+
+(defun skroad--link-rename (node new-title)
+  "Revise all live links to NODE in the current node to NEW-TITLE."
+  (funcall
+   (get 'skroad--text-link-node-live 'regen)
+   node 'skroad--text-link-node-live new-title))
 
 (defun skroad--connect-to (node)
   "Ensure that the current node has at least one live link to NODE.
