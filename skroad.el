@@ -1480,13 +1480,6 @@ Return the new position if the jump actually happened; otherwise nil."
   "Determine whether the current node has at least one live link to NODE."
   (skroad--current-indices-have-p 'skroad--text-link-node-live node))
 
-(defun skroad--link-get-all-live ()
-  "Return a list of all indexed live links in the current node."
-  (let (links)
-    (skroad--current-indices-foreach 'skroad--text-link-node-live
-                                     #'(lambda (l) (push l links)))
-    links))
-
 ;;;;; TODO: when dead link clicked, simply move the point there
 ;; (defun skroad--cmd-dead-link-activate ()
 ;;   "Move the point to a dead link."
@@ -2073,13 +2066,16 @@ A node named OLD-TITLE is presumed to exist, and NEW-TITLE to be a valid title."
             (skroad--node-path old-title) (skroad--node-path new-title)))
       (skroad--with-node new-title t
         (skroad--change-internal-title new-title)
-        (dolist (peer (append ;; Where to look for links to old-title
-                       (list
-                        new-title ;; Possibly has self-links
-                        ;; TODO: also rename in the log, once we have the log
-                        skroad--special-node-stubs ;; ... stubs
-                        skroad--special-node-orphans) ;; ... orphans
-                       (skroad--link-get-all-live))) ;; ... connected nodes.
+        (dolist (peer
+                 (let ((peers (list new-title))) ;; Always include self
+                   (skroad--current-indices-foreach
+                    'skroad--text-link-node-live #'(lambda (l) (push l peers)))
+                   (when (skroad--node-stub-p old-title)
+                     (push skroad--special-node-stubs peers))
+                   (when (skroad--node-orphan-p old-title)
+                     (push skroad--special-node-orphans peers))
+                   ;; TODO: include log once we have the log
+                   peers))
           (skroad--defer
            (skroad--with-node peer t
              (skroad--link-replace old-title new-title))))
