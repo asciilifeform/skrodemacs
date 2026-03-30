@@ -1216,37 +1216,30 @@ Return the new position if the jump actually happened; otherwise nil."
   "Get the default face of the current renamer."
   (get (overlay-get skroad--buf-renamer 'category) 'face))
 
-(defun skroad--renamer-mark-valid ()
-  "Mark the current renamer as valid."
-  (overlay-put skroad--buf-renamer 'face (skroad--renamer-get-default-face))
-  t)
-
-(defun skroad--renamer-mark-invalid ()
-  "Mark the current renamer as invalid."
-  (overlay-put
-   skroad--buf-renamer 'face
-   `(:inherit ,(skroad--renamer-get-default-face)
-              :background ,skroad--renamer-faces-invalid-background))
-  nil)
-
 (defun skroad--renamer-validate-if-active ()
   "If a renamer is active, validate the proposed text."
-  (setq-local
-   skroad--buf-renamer-valid
-   (when (skroad--overlay-active-p skroad--buf-renamer)
-     (let ((proposed (skroad--renamer-text)))
-       (cond ((string-equal proposed skroad--buf-renamer-original)
-              (skroad--info "No change proposed")
-              (skroad--renamer-mark-valid))
-             ((skroad--cache-peek proposed)
-              (skroad--info "Node '%s' already exists!" proposed)
-              (skroad--renamer-mark-invalid))
-             ((not (skroad--validate-title proposed))
-              (skroad--info "Proposed name is invalid!")
-              (skroad--renamer-mark-invalid))
-             (t (skroad--info
-                 "Press <return> to rename, or leave field to cancel.")
-              (skroad--renamer-mark-valid)))))))
+  (when (skroad--overlay-active-p skroad--buf-renamer)
+    (let* ((proposed (skroad--renamer-text))
+           (valid
+            (cond ((string-equal proposed skroad--buf-renamer-original)
+                   (skroad--info "No change proposed")
+                   t)
+                  ((skroad--cache-peek proposed)
+                   (skroad--info "Node '%s' already exists!" proposed)
+                   nil)
+                  ((not (skroad--validate-title proposed))
+                   (skroad--info "Proposed name is invalid!")
+                   nil)
+                  (t (skroad--info
+                      "Press <return> to rename, or leave field to cancel.")
+                     t))))
+      (setq-local skroad--buf-renamer-valid valid)
+      (overlay-put
+       skroad--buf-renamer 'face
+       (if valid
+           (skroad--renamer-get-default-face)
+         `(:inherit ,(skroad--renamer-get-default-face)
+                    :background ,skroad--renamer-faces-invalid-background))))))
 
 (defun skroad--cmd-renamer-accept-changes () ;; TODO: actually rename anything
   "Accept the current renaming."
