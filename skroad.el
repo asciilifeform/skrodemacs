@@ -2066,18 +2066,19 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
             (skroad--node-path old) (skroad--node-path new)))
       (skroad--with-node new t
         (skroad--change-internal-title new)
-        (dolist (peer
-                 (let ((peers (list new))) ;; Always include self
+        (dolist (affected-node
+                 (let ((affected-nodes (list new))) ;; Always include self
                    (skroad--current-indices-foreach
-                    'skroad--text-link-node-live #'(lambda (l) (push l peers)))
+                    'skroad--text-link-node-live
+                    #'(lambda (l) (push l affected-nodes)))
                    (when (skroad--node-stub-p old)
-                     (push skroad--special-node-stubs peers))
+                     (push skroad--special-node-stubs affected-nodes))
                    (when (skroad--node-orphan-p old)
-                     (push skroad--special-node-orphans peers))
+                     (push skroad--special-node-orphans affected-nodes))
                    ;; TODO: include log once we have the log
-                   peers))
+                   affected-nodes))
           (skroad--defer
-           (skroad--with-node peer t
+           (skroad--with-node affected-node t
              (skroad--link-replace old new))))
         (skroad--defer (skroad--refontify-open-nodes)))
     (error "Could not rename node '%s' to '%s'!" old new)))
