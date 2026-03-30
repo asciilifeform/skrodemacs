@@ -1215,7 +1215,7 @@ Return the new position if the jump actually happened; otherwise nil."
   (get (overlay-get skroad--buf-renamer 'category) 'face))
 
 (defun skroad--renamer-validate ()
-  "If a renamer is active, validate the proposed text."
+  "If a renamer is active, validate the proposed text.  Return t when valid."
   (when (skroad--overlay-active-p skroad--buf-renamer)
     (let* ((proposed (skroad--renamer-text))
            (valid
