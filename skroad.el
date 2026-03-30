@@ -1179,6 +1179,7 @@ Return the new position if the jump actually happened; otherwise nil."
           (let ((current-title (skroad--prop-at 'data start)))
             (if (skroad--node-special-p current-title)
                 (skroad--info "Special nodes cannot be renamed!")
+              (setq buffer-read-only nil)
               (skroad--suspend-font-lock)
               (skroad--deactivate-mark)
               (skroad--snapshot-prepare)
@@ -1207,7 +1208,8 @@ Return the new position if the jump actually happened; otherwise nil."
     (skroad--resume-font-lock)
     (skroad--refontify-current-line)
     (setq-local skroad--buf-indices-scan-enable t
-                skroad--buf-renamer-original nil)))
+                skroad--buf-renamer-original nil)
+    (skroad--set-writability)))
 
 (defun skroad--renamer-text ()
   "Get the proposed text in the current renamer."
