@@ -630,8 +630,9 @@ call the action with ARGS."
 
 (defun skroad--refontify-current-line ()
   "Refresh fontification of the current line in a skroad buffer."
-  (save-mark-and-excursion
-    (font-lock-ensure (line-beginning-position) (line-end-position))))
+  (when (skroad--mode-p)
+    (save-mark-and-excursion
+      (font-lock-ensure (line-beginning-position) (line-end-position)))))
 
 (defun skroad--refontify-current-buffer ()
   "Refresh fontification in the visible portion of the current buffer."
@@ -952,11 +953,11 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
   "Test whether a PAYLOAD of TEXT-TYPE exists in the current node's indices."
   (skroad--indices-has-p text-type payload (skroad--buf-indices)))
 
-;; TODO: probably should copy it before walking
 (defun skroad--current-indices-foreach (text-type fn &rest other-args)
   "Apply FN to all payloads of TEXT-TYPE in the current node's indices."
-  (maphash #'(lambda (key val) (apply fn (cons key other-args)))
-           (alist-get text-type (skroad--buf-indices))))
+  (let ((index (alist-get text-type (skroad--buf-indices))))
+    (when index
+      (maphash #'(lambda (key val) (apply fn (cons key other-args))) index))))
 
 ;; Top-level keymap for the major mode. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1251,7 +1252,9 @@ Return the new position if the jump actually happened; otherwise nil."
           (new-title (skroad--renamer-text)))
       (skroad--renamer-deactivate)
       (unless (string-equal old-title new-title)
-        (skroad--rename-node old-title new-title)))))
+        (skroad--rename-node old-title new-title)
+        ;; (skroad--refontify-open-nodes)
+        ))))
 
 (skroad--deftype skroad--text-mixin-renamer-overlay
   :doc "Base mixin for renamer overlays."
@@ -1475,6 +1478,13 @@ Return the new position if the jump actually happened; otherwise nil."
   "Determine whether the current node has at least one live link to NODE."
   (skroad--current-indices-have-p 'skroad--text-link-node-live node))
 
+(defun skroad--link-get-all-live ()
+  "Return a list of all indexed live links in the current node."
+  (let (links)
+    (skroad--current-indices-foreach 'skroad--text-link-node-live
+                                     #'(lambda (l) (push l links)))
+    links))
+
 ;;;;; TODO: when dead link clicked, simply move the point there
 ;; (defun skroad--cmd-dead-link-activate ()
 ;;   "Move the point to a dead link."
@@ -1678,6 +1688,29 @@ If the tail did not previously exist in the current node, it is emplaced."
 (defun skroad--current-internal-title ()
   "Get the current node's title from the buffer."
   (buffer-substring-no-properties (point-min) (skroad--get-end-of-line 1)))
+
+(defun skroad--change-internal-title (new-title)
+  "Change the internal title of the current node to NEW-TITLE."
+  (let ((buffer-read-only nil))
+    (save-mark-and-excursion
+      (goto-char (point-min))
+      (insert new-title)
+      (newline)
+      (skroad--refontify-current-line)
+      (delete-region (point) (progn (forward-line 1) (point))))))
+
+;; TODO: write log entry if changing
+(defun skroad--rectify-node-title ()
+  "Ensure that the current node's internal and external titles match."
+  (let ((external-title (skroad--current-node))
+        (internal-title (skroad--current-internal-title)))
+    (unless (string-equal internal-title external-title)
+      (message
+       "Node '%s' internal title '%s' does not match filename!"
+       external-title internal-title)
+      ;; temporary:
+      (skroad--change-internal-title external-title)
+      )))
 
 (defun skroad--cmd-title-kill-ring-save ()
   "Save the current node's title, transformed to a live link, to the kill ring."
@@ -2022,37 +2055,33 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
           (message "Linting node: %s" node)
           (skroad--cache-invalidate node)
           (skroad--with-node node t
+            (skroad--rectify-node-title)
             (skroad--update-stub-status)
             )))))
   (skroad--defer (message "Lint completed.")))
 
 ;; (skroad--lint)
 
+(defun skroad--rename-node (old-title new-title)
+  "Rename node OLD-TITLE to NEW-TITLE.
+A node named OLD-TITLE is presumed to exist, and NEW-TITLE to be a valid title."
+  (message (format "renaming: '%s' -> '%s'" old-title new-title))
+  (if (and (skroad--cache-rename old-title new-title)
+           (skroad--mv-file
+            (skroad--node-path old-title) (skroad--node-path new-title)))
+      (skroad--with-node new-title t
+        (skroad--change-internal-title new-title)
+        (dolist (peer (append
+                       (list
+                        new-title
+                        skroad--special-node-stubs skroad--special-node-orphans)
+                       (skroad--link-get-all-live)))
+          (skroad--defer
+           (skroad--with-node peer t
+             (skroad--link-rename old-title new-title))))
+        (skroad--defer (skroad--refontify-open-nodes)))
+    (error "Could not rename old-title '%s' to '%s'!" old-title new-title)))
 
-;; ;; TODO: write log entry if changing
-;; (defun skroad--verify-node-title ()
-;;   "Perform consistency check on the title of the current node."
-;;   ;; Verify that the node's internal title matches the filename:
-;;   (let ((node (skroad--current-node))
-;;         (internal-title (skroad--current-internal-title)))
-;;     (unless (string-equal internal-title node)
-;;       (message
-;;        "Node '%s' internal title '%s' does not match filename!"
-;;        node internal-title)
-;;       )))
-
-(defun skroad--rename-node (node new-title)
-  "Rename NODE to NEW-TITLE.  The latter is presumed to be valid."
-  (message (format "renaming: '%s' -> '%s'" node new-title)))
-
-;; ;; TODO: handle stub
-;; (defun skroad--rename-node (node node-new) ;; TODO: proper renamer
-;;   "Rename NODE to NODE-NEW."
-;;   (unless (and (skroad--node-cache-rename node node-new)
-;;                (skroad--mv-file
-;;                 (skroad--node-path node) (skroad--node-path node-new)))
-;;     (error "Could not rename node '%s' to '%s'!" node node-new))
-;;   t)
 
 (defvar skroad--global-init-done nil
   "Set to t when the Skroad mode global init was completed in this session.")
