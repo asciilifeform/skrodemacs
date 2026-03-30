@@ -1525,11 +1525,11 @@ Return the new position if the jump actually happened; otherwise nil."
   (funcall
    (get 'skroad--text-link-node-dead 'regen) node 'skroad--text-link-node-live))
 
-(defun skroad--link-rename (node new-title)
-  "Revise all live links to NODE in the current node to NEW-TITLE."
+(defun skroad--link-replace (node target)
+  "Replace all live links to NODE in the current node with links to TARGET."
   (funcall
    (get 'skroad--text-link-node-live 'regen)
-   node 'skroad--text-link-node-live new-title))
+   node 'skroad--text-link-node-live target))
 
 (defun skroad--connect-to (node)
   "Ensure that the current node has at least one live link to NODE.
@@ -2082,7 +2082,7 @@ A node named OLD-TITLE is presumed to exist, and NEW-TITLE to be a valid title."
                        (skroad--link-get-all-live))) ;; ... connected nodes.
           (skroad--defer
            (skroad--with-node peer t
-             (skroad--link-rename old-title new-title))))
+             (skroad--link-replace old-title new-title))))
         (skroad--defer (skroad--refontify-open-nodes)))
     (error "Could not rename old-title '%s' to '%s'!" old-title new-title)))
 
