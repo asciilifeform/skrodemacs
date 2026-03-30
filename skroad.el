@@ -2062,7 +2062,7 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
 
 ;; (skroad--lint)
 
-(defun skroad--rename-node (old-title new-title)
+(defun skroad--rename-node (old-title new-title) ;; TODO: log to actual log
   "Rename node OLD-TITLE to NEW-TITLE.
 A node named OLD-TITLE is presumed to exist, and NEW-TITLE to be a valid title."
   (message (format "renaming: '%s' -> '%s'" old-title new-title))
@@ -2071,11 +2071,12 @@ A node named OLD-TITLE is presumed to exist, and NEW-TITLE to be a valid title."
             (skroad--node-path old-title) (skroad--node-path new-title)))
       (skroad--with-node new-title t
         (skroad--change-internal-title new-title)
-        (dolist (peer (append
+        (dolist (peer (append ;; Where to look for links to old-title
                        (list
-                        new-title
-                        skroad--special-node-stubs skroad--special-node-orphans)
-                       (skroad--link-get-all-live)))
+                        new-title ;; Possibly has self-links
+                        skroad--special-node-stubs ;; ... stubs
+                        skroad--special-node-orphans) ;; ... orphans
+                       (skroad--link-get-all-live))) ;; ... connected nodes.
           (skroad--defer
            (skroad--with-node peer t
              (skroad--link-rename old-title new-title))))
