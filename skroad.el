@@ -2074,6 +2074,7 @@ A node named OLD-TITLE is presumed to exist, and NEW-TITLE to be a valid title."
         (dolist (peer (append ;; Where to look for links to old-title
                        (list
                         new-title ;; Possibly has self-links
+                        ;; TODO: also rename in the log, once we have the log
                         skroad--special-node-stubs ;; ... stubs
                         skroad--special-node-orphans) ;; ... orphans
                        (skroad--link-get-all-live))) ;; ... connected nodes.
