@@ -1219,18 +1219,19 @@ Return the new position if the jump actually happened; otherwise nil."
   (when (skroad--overlay-active-p skroad--buf-renamer)
     (let* ((proposed (skroad--renamer-text))
            (valid
-            (cond ((string-equal proposed skroad--buf-renamer-original)
+            (cond ((not (skroad--validate-title proposed))
+                   (skroad--info "Proposed name is invalid!")
+                   nil)
+                  ((string-equal proposed skroad--buf-renamer-original)
                    (skroad--info "No change proposed")
                    t)
                   ((skroad--cache-peek proposed)
                    (skroad--info "Node '%s' already exists!" proposed)
                    nil)
-                  ((not (skroad--validate-title proposed))
-                   (skroad--info "Proposed name is invalid!")
-                   nil)
-                  (t (skroad--info
-                      "Press <return> to rename, or leave field to cancel.")
-                     t))))
+                  (t
+                   (skroad--info
+                    "Press <return> to rename, or leave field to cancel.")
+                   t))))
       (overlay-put
        skroad--buf-renamer 'face
        (if valid
