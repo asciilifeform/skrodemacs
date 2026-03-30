@@ -2084,7 +2084,7 @@ A node named OLD-TITLE is presumed to exist, and NEW-TITLE to be a valid title."
            (skroad--with-node peer t
              (skroad--link-replace old-title new-title))))
         (skroad--defer (skroad--refontify-open-nodes)))
-    (error "Could not rename old-title '%s' to '%s'!" old-title new-title)))
+    (error "Could not rename node '%s' to '%s'!" old-title new-title)))
 
 
 (defvar skroad--global-init-done nil
