@@ -1236,7 +1236,7 @@ Return the new position if the jump actually happened; otherwise nil."
    (when (skroad--overlay-active-p skroad--buf-renamer)
      (let ((proposed (skroad--renamer-text)))
        (cond ((string-equal proposed skroad--buf-renamer-original)
-              (skroad--ephemeral-message "No changes")
+              (skroad--ephemeral-message "No change proposed")
               (skroad--renamer-mark-valid))
              ((skroad--cache-peek proposed)
               (skroad--ephemeral-message "Node '%s' already exists!" proposed)
