@@ -1220,13 +1220,13 @@ Return the new position if the jump actually happened; otherwise nil."
     (let* ((proposed (skroad--renamer-text))
            (valid
             (cond ((not (skroad--validate-title proposed))
-                   (skroad--info "Proposed name is invalid!")
+                   (skroad--info "Proposed node name is invalid!")
                    nil)
                   ((string-equal proposed skroad--buf-renamer-original)
                    (skroad--info "No change proposed")
                    t)
                   ((skroad--cache-peek proposed)
-                   (skroad--info "Node '%s' already exists!" proposed)
+                   (skroad--info "A node named '%s' already exists!" proposed)
                    nil)
                   (t
                    (skroad--info
