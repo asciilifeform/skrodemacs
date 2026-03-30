@@ -1240,16 +1240,15 @@ Return the new position if the jump actually happened; otherwise nil."
                     :background ,skroad--renamer-faces-invalid-background)))
       valid)))
 
-(defun skroad--cmd-renamer-accept-changes () ;; TODO: actually rename anything
-  "Accept the current renaming."
+(defun skroad--cmd-renamer-accept-changes ()
+  "Accept the proposed renaming, if the renamer is currently active and valid."
   (interactive)
   (when (skroad--renamer-validate)
-    (let ((orig-title skroad--buf-renamer-original)
+    (let ((old-title skroad--buf-renamer-original)
           (new-title (skroad--renamer-text)))
       (skroad--renamer-deactivate)
-      (unless (string-equal orig-title new-title)
-        (message (format "renaming: '%s' -> '%s'"
-                         orig-title new-title))))))
+      (unless (string-equal old-title new-title)
+        (skroad--rename-node old-title new-title)))))
 
 (skroad--deftype skroad--text-mixin-renamer-overlay
   :doc "Base mixin for renamer overlays."
@@ -2032,6 +2031,10 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
 ;;        "Node '%s' internal title '%s' does not match filename!"
 ;;        node internal-title)
 ;;       )))
+
+(defun skroad--rename-node (node new-title)
+  "Rename NODE to NEW-TITLE.  The latter is presumed to be valid."
+  (message (format "renaming: '%s' -> '%s'" node new-title)))
 
 ;; ;; TODO: handle stub
 ;; (defun skroad--rename-node (node node-new) ;; TODO: proper renamer
