@@ -101,7 +101,7 @@
 
 ;;; Utility functions. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--ephemeral-message (&rest args)
+(defun skroad--info (&rest args)
   "Message with ARGS in the echo bar without polluting the message buffer."
   (let ((message-log-max nil))
     (apply #'message (or args '(nil)))))
@@ -303,7 +303,7 @@ Return t if there were any matches, otherwise nil."
 
 (defun skroad--idle-report ()
   "Display a message reporting the amount of work remaining in the queue."
-  (skroad--ephemeral-message
+  (skroad--info
    (format "%d Skroad tasks queued..." skroad--idle-work-count)))
 
 (defun skroad--idle-work-run-slice (&optional flush)
@@ -321,7 +321,7 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
     (cond (skroad--idle-work-queue
            (skroad--idle-report)
            (run-at-time 0 nil #'skroad--idle-ensure-timer))
-          (t (skroad--ephemeral-message nil)))))
+          (t (skroad--info nil)))))
 
 (defmacro skroad--defer (&rest body)
   "Schedule BODY to run later."
@@ -1105,10 +1105,10 @@ Return the new position if the jump actually happened; otherwise nil."
                (let ((kbd-doc
                       (skroad--prop-at
                        (if buffer-read-only 'kbd-doc-readonly 'kbd-doc))))
-                 (skroad--ephemeral-message kbd-doc))) ;; Display doc, if any
+                 (skroad--info kbd-doc))) ;; Display doc, if any
   :on-leave '(lambda (pos-from auto)
                (skroad--selector-deactivate)
-               (skroad--ephemeral-message)) ;; Clear the echo bar
+               (skroad--info)) ;; Clear the echo bar
   :on-move '(lambda (pos-from auto)
               (goto-char ;; if went forward, jump to the end; else, to the start.
                (if (> (point) pos-from)
@@ -1236,15 +1236,15 @@ Return the new position if the jump actually happened; otherwise nil."
    (when (skroad--overlay-active-p skroad--buf-renamer)
      (let ((proposed (skroad--renamer-text)))
        (cond ((string-equal proposed skroad--buf-renamer-original)
-              (skroad--ephemeral-message "No change proposed")
+              (skroad--info "No change proposed")
               (skroad--renamer-mark-valid))
              ((skroad--cache-peek proposed)
-              (skroad--ephemeral-message "Node '%s' already exists!" proposed)
+              (skroad--info "Node '%s' already exists!" proposed)
               (skroad--renamer-mark-invalid))
              ((not (skroad--validate-title proposed))
-              (skroad--ephemeral-message "Proposed name is invalid!")
+              (skroad--info "Proposed name is invalid!")
               (skroad--renamer-mark-invalid))
-             (t (skroad--ephemeral-message
+             (t (skroad--info
                  "Press <return> to rename, or leave field to cancel.")
               (skroad--renamer-mark-valid)))))))
 
