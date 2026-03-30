@@ -2057,30 +2057,30 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
 
 ;; (skroad--lint)
 
-(defun skroad--rename-node (old-title new-title) ;; TODO: log to actual log
-  "Rename node OLD-TITLE to NEW-TITLE.
-A node named OLD-TITLE is presumed to exist, and NEW-TITLE to be a valid title."
-  (message (format "renaming: '%s' -> '%s'" old-title new-title))
-  (if (and (skroad--cache-rename old-title new-title)
+;; TODO: nuke undo
+(defun skroad--rename-node (old new) ;; TODO: log to actual log
+  "Rename node OLD to NEW.  OLD is presumed to exist; NEW -- a valid title."
+  (message (format "renaming: '%s' -> '%s'" old new))
+  (if (and (skroad--cache-rename old new)
            (skroad--mv-file
-            (skroad--node-path old-title) (skroad--node-path new-title)))
-      (skroad--with-node new-title t
-        (skroad--change-internal-title new-title)
+            (skroad--node-path old) (skroad--node-path new)))
+      (skroad--with-node new t
+        (skroad--change-internal-title new)
         (dolist (peer
-                 (let ((peers (list new-title))) ;; Always include self
+                 (let ((peers (list new))) ;; Always include self
                    (skroad--current-indices-foreach
                     'skroad--text-link-node-live #'(lambda (l) (push l peers)))
-                   (when (skroad--node-stub-p old-title)
+                   (when (skroad--node-stub-p old)
                      (push skroad--special-node-stubs peers))
-                   (when (skroad--node-orphan-p old-title)
+                   (when (skroad--node-orphan-p old)
                      (push skroad--special-node-orphans peers))
                    ;; TODO: include log once we have the log
                    peers))
           (skroad--defer
            (skroad--with-node peer t
-             (skroad--link-replace old-title new-title))))
+             (skroad--link-replace old new))))
         (skroad--defer (skroad--refontify-open-nodes)))
-    (error "Could not rename node '%s' to '%s'!" old-title new-title)))
+    (error "Could not rename node '%s' to '%s'!" old new)))
 
 
 (defvar skroad--global-init-done nil
