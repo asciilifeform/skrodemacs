@@ -120,6 +120,7 @@
   "Determine whether skroad mode is currently active."
   (derived-mode-p 'skroad-mode))
 
+;; TODO: skroad--clear-buf-undo-info ?
 (defmacro skroad--with-file (file &rest body)
   "Evaluate BODY, operating on FILE (must exist).  Use existing buffer, if any."
   (declare (indent defun))
@@ -127,7 +128,7 @@
     `(let ((,visiting-buffer (find-buffer-visiting ,file)))
        (if ,visiting-buffer ;; If a buffer is visiting this file, use it:
            (with-current-buffer ,visiting-buffer
-             (let ((buffer-read-only nil)) ;; Allow changing special nodes
+             (let ((inhibit-read-only t)) ;; Allow changing special nodes
                (save-mark-and-excursion
                  (atomic-change-group ,@body))))
          (with-temp-buffer ;; No visiting buffer, so make one:
@@ -238,6 +239,10 @@ Return t if there were any matches, otherwise nil."
                      (with-silent-modifications
                        (apply orig-fun args))
                    (apply orig-fun args)))))
+
+(defun skroad--clear-buf-undo-info ()
+  "Clear the undo history for the current buffer."
+  (setq-local buffer-undo-list nil))
 
 ;; Title/body positions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -915,7 +920,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
               (when (and (= delta 1) (not undo-in-progress)
                          (not (string-equal raw-match payload)))
                 (let ((skroad--buf-indices-scan-enable nil) ;; Don't recurse
-                      (buffer-read-only nil)) ;; Force writability
+                      (inhibit-read-only t)) ;; Force writability
                   (funcall swap payload t))))))))
   :register 'skroad--text-types-indexed)
 
@@ -1254,9 +1259,7 @@ Return the new position if the jump actually happened; otherwise nil."
           (new-title (skroad--renamer-text)))
       (skroad--renamer-deactivate)
       (unless (string-equal old-title new-title)
-        (skroad--rename-node old-title new-title)
-        ;; (skroad--refontify-open-nodes)
-        ))))
+        (skroad--rename-node old-title new-title)))))
 
 (skroad--deftype skroad--text-mixin-renamer-overlay
   :doc "Base mixin for renamer overlays."
@@ -1536,6 +1539,7 @@ If it had dead links to NODE, liven them; if not, insert a link under the tail."
         (skroad--link-insert-live node)
         (skroad--update-stub-status)))) ;; TODO: move this to tail finder?
 
+;; TODO: always remove (rather than deaden) links found below the tail?
 (defun skroad--disconnect-from (node)
   "Ensure that the current node does NOT have any live links to NODE.
 If the former is neither special nor a stub, replace live links with dead ones."
@@ -1543,13 +1547,6 @@ If the former is neither special nor a stub, replace live links with dead ones."
        (if (or (skroad--node-special-p) (skroad--node-stub-p))
            (skroad--link-remove node) ;; If special or stub, simply remove links
          (skroad--link-deaden node)))) ;; ... otherwise, deaden them.
-
-;; TODO: override readonly only here, rather than in with-file ?
-(defun skroad--in-node (node op target &optional allow-special)
-  "Ensure that NODE exists, and run OP on TARGET (nil: current node) from it.
-If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
-  (when (or (not (skroad--node-special-p node)) allow-special)
-    (skroad--with-node node t (funcall op target))))
 
 (defun skroad--yank-into (node &rest yank-args)
   "Ensure that NODE exists, and yank into it.  YANK-ARGS are passed to yank."
@@ -1686,7 +1683,7 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 (defun skroad--change-internal-title (new-title)
   "Change the internal title of the current node to NEW-TITLE."
-  (let ((buffer-read-only nil))
+  (let ((inhibit-read-only t))
     (save-mark-and-excursion
       (goto-char (point-min))
       (insert new-title)
@@ -1937,6 +1934,13 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
                  (skroad--save-current-node))))
         t)))
 
+;; TODO: override readonly only here, rather than in with-file ?
+(defun skroad--in-node (node op target &optional allow-special)
+  "Ensure that NODE exists, and run OP on TARGET (nil: current node) from it.
+If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
+  (when (or (not (skroad--node-special-p node)) allow-special)
+    (skroad--with-node node t (funcall op target))))
+
 (defun skroad--node-ensure-indices (node)
   "Ensure that NODE (created if required) has been indexed; return its indices."
   (if (skroad--cache-indexed-p node)
@@ -2059,13 +2063,14 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
 
 ;; TODO: nuke undo
 (defun skroad--rename-node (old new) ;; TODO: log to actual log
-  "Rename node OLD to NEW.  OLD is presumed to exist; NEW -- a valid title."
+  "Rename node OLD to NEW.  OLD is presumed to exist; NEW is a valid title."
   (message (format "renaming: '%s' -> '%s'" old new))
   (if (and (skroad--cache-rename old new)
            (skroad--mv-file
             (skroad--node-path old) (skroad--node-path new)))
       (skroad--with-node new t
         (skroad--change-internal-title new)
+        (setq-local skroad--current-node-title nil) ;; Zap cached external title
         (dolist (affected-node
                  (let ((affected-nodes (list new))) ;; Always include self
                    (skroad--current-indices-foreach
