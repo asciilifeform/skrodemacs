@@ -99,6 +99,12 @@
   "Face used for skroad tails."
   :group 'skroad-faces)
 
+(defface skroad--timestamp-face
+  '((t :inherit skroad--text-face
+       :foreground "black" :background "white"))
+  "Face used for timestamps."
+  :group 'skroad-faces)
+
 ;;; Utility functions. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--info (&rest args)
@@ -513,6 +519,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :face 'skroad--text-face
   :mouse-face nil
   :face-function t
+  :display-function t
   :rear-nonsticky t
   :finder-filter t
   )
@@ -563,14 +570,17 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   '(lambda (payload &optional lim)
      (funcall find #'re-search-forward (funcall make-regex payload) lim))
   :walk
-  '(lambda (payload fn)
-     (skroad--re-foreach (funcall make-regex payload) fn finder-filter))
-  :zap '(lambda (payload) (funcall walk payload #'skroad--zap-match))
+  '(lambda (payload fn &optional start end)
+     (skroad--re-foreach
+      (funcall make-regex payload) fn finder-filter start end))
+  :zap
+  '(lambda (payload &optional start end)
+     (funcall walk payload #'skroad--zap-match start end))
   :regen
-  '(lambda (payload &optional new-type new-payload)
+  '(lambda (payload &optional new-type new-payload start end)
      (let ((new-text (funcall (if new-type (get new-type 'generate) generate)
                               (or new-payload payload))))
-       (funcall walk payload #'(lambda () (funcall swap new-text)))))
+       (funcall walk payload #'(lambda () (funcall swap new-text)) start end)))
   :register 'skroad--text-types-delimited
   )
 
@@ -596,7 +606,7 @@ call the action with ARGS."
   :register 'skroad--text-types-rendered)
 
 (defconst skroad--font-lock-properties
-  '(category face mouse-face zone data)
+  '(category face mouse-face zone data display)
   "Let font lock know what props we use in renderers, so it will clean them.")
 
 (defvar skroad--font-lock-keywords nil "Font lock keywords for skroad mode.")
@@ -655,22 +665,48 @@ call the action with ARGS."
 
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; (skroad--deftype skroad--text-mixin-rendered-zoned
+;;   :doc "Mixin for zoned text types rendered by font-lock."
+;;   :mixin t
+;;   :require '(face face-function get-payload)
+;;   :render
+;;   '(lambda ()
+;;      (set-text-properties
+;;       (match-beginning 0) (match-end 0)
+;;       (let ((payload (funcall get-payload)))
+;;         (list 'category type-name
+;;               'zone (gensym)
+;;               'face (if (functionp face-function)
+;;                         (funcall face-function payload)
+;;                       face)
+;;               'mouse-face (when mouse-face (list mouse-face)) ;; no glomming
+;;               'data payload))))
+;;   :use 'skroad--text-mixin-rendered)
+
 (skroad--deftype skroad--text-mixin-rendered-zoned
   :doc "Mixin for zoned text types rendered by font-lock."
   :mixin t
-  :require '(face face-function get-payload)
+  :require '(face face-function display-function get-payload)
   :render
   '(lambda ()
      (set-text-properties
       (match-beginning 0) (match-end 0)
-      (let ((payload (funcall get-payload)))
-        (list 'category type-name
-              'zone (gensym)
-              'face (if (functionp face-function)
-                        (funcall face-function payload)
-                      face)
-              'mouse-face (when mouse-face (list mouse-face)) ;; no glomming
-              'data payload))))
+      (let* ((payload (funcall get-payload))
+             (props
+              (list 'category type-name
+                    'zone (gensym)
+                    'face (if (functionp face-function)
+                              (funcall face-function payload)
+                            face)
+                    'data payload))
+             (props
+              (if (facep mouse-face)
+                  (plist-put props 'mouse-face (list mouse-face)) props))
+             (props
+              (if (functionp display-function)
+                  (plist-put props 'display (funcall display-function payload))
+                props)))
+        props)))
   :use 'skroad--text-mixin-rendered)
 
 (defun skroad--zone-start (&optional pos)
@@ -1512,9 +1548,14 @@ Return the new position if the jump actually happened; otherwise nil."
   (funcall
    (get 'skroad--text-link-node-live 'regen) node 'skroad--text-link-node-dead))
 
-(defun skroad--link-remove (node)
-  "Remove all live links to NODE from the current node."
-  (funcall (get 'skroad--text-link-node-live 'zap) node))
+(defun skroad--link-unlink (node)
+  "Transform all live links to NODE above the current node's tail to dead links;
+and entirely remove all live links to NODE found below the current node's tail."
+  (let ((tail (save-mark-and-excursion (skroad--tail-jump-before) (point))))
+    (funcall
+     (get 'skroad--text-link-node-live 'regen)
+     node 'skroad--text-link-node-dead node (point-min) tail)
+    (funcall (get 'skroad--text-link-node-live 'zap) node tail (point-max))))
 
 (defun skroad--link-revive (node)
   "Transform all dead links to NODE in the current node to live links."
@@ -1539,14 +1580,10 @@ If it had dead links to NODE, liven them; if not, insert a link under the tail."
         (skroad--link-insert-live node)
         (skroad--update-stub-status)))) ;; TODO: move this to tail finder?
 
-;; TODO: always remove (rather than deaden) links found below the tail?
 (defun skroad--disconnect-from (node)
-  "Ensure that the current node does NOT have any live links to NODE.
-If the former is neither special nor a stub, replace live links with dead ones."
+  "Ensure that the current node does NOT have any live links to NODE."
   (and (skroad--link-has-live-p node) ;; Actually has any live links to it?
-       (if (or (skroad--node-special-p) (skroad--node-stub-p))
-           (skroad--link-remove node) ;; If special or stub, simply remove links
-         (skroad--link-deaden node)))) ;; ... otherwise, deaden them.
+       (skroad--link-unlink node))) ;; Deaden above tail, remove below tail
 
 (defun skroad--yank-into (node &rest yank-args)
   "Ensure that NODE exists, and yank into it.  YANK-ARGS are passed to yank."
@@ -1586,6 +1623,26 @@ If the former is neither special nor a stub, replace live links with dead ones."
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed ;; TODO: do we need this?
   )
+
+;; Timestamps. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(skroad--deftype skroad--text-timestamp
+  :doc "Timestamp."
+  :kbd-doc
+  "Timestamp."
+  :use 'skroad--text-atomic
+  :face 'skroad--timestamp-face
+  :match-number 1
+  :payload-regex (rx (+ digit))
+  :begins "$%&_Time=" :ends "_&%$"
+  :display-function
+  '(lambda (payload)
+     (format-time-string
+      "%B %d, %Y"
+      (seconds-to-time (string-to-number payload))))
+  :finder-filter #'skroad--in-node-body-p
+  :use 'skroad--text-mixin-delimited
+  :use 'skroad--text-mixin-rendered-zoned)
 
 ;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
