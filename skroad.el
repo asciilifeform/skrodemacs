@@ -1582,8 +1582,8 @@ If it had dead links to NODE, liven them; if not, insert a link under the tail."
 
 (defun skroad--disconnect-from (node)
   "Ensure that the current node does NOT have any live links to NODE."
-  (and (skroad--link-has-live-p node) ;; Actually has any live links to it?
-       (skroad--link-unlink node))) ;; Deaden above tail, remove below tail
+  (when (skroad--link-has-live-p node) ;; Actually has any live links to it?
+    (skroad--link-unlink node))) ;; Deaden above tail, remove below tail
 
 (defun skroad--yank-into (node &rest yank-args)
   "Ensure that NODE exists, and yank into it.  YANK-ARGS are passed to yank."
