@@ -453,6 +453,39 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
                   nil))))
    (skroad--storage-list-files)))
 
+;; Keymap utils. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun skroad--get-keymap-docs (keymap)
+  "Return an alist of (KEY . DOCSTRING) for documented bindings in KEYMAP."
+  (let (out remaps seen)
+    (map-keymap
+     (lambda (ev bd)
+       (if (eq ev 'remap)
+           (map-keymap (lambda (c n) (push (cons c n) remaps)) bd)
+         (unless (memq ev seen)
+           (push ev seen)
+           (and (or (integerp ev)
+                    (and (symbolp ev)
+                         (not (memq ev '(menu-bar tab-bar tool-bar
+                                                  header-line mode-line)))
+                         (not (string-match-p
+                               "mouse\\|drag\\|click\\|wheel"
+                               (symbol-name ev)))))
+                (not (eq bd 'ignore))
+                (let* ((fn (or (cdr (assq bd remaps)) bd))
+                       (doc (and (functionp fn) (documentation fn))))
+                  (when doc
+                    (push (cons (key-description (vector ev)) doc) out)))))))
+     keymap)
+    (nreverse out)))
+
+(defun skroad--make-keymap-help (keymap) ;; TODO: wrap?
+  "Generate a keymap help string from the given KEYMAP."
+  (when (keymapp keymap)
+    (mapconcat
+     #'(lambda (entry) (format "%s:%s" (car entry) (cdr entry)))
+     (skroad--get-keymap-docs keymap) "|")))
+
 ;; Skroad text type mechanism and basic types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmacro skroad--deftype (name &rest properties)
@@ -1063,8 +1096,9 @@ Return the new position if the jump actually happened; otherwise nil."
 
 ;;; Atomic Text Type. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Insert a space immediately behind the atomic currently under the point.
 (defun skroad--cmd-atomic-prepend-space ()
-  "Insert a space immediately behind the atomic currently under the point."
+  "Ins.Space"
   (interactive)
   (save-mark-and-excursion (goto-char (skroad--zone-start)) (insert " ")))
 
@@ -1144,10 +1178,8 @@ Return the new position if the jump actually happened; otherwise nil."
   :on-enter '(lambda (pos-from auto)
                (skroad--selector-activate-here)
                (goto-char (skroad--zone-start)) ;; point can only sit on start
-               (let ((kbd-doc
-                      (skroad--prop-at
-                       (if buffer-read-only 'kbd-doc-readonly 'kbd-doc))))
-                 (skroad--info kbd-doc))) ;; Display doc, if any
+               (let ((km (skroad--prop-at 'keymap))) ;; Display keymap help
+                 (skroad--info (skroad--make-keymap-help km))))
   :on-leave '(lambda (pos-from auto)
                (skroad--selector-deactivate)
                (skroad--info)) ;; Clear the echo bar
@@ -1210,8 +1242,9 @@ Return the new position if the jump actually happened; otherwise nil."
 (defvar-local skroad--buf-renamer nil "Node renamer overlay.")
 (defvar-local skroad--buf-renamer-original nil "Original name.")
 
+;; Activate the renamer in the current zone, unless already active.
 (defun skroad--cmd-renamer-activate-here ()
-  "Activate the renamer in the current zone, unless already active."
+  "Rename"
   (interactive)
   (unless (skroad--overlay-active-p skroad--buf-renamer)
     (let ((renamer-type (skroad--prop-at 'renamer-overlay-type)))
@@ -1364,20 +1397,28 @@ Return the new position if the jump actually happened; otherwise nil."
     (skroad--do-link-action click-pos) ;; After this, we're in the target:
     (skroad--mouse-warp)))
 
-(defun skroad--cmd-link-activate ()
-  "Perform the action attribute of the link at point."
-  (interactive)
-  (skroad--do-link-action (point)))
 
 (skroad--deftype skroad--text-link
   :doc "Fundamental type from which all skroad links are derived."
   :use 'skroad--text-atomic
+  )
+
+;; Perform the action attribute of the link at point.
+(defun skroad--cmd-link-activate ()
+  "Navigate"
+  (interactive)
+  (skroad--do-link-action (point)))
+
+(skroad--deftype skroad--text-link-mixin-navigable
+  :doc "Mixin denoting a navigable link."
+  :mixin t
   :keymap (define-keymap
             "<mouse-1>" #'skroad--cmd-link-left-click
             "<return>" #'skroad--cmd-link-activate))
 
+;; Transform the link under the point to plain text by removing delimiters.
 (defun skroad--cmd-link-comment ()
-  "Transform the link under the point to plain text by removing delimiters."
+  "Textify"
   (interactive)
   (skroad--with-current-zone
     (let ((text (skroad--prop-at 'data)))
@@ -1463,16 +1504,19 @@ Return the new position if the jump actually happened; otherwise nil."
   :face 'skroad--indirect-renamer-face
   :before-string " " :after-string " ")
 
+;; Yank (with optional ARGS) into a node when standing on a live link to it.
 (defun skroad--cmd-teleyank-at (&rest args)
-  "Yank (with optional ARGS) into a node when standing on a live link to it."
+  "Teleyank"
   (interactive)
   (skroad--yank-into (skroad--prop-at 'data) args))
 
+(defun skroad--cmd-deaden-at (&rest args)
+  "Deaden"
+  (interactive)
+  (skroad--link-deaden (skroad--prop-at 'data)))
+
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
-  :kbd-doc
-  "<return> go|<r> rename|<l> dead|<t> textify|<y> teleyank|<del> zap|<spc> pre-space"
-  :kbd-doc-readonly "<return> go|<y> teleyank|"
   :use 'skroad--text-link-node
   :on-init-none #'skroad--action-orphaned
   :on-destroy-last #'skroad--action-orphaned
@@ -1489,13 +1533,13 @@ Return the new position if the jump actually happened; otherwise nil."
   :help-echo 'skroad--link-mouseover
   :begins "[[" :ends "]]"
   :keymap (define-keymap
-            "l" #'(lambda () (interactive)
-                    (skroad--link-deaden (skroad--prop-at 'data)))
+            "l" #'skroad--cmd-deaden-at
             "y" #'skroad--cmd-teleyank-at ;; Official teleyank trigger
             "<remap> <yank>" #'skroad--cmd-teleyank-at ;; Regular yank also
             )
   :renamer-overlay-type 'skroad--text-renamer-indirect
   :finder-filter #'skroad--in-node-body-p
+  :use 'skroad--text-link-mixin-navigable
   :use 'skroad--text-mixin-renameable
   :use 'skroad--text-mixin-delimited
   :use 'skroad--text-mixin-rendered-zoned
@@ -1525,15 +1569,17 @@ Return the new position if the jump actually happened; otherwise nil."
 ;;   (interactive)
 ;;   (goto-char (point)))
 
+(defun skroad--cmd-liven-at (&rest args)
+  "Liven"
+  (interactive)
+  (skroad--link-revive (skroad--prop-at 'data)))
+
 (skroad--deftype skroad--text-link-node-dead
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
-  :kbd-doc "<l> liven|<t> textify|<del> zap|<spc> pre-space"
   :use 'skroad--text-link-node
   :begins "[-[" :ends "]-]"
   :face 'skroad--dead-link-face
-  :keymap (define-keymap
-            "l" #'(lambda () (interactive)
-                    (skroad--link-revive (skroad--prop-at 'data))))
+  :keymap (define-keymap "l" #'skroad--cmd-liven-at)
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-delimited
   :use 'skroad--text-mixin-rendered-zoned
@@ -1608,8 +1654,6 @@ If it had dead links to NODE, liven them; if not, insert a link under the tail."
 
 (skroad--deftype skroad-text-url-link
   :doc "URL."
-  :kbd-doc "<return> go|<t> textify|<del> zap|<spc> pre-space"
-  :kbd-doc-readonly "<return> go"
   :use 'skroad--text-link
   :help-echo "External link."
   :face 'skroad--url-link-face
@@ -1619,6 +1663,7 @@ If it had dead links to NODE, liven them; if not, insert a link under the tail."
   :on-activate #'browse-url
   :keymap (define-keymap "t" #'skroad--cmd-url-comment)
   :finder-filter #'skroad--in-node-body-p
+  :use 'skroad--text-link-mixin-navigable
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed ;; TODO: do we need this?
@@ -1628,8 +1673,6 @@ If it had dead links to NODE, liven them; if not, insert a link under the tail."
 
 (skroad--deftype skroad--text-timestamp
   :doc "Timestamp."
-  :kbd-doc
-  "Timestamp."
   :use 'skroad--text-atomic
   :face 'skroad--timestamp-face
   :match-number 1
@@ -1651,7 +1694,6 @@ If it had dead links to NODE, liven them; if not, insert a link under the tail."
 ;; TODO: readonly tail, bg colour, etc
 (skroad--deftype skroad--text-node-tail
   :doc "Node tail."
-  :kbd-doc "Auto-backlinks inserted below this marker; throws inserted above it."
   :use 'skroad--text-atomic
   :face 'skroad--node-tail-face
   :help-echo "Node tail."
@@ -1777,7 +1819,6 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 (skroad--deftype skroad--text-node-title
   :doc "Node title."
-  :kbd-doc "<r> Rename this node."
   :use 'skroad--text-atomic
   :order 500
   :keymap
@@ -2129,7 +2170,8 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
         (skroad--change-internal-title new)
         (setq-local skroad--current-node-title nil) ;; Zap cached external title
         (dolist (affected-node
-                 (let ((affected-nodes (list new))) ;; Always include self
+                 (let ((affected-nodes ;; Include self and log
+                        (list new skroad--special-node-log)))
                    (skroad--current-indices-foreach
                     'skroad--text-link-node-live
                     #'(lambda (l) (push l affected-nodes)))
@@ -2137,7 +2179,6 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
                      (push skroad--special-node-stubs affected-nodes))
                    (when (skroad--node-orphan-p old)
                      (push skroad--special-node-orphans affected-nodes))
-                   ;; TODO: include log once we have the log
                    affected-nodes))
           (skroad--defer
            (skroad--with-node affected-node t
