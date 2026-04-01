@@ -1397,6 +1397,25 @@ Return the new position if the jump actually happened; otherwise nil."
     (skroad--do-link-action click-pos) ;; After this, we're in the target:
     (skroad--mouse-warp)))
 
+;; Transform the item under the point to plain text by removing delimiters.
+(defun skroad--cmd-atomic-delimited-textify ()
+  "Textify"
+  (interactive)
+  (skroad--with-current-zone
+    (let ((text (skroad--prop-at 'data)))
+      (save-mark-and-excursion
+        (goto-char start)
+        (delete-region start end)
+        (insert text)))))
+
+(skroad--deftype skroad--text-mixin-atomic-delimited
+  :doc "Mixin denoting an atomic delimited text type."
+  :mixin t
+  :require 'atomic
+  :keymap (define-keymap "t" #'skroad--cmd-atomic-delimited-textify)
+  :use 'skroad--text-mixin-delimited
+  :use 'skroad--text-mixin-rendered-zoned)
+
 (skroad--deftype skroad--text-link
   :doc "Fundamental type from which all skroad links are derived."
   :use 'skroad--text-atomic
@@ -1440,8 +1459,7 @@ Return the new position if the jump actually happened; otherwise nil."
   :index-filter ;; Do not index self-links or links to special nodes
   #'(lambda (node)
       (not (or (string-equal node (skroad--current-node))
-               (skroad--node-special-p node))))
-  :keymap (define-keymap "t" #'skroad--cmd-link-comment))
+               (skroad--node-special-p node)))))
 
 ;; TODO: somehow generalize to file links, www (when emacs handles), help, etc.
 (defun skroad--action-open-node (node)
@@ -1539,9 +1557,8 @@ Return the new position if the jump actually happened; otherwise nil."
   :renamer-overlay-type 'skroad--text-renamer-indirect
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-link-navigable
+  :use 'skroad--text-mixin-atomic-delimited
   :use 'skroad--text-mixin-renameable
-  :use 'skroad--text-mixin-delimited
-  :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed)
 
 ;; TODO: do this in title def?
@@ -1580,8 +1597,7 @@ Return the new position if the jump actually happened; otherwise nil."
   :face 'skroad--dead-link-face
   :keymap (define-keymap "l" #'skroad--cmd-liven-at)
   :finder-filter #'skroad--in-node-body-p
-  :use 'skroad--text-mixin-delimited
-  :use 'skroad--text-mixin-rendered-zoned
+  :use 'skroad--text-mixin-atomic-delimited
   :use 'skroad--text-mixin-indexed)
 
 (defun skroad--link-has-dead-p (node)
@@ -1683,8 +1699,8 @@ If it had dead links to NODE, liven them; if not, insert a link under the tail."
       "%B %d, %Y"
       (seconds-to-time (string-to-number payload))))
   :finder-filter #'skroad--in-node-body-p
-  :use 'skroad--text-mixin-delimited
-  :use 'skroad--text-mixin-rendered-zoned)
+  :use 'skroad--text-mixin-atomic-delimited
+  )
 
 ;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
