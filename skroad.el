@@ -1397,7 +1397,6 @@ Return the new position if the jump actually happened; otherwise nil."
     (skroad--do-link-action click-pos) ;; After this, we're in the target:
     (skroad--mouse-warp)))
 
-
 (skroad--deftype skroad--text-link
   :doc "Fundamental type from which all skroad links are derived."
   :use 'skroad--text-atomic
@@ -1409,7 +1408,7 @@ Return the new position if the jump actually happened; otherwise nil."
   (interactive)
   (skroad--do-link-action (point)))
 
-(skroad--deftype skroad--text-link-mixin-navigable
+(skroad--deftype skroad--text-mixin-link-navigable
   :doc "Mixin denoting a navigable link."
   :mixin t
   :keymap (define-keymap
@@ -1539,7 +1538,7 @@ Return the new position if the jump actually happened; otherwise nil."
             )
   :renamer-overlay-type 'skroad--text-renamer-indirect
   :finder-filter #'skroad--in-node-body-p
-  :use 'skroad--text-link-mixin-navigable
+  :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-renameable
   :use 'skroad--text-mixin-delimited
   :use 'skroad--text-mixin-rendered-zoned
@@ -1663,7 +1662,7 @@ If it had dead links to NODE, liven them; if not, insert a link under the tail."
   :on-activate #'browse-url
   :keymap (define-keymap "t" #'skroad--cmd-url-comment)
   :finder-filter #'skroad--in-node-body-p
-  :use 'skroad--text-link-mixin-navigable
+  :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed ;; TODO: do we need this?
@@ -1885,6 +1884,7 @@ If the tail did not previously exist in the current node, it is emplaced."
     (skroad--selector-unhide)
     (setq-local skroad--buf-alt-mark nil))))
 
+;; TODO: make on-leave fire when leaving a buffer, and on-enter when entering
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
   (setq-local mouse-highlight nil
