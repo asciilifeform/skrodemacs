@@ -1416,11 +1416,6 @@ Return the new position if the jump actually happened; otherwise nil."
   :use 'skroad--text-mixin-delimited
   :use 'skroad--text-mixin-rendered-zoned)
 
-(skroad--deftype skroad--text-link
-  :doc "Fundamental type from which all skroad links are derived."
-  :use 'skroad--text-atomic
-  )
-
 ;; Perform the action attribute of the link at point.
 (defun skroad--cmd-link-activate ()
   "Navigate"
@@ -1453,7 +1448,7 @@ Return the new position if the jump actually happened; otherwise nil."
 
 (skroad--deftype skroad--text-link-node
   :doc "Fundamental type for skroad node links (live or dead)."
-  :use 'skroad--text-link
+  :use 'skroad--text-atomic
   :mouse-face 'skroad--highlight-link-face
   :payload-regex skroad--node-title-regex
   :index-filter ;; Do not index self-links or links to special nodes
@@ -1670,7 +1665,7 @@ If it had dead links to NODE, liven them; if not, insert a link under the tail."
 
 (skroad--deftype skroad-text-url-link
   :doc "URL."
-  :use 'skroad--text-link
+  :use 'skroad--text-atomic
   :help-echo "External link."
   :face 'skroad--url-link-face
   :match-number 0
