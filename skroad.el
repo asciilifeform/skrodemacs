@@ -1658,8 +1658,9 @@ If it had dead links to NODE, liven them; if not, insert a link under the tail."
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Turn the URL at point into plain text by placing a space after the prefix.
 (defun skroad--cmd-url-comment ()
-  "Turn the URL at point into plain text by placing a space after the prefix."
+  "Textify"
   (interactive)
   (skroad--with-current-zone
     (save-mark-and-excursion
