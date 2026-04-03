@@ -1504,16 +1504,21 @@ Return the new position if the jump actually happened; otherwise nil."
     (message "Non-reciprocal link in '%s' to '%s' disabled." origin node)))
 
 (defun skroad--action-connected (origin node)
-  "The first instance of a live link to NODE was introduced in ORIGIN."
+  "The first instance of a live link to NODE was introduced in ORIGIN.
+NODE will be created if it does not exist."
   (skroad--in-node node #'skroad--connect-to origin))
 
 (defun skroad--action-disconnected (origin node)
-  "The last instance of a live link to NODE was removed from ORIGIN."
-  (skroad--in-node node #'skroad--disconnect-from origin))
+  "The last instance of a live link to NODE was removed from ORIGIN.
+If NODE does not exist, this is a no-op."
+  (when (skroad--cache-peek node)
+    (skroad--in-node node #'skroad--disconnect-from origin)))
 
 (defun skroad--action-orphaned (origin)
-  "ORIGIN is an orphan (i.e. it has NO live links)."
-  (skroad--node-set-orphan origin t))
+  "ORIGIN is an orphan (i.e. it has NO live links).
+If NODE does not exist, this is a no-op."
+  (when (skroad--cache-peek node)
+    (skroad--node-set-orphan origin t)))
 
 (defun skroad--action-unorphaned (origin)
   "ORIGIN is NOT an orphan (i.e. it has live links)."
@@ -2183,6 +2188,29 @@ unless the node stops being an orphan stub and then later becomes one again."
          status (skroad--node-stub-p node))
     (skroad--defer (skroad--delete-node node))))
 
+(defun skroad--current-node-linked-from (&optional all-specials)
+  "Return a list of all nodes known to contain a live link to the current node.
+If ALL-SPECIALS is t, the list may include any special; otherwise only the log.
+The current node itself is not included, even if it contains self-links."
+  (let* ((node (skroad--current-node))
+         (outgoing-links (skroad--link-get-all-live))
+         (possible-specials (if all-specials
+                                skroad--special-nodes
+                              (list skroad--special-node-log)))
+         (candidates (append outgoing-links possible-specials)))
+    (seq-filter #'(lambda (n) (skroad--connected-p n node)) candidates)))
+
+(defun skroad--link-replace-in-nodes (old new nodes &optional run-actions)
+  "Make all instances of live links to OLD point to NEW in all given NODES.
+If RUN-ACTIONS is t, perform the appropriate type actions.  Undo info is lost."
+  (let ((no-actions (not run-actions)))
+    (dolist (node nodes)
+      (skroad--defer
+       (skroad--with-node node no-actions
+         (skroad--link-replace old new)
+         (skroad--clear-buf-undo-info)))))
+  (skroad--defer (skroad--refontify-open-nodes))) ;; Refontify visible nodes
+
 (defun skroad--delete-node (node &optional force)
   "Request deletion of NODE.  No-op if NODE does not exist.
 If NODE is currently open in a buffer, request confirmation (unless FORCE)."
@@ -2210,62 +2238,34 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
   (when (and victim
              (skroad--cache-peek victim) ;; Victim must exist
              (not (or buffer-read-only ;; Destination must be writable
-                      (string-equal destination victim) ;; No merging self
-                      (skroad--special-p victim))) ;; No merging specials
+                      (string-equal (skroad--current-node) victim) ;; No self
+                      (skroad--node-special-p victim))) ;; No merging specials
              (y-or-n-p ;; Ask first, because merged node will be perma-deleted
               (format "Permanently merge node '%s' into this node ?" victim)))
-    (skroad--complete-all-deferred) ;; Ensure no ops are pending
+    (skroad--buf-indices-sync) ;; Make sure current indices are up to date
+    (skroad--complete-all-deferred) ;; Ensure that there are no pending ops
     (skroad--disconnect-from victim t) ;; Delete all links to victim
-    
-    (let (victim-body victim-linked-from)
+    (let (victim-body victim-linked-from) ;; Data needed from victim:
       (skroad--with-node victim t
         (setq victim-body (skroad--node-extract-body))
         (setq victim-linked-from (skroad--current-node-linked-from)))
-      
       (skroad--tail-do-before
        (let ((merge-point (point)))
-         (insert (format "** Start of merged node '%s' : **" victim))
+         (insert (format "** Start of merged node '%s' **" victim))
          (newline)
          (insert victim-body)
          (newline)
-         (insert (format "** End of merged node '%s' : **" victim))
+         (insert (format "** End of merged node '%s' **" victim))
+         (newline)
          (goto-char merge-point)))
-      
+      (skroad--link-replace victim (skroad--current-node)) ;; Fix self-links
       (skroad--buf-indices-sync t) ;; Sync indices, but don't run actions
-      
-      ;; Retarget links pointing to victim to destination
+      ;; Links that once pointed to victim will now point to the destination:
       (skroad--link-replace-in-nodes
-       victim destination victim-linked-from t)
-      )
-    
+       victim (skroad--current-node) victim-linked-from t))
     (skroad--save-current-node) ;; Save immediately
     (skroad--clear-buf-undo-info) ;; Zap undo info
-    (skroad--delete-node victim t) ;; Permanently delete the victim!
-    )
-  )
-
-(defun skroad--current-node-linked-from (&optional all-specials)
-  "Return a list of nodes known to contain a live link to the current node.
-If ALL-SPECIALS is t, the list may include any special; otherwise only the log.
-The current node itself is excluded, even if it contains self-links."
-  (let* ((node (skroad--current-node))
-         (outgoing-links (skroad--link-get-all-live))
-         (possible-specials (if all-specials
-                                skroad--special-nodes
-                              (list skroad--special-node-log)))
-         (candidates (append outgoing-links possible-specials)))
-    (seq-filter #'(lambda (n) (skroad--connected-p n node)) candidates)))
-
-(defun skroad--link-replace-in-nodes (old new nodes &optional run-actions)
-  "Make all instances of live links to OLD point to NEW in all given NODES.
-If RUN-ACTIONS is t, perform the appropriate type actions.  Undo info is lost."
-  (let ((no-actions (not run-actions)))
-    (dolist (node nodes)
-      (skroad--defer
-       (skroad--with-node node no-actions
-         (skroad--link-replace old new)
-         (skroad--clear-buf-undo-info)))))
-  (skroad--defer (skroad--refontify-open-nodes))) ;; Refontify visible nodes
+    (skroad--delete-node victim t))) ;; Permanently delete the victim!
 
 (defun skroad--rename-node (old new) ;; TODO: log to actual log
   "Rename node OLD to NEW.  OLD is presumed to exist; NEW is a valid title.
