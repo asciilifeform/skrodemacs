@@ -2246,8 +2246,8 @@ After all of this, the VICTIM is permanently deleted."
   (when (and victim
              (skroad--cache-peek victim) ;; Victim must exist
              (not (or buffer-read-only ;; Destination must be writable
-                      (string-equal (skroad--current-node) victim) ;; No self
-                      (skroad--node-special-p victim))) ;; No merging specials
+                      (string-equal (skroad--current-node) victim) ;; Not self
+                      (skroad--node-special-p victim))) ;; Not a special node
              (y-or-n-p ;; Ask first, because merged node will be perma-deleted
               (format "Permanently merge node '%s' into this node ?" victim)))
     (skroad--disconnect-from victim t) ;; Delete this node's links to victim
