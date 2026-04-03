@@ -2235,7 +2235,7 @@ If NODE is open in a buffer, prompt to ask permission (unless FORCE is t)."
 ;; TODO: log entry
 (defun skroad--merge-node-into-current (victim)
   "Permanently merge the node VICTIM (which must exist) into the current node.
-Prompts for permission, because this op wipes undo info in all affected nodes.
+Prompts for permission, since this op wipes undo info in all affected buffers.
 Existing links to VICTIM in the current node are removed.  Its body is copied
 to the current node, into a demarcated block above the tail.  Its tail is merged
 into the current node's tail.  All non-special nodes which once linked to the
