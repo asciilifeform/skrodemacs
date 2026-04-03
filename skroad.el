@@ -2243,35 +2243,35 @@ formerly linked to the VICTIM will now link to the current node instead.
 After all of this, the VICTIM is permanently deleted."
   (skroad--buf-indices-sync) ;; Make sure current indices are up to date
   (skroad--complete-all-deferred) ;; Ensure that there are no pending ops
-  (when (and victim
-             (skroad--cache-peek victim) ;; Victim must exist
-             (not (or buffer-read-only ;; Destination must be writable
-                      (string-equal (skroad--current-node) victim) ;; Not self
-                      (skroad--node-special-p victim))) ;; Not a special node
-             (y-or-n-p ;; Ask first, because merged node will be perma-deleted
-              (format "Permanently merge node '%s' into this node ?" victim)))
-    (skroad--disconnect-from victim t) ;; Delete this node's links to victim
-    (let (victim-body victim-linked-from) ;; Get victim's body and linked-from
-      (skroad--with-node victim t
-        (setq victim-body (skroad--node-extract-body))
-        (setq victim-linked-from (skroad--current-node-linked-from)))
-      (skroad--tail-do-before
-       (let ((merge-point (point)))
-         (insert (format "** Start of merged node '%s' **" victim))
-         (newline)
-         (insert victim-body)
-         (newline)
-         (insert (format "** End of merged node '%s' **" victim))
-         (newline)
-         (goto-char merge-point)))
-      (skroad--link-replace victim (skroad--current-node)) ;; Fix self-links
-      (skroad--buf-indices-sync t) ;; Sync indices, but don't run actions
-      ;; Nodes that linked to the victim will now link to this node instead:
-      (skroad--link-replace-in-nodes
-       victim (skroad--current-node) victim-linked-from t))
-    (skroad--save-current-node) ;; Save immediately
-    (skroad--clear-buf-undo-info) ;; Zap undo info
-    (skroad--delete-node victim t))) ;; Permanently delete the victim!
+  (let ((this-node (skroad--current-node)))
+    (when (and victim
+               (skroad--cache-peek victim) ;; Victim must exist
+               (not (or buffer-read-only ;; Destination must be writable
+                        (string-equal this-node victim) ;; Not self
+                        (skroad--node-special-p victim))) ;; Not a special node
+               (y-or-n-p ;; Ask first, because merged node will be perma-deleted
+                (format "Permanently merge node '%s' into this node ?" victim)))
+      (skroad--disconnect-from victim t) ;; Delete this node's links to victim
+      (let (victim-body victim-linked-from) ;; Get victim's body and linked-from
+        (skroad--with-node victim t
+          (setq victim-body (skroad--node-extract-body))
+          (setq victim-linked-from (skroad--current-node-linked-from)))
+        (skroad--tail-do-before
+         (let ((merge-point (point)))
+           (insert (format "** Start of merged node '%s' **" victim))
+           (newline)
+           (insert victim-body)
+           (newline)
+           (insert (format "** End of merged node '%s' **" victim))
+           (newline)
+           (goto-char merge-point)))
+        (skroad--link-replace victim this-node) ;; Fix self-links in the above
+        (skroad--buf-indices-sync t) ;; Sync indices, but don't run actions
+        ;; Nodes that linked to the victim will now link to this node instead:
+        (skroad--link-replace-in-nodes victim this-node victim-linked-from t))
+      (skroad--save-current-node) ;; Save immediately
+      (skroad--clear-buf-undo-info) ;; Zap undo info
+      (skroad--delete-node victim t)))) ;; Permanently delete the victim!
 
 (defun skroad--rename-node (old new) ;; TODO: log to actual log
   "Rename node OLD to NEW.  OLD is presumed to exist; NEW is a valid title.
