@@ -2239,7 +2239,9 @@ Prompts for permission, since this op wipes undo info in all affected buffers.
 Existing links to VICTIM in the current node are removed.  Its body is copied
 to the current node, into a demarcated block above the tail.  Its tail is merged
 into the current node's tail.  All non-special nodes which once linked to the
-VICTIM will now link to the current node instead.  The VICTIM is then deleted."
+VICTIM will now link to the current node instead.  The Log is revised to link
+to the current node in all places where it formerly linked to the VICTIM.
+After all of this, the VICTIM is permanently deleted."
   (skroad--buf-indices-sync) ;; Make sure current indices are up to date
   (skroad--complete-all-deferred) ;; Ensure that there are no pending ops
   (when (and victim
