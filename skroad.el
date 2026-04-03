@@ -1536,6 +1536,11 @@ Return the new position if the jump actually happened; otherwise nil."
   (interactive)
   (skroad--link-deaden (skroad--prop-at 'data)))
 
+(defun skroad--cmd-merge-at-into-current (&rest args)
+  "Merge"
+  (interactive)
+  (skroad--merge-node-into-current (skroad--prop-at 'data)))
+
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :use 'skroad--text-link-node
@@ -2198,12 +2203,6 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
         (skroad--cache-evict node)
         (delete-file node-path)
         (message "Deleted node: '%s'" node))))) ;; TODO: write log entry
-
-
-(defun skroad--cmd-merge-at-into-current (&rest args)
-  "Merge"
-  (interactive)
-  (skroad--merge-node-into-current (skroad--prop-at 'data)))
 
 ;; TODO: log entry
 (defun skroad--merge-node-into-current (victim)
