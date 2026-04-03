@@ -2260,7 +2260,7 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
          (goto-char merge-point)))
       (skroad--link-replace victim (skroad--current-node)) ;; Fix self-links
       (skroad--buf-indices-sync t) ;; Sync indices, but don't run actions
-      ;; Links that once pointed to victim will now point to the destination:
+      ;; Links that once pointed to victim will now point to this node:
       (skroad--link-replace-in-nodes
        victim (skroad--current-node) victim-linked-from t))
     (skroad--save-current-node) ;; Save immediately
