@@ -2244,8 +2244,8 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
                       (skroad--node-special-p victim))) ;; No merging specials
              (y-or-n-p ;; Ask first, because merged node will be perma-deleted
               (format "Permanently merge node '%s' into this node ?" victim)))
-    (skroad--disconnect-from victim t) ;; Delete all links to victim
-    (let (victim-body victim-linked-from) ;; Data needed from victim:
+    (skroad--disconnect-from victim t) ;; Delete this node's links to victim
+    (let (victim-body victim-linked-from) ;; Get victim's body and linked-from
       (skroad--with-node victim t
         (setq victim-body (skroad--node-extract-body))
         (setq victim-linked-from (skroad--current-node-linked-from)))
