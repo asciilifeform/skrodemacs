@@ -2213,7 +2213,7 @@ If RUN-ACTIONS is t, perform the appropriate type actions.  Undo info is lost."
 
 (defun skroad--delete-node (node &optional force)
   "Request deletion of NODE.  No-op if NODE does not exist.
-If NODE is currently open in a buffer, request confirmation (unless FORCE)."
+If NODE is open in a buffer, prompt to ask permission (unless FORCE is t)."
   (when (skroad--cache-peek node)
     (let* ((node-path (skroad--node-path node))
            (visiting-buffer (find-buffer-visiting node-path)))
@@ -2226,15 +2226,19 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
                     (kill-all-local-variables)
                     (restore-buffer-modified-p nil)
                     (kill-buffer))))
-        (skroad--node-set-orphan node nil)
-        (skroad--node-set-stub node nil)
-        (skroad--cache-evict node)
-        (delete-file node-path)
+        (skroad--node-set-orphan node nil) ;; Banish from orphans
+        (skroad--node-set-stub node nil) ;; Banish from stubs
+        (skroad--cache-evict node) ;; Banish from cache
+        (delete-file node-path) ;; Permanently delete the node file!
         (message "Deleted node: '%s'" node))))) ;; TODO: write log entry
 
 ;; TODO: log entry
 (defun skroad--merge-node-into-current (victim)
-  "Merge the node VICTIM into the current node.  VICTIM is deleted."
+  "Permanently merge the node VICTIM (which must exist) into the current node.
+Existing links to VICTIM in the latter are removed.  The VICTIM's body is copied
+to the current node, into a demarcated block above the tail.  Its tail is merged
+into the current node's tail.  All non-special nodes which once linked to the
+VICTIM will now link to the current node instead.  The VICTIM is then deleted."
   (skroad--buf-indices-sync) ;; Make sure current indices are up to date
   (skroad--complete-all-deferred) ;; Ensure that there are no pending ops
   (when (and victim
