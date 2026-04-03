@@ -2236,6 +2236,7 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
 (defun skroad--merge-node-into-current (victim)
   "Merge the node VICTIM into the current node.  VICTIM is deleted."
   (skroad--buf-indices-sync) ;; Make sure current indices are up to date
+  (skroad--complete-all-deferred) ;; Ensure that there are no pending ops
   (when (and victim
              (skroad--cache-peek victim) ;; Victim must exist
              (not (or buffer-read-only ;; Destination must be writable
@@ -2243,7 +2244,6 @@ If NODE is currently open in a buffer, request confirmation (unless FORCE)."
                       (skroad--node-special-p victim))) ;; No merging specials
              (y-or-n-p ;; Ask first, because merged node will be perma-deleted
               (format "Permanently merge node '%s' into this node ?" victim)))
-    (skroad--complete-all-deferred) ;; Ensure that there are no pending ops
     (skroad--disconnect-from victim t) ;; Delete all links to victim
     (let (victim-body victim-linked-from) ;; Data needed from victim:
       (skroad--with-node victim t
