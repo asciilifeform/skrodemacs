@@ -73,7 +73,12 @@
 
 (defface skroad--stub-link-face
   '((t :inherit link :foreground "Orange"))
-  "Face used for dead links."
+  "Face used for live stub links."
+  :group 'skroad-faces)
+
+(defface skroad--self-link-face
+  '((t :inherit link :foreground "purple" :inverse-video t))
+  "Face used for live self links."
   :group 'skroad-faces)
 
 (defface skroad--dead-link-face
@@ -1561,10 +1566,13 @@ If NODE does not exist, this is a no-op."
   :on-create #'skroad--action-connected
   :on-destroy #'skroad--action-disconnected
   :on-activate #'skroad--action-open-node
-  :face-function #'(lambda (payload) ;; If a link to a stub, use stub link face
-                     (if (skroad--node-stub-p payload)
-                         'skroad--stub-link-face
-                       'skroad--live-link-face))
+  :face-function
+  #'(lambda (payload)
+      (cond ((string-equal payload (skroad--current-node))
+             'skroad--self-link-face)
+            ((skroad--node-stub-p payload)
+             'skroad--stub-link-face)
+            (t 'skroad--live-link-face)))
   :help-echo 'skroad--link-mouseover
   :begins "[[" :ends "]]"
   :keymap (define-keymap
