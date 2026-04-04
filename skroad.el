@@ -77,7 +77,7 @@
   :group 'skroad-faces)
 
 (defface skroad--self-link-face
-  '((t :inherit link :foreground "purple" :inverse-video t))
+  '((t :inherit link :foreground "white" :background "purple"))
   "Face used for live self links."
   :group 'skroad-faces)
 
