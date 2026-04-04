@@ -92,6 +92,12 @@
   "Face used for skroad heading text."
   :group 'skroad-faces)
 
+(defface skroad--atomic-comment-face
+  '((t :inherit skroad--text-face
+       :inverse-video t))
+  "Face used for atomic comments."
+  :group 'skroad-faces)
+
 (defface skroad--node-tail-face
   '((t :inherit skroad--text-face
        :foreground "white" :background "purple"
@@ -313,9 +319,9 @@ Return t if there were any matches, otherwise nil."
     fn))
 
 (defun skroad--idle-report ()
-  "Display a message reporting the amount of work remaining in the queue."
+  "Display a message reporting the number of tasks remaining in the queue."
   (skroad--info
-   (format "%d Skroad tasks queued..." skroad--idle-work-count)))
+   (format "Skroad: %d tasks queued..." skroad--idle-work-count)))
 
 (defun skroad--idle-work-run-slice (&optional flush)
   "Pop and run thunks until the queue is empty or the quantum has elapsed.
@@ -1515,10 +1521,8 @@ If NODE does not exist, this is a no-op."
     (skroad--in-node node #'skroad--disconnect-from origin)))
 
 (defun skroad--action-orphaned (origin)
-  "ORIGIN is an orphan (i.e. it has NO live links).
-If NODE does not exist, this is a no-op."
-  (when (skroad--cache-peek node)
-    (skroad--node-set-orphan origin t)))
+  "ORIGIN is an orphan (i.e. it has NO live links)."
+    (skroad--node-set-orphan origin t))
 
 (defun skroad--action-unorphaned (origin)
   "ORIGIN is NOT an orphan (i.e. it has live links)."
@@ -1709,6 +1713,22 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed ;; TODO: do we need this?
   )
+
+;; Atomic Comments. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(skroad--deftype skroad--text-atomic-comment
+  :doc "Atomic comment."
+  :use 'skroad--text-atomic
+  :face 'skroad--atomic-comment-face
+  :match-number 1
+  :payload-regex (rx (or (seq (+? (or (not ?*)
+                                      (seq ?* (not ?$))
+                                      (seq "*$" (not ?*))))
+                              (?? ?*))
+                         (+? ?*)))
+  :begins "*$*" :ends "*$*"
+  :finder-filter #'skroad--in-node-body-p
+  :use 'skroad--text-mixin-atomic-delimited)
 
 ;; Timestamps. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2258,11 +2278,11 @@ After all of this, the VICTIM is permanently deleted."
           (setq victim-linked-from (skroad--current-node-linked-from)))
         (skroad--tail-do-before
          (let ((merge-point (point)))
-           (insert (format "** Start of merged node '%s' **" victim))
+           (insert (format "*$* Start of merged node '%s' *$*" victim))
            (newline)
            (insert victim-body)
            (newline)
-           (insert (format "** End of merged node '%s' **" victim))
+           (insert (format "*$* End of merged node '%s' *$*" victim))
            (newline)
            (goto-char merge-point)))
         (skroad--link-replace victim this-node) ;; Fix self-links in the above
