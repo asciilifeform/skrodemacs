@@ -1550,7 +1550,7 @@ If NODE does not exist, this is a no-op."
   (interactive)
   (skroad--link-deaden (skroad--prop-at 'data)))
 
-(defun skroad--cmd-merge-at-into-current (&rest args)
+(defun skroad--cmd-merge-at (&rest args)
   "Merge"
   (interactive)
   (skroad--merge-node-into-current (skroad--prop-at 'data)))
@@ -1576,7 +1576,7 @@ If NODE does not exist, this is a no-op."
   :help-echo 'skroad--link-mouseover
   :begins "[[" :ends "]]"
   :keymap (define-keymap
-            "m" #'skroad--cmd-merge-at-into-current
+            "m" #'skroad--cmd-merge-at
             "l" #'skroad--cmd-deaden-at
             "y" #'skroad--cmd-teleyank-at ;; Official teleyank trigger
             "<remap> <yank>" #'skroad--cmd-teleyank-at ;; Regular yank also
