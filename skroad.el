@@ -1879,15 +1879,15 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 (defun skroad--node-extract-body ()
   "Return the body of the current node."
-  (save-mark-and-excursion
-    (skroad--goto-node-body-start)
-    (skip-syntax-forward " ")
-    (buffer-substring-no-properties
-     (point)
-     (progn
-       (skroad--tail-jump-before)
-       (skip-syntax-backward " ")
-       (point)))))
+  (skroad--clean-whitespace
+   (save-mark-and-excursion
+     (skroad--goto-node-body-start)
+     (skip-syntax-forward " ")
+     (buffer-substring-no-properties
+      (point)
+      (progn
+        (skroad--tail-jump-before)
+        (point))))))
 
 (defun skroad--cmd-title-kill-ring-save ()
   "Save the current node's title, transformed to a live link, to the kill ring."
