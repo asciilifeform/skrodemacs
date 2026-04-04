@@ -1660,6 +1660,7 @@ and entirely remove all live links to NODE found below the current node's tail."
   (funcall
    (get 'skroad--text-link-node-dead 'regen) node 'skroad--text-link-node-live))
 
+;; TODO: if there's a link above the tail, remove all below it
 (defun skroad--link-replace (node target)
   "Replace all live links to NODE in the current node with links to TARGET."
   (funcall
