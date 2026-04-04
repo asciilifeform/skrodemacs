@@ -1655,7 +1655,6 @@ and entirely remove all live links to NODE found below the current node's tail."
     (skroad--link-deaden node nil tail)
     (skroad--link-delete node tail)))
 
-;; TODO: if revived in body, delete from tail
 (defun skroad--link-revive (node)
   "Transform all dead links to NODE in the current node to live links."
   (funcall
@@ -1796,21 +1795,31 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
 (defvar-local skroad--buf-tail-marker nil
   "Marker which points after the current node's tail, if known.")
 
+(defun skroad--jump-to-computed-tail ()
+  "Determine where the tail ought to be per the tail heuristic, and go there.
+Any dead links found below the computed tail are deleted."
+  (goto-char (point-max))
+  (let ((climb
+         #'(lambda (type &optional delete)
+             (let ((prev-pos (point)))
+               (save-mark-and-excursion
+                 (when (funcall (get type 'find-any-backward))
+                   (goto-char (match-end 0))
+                   (skip-syntax-forward " ")
+                   (when (= prev-pos (point))
+                     (let ((new-pos (match-beginning 0)))
+                       (when delete (delete-region new-pos prev-pos))
+                       new-pos))))))))
+    (while (let ((prev (or (funcall climb 'skroad--text-link-node-live)
+                           (funcall climb 'skroad--text-link-node-dead t))))
+             (when prev (goto-char prev))))))
+
 (defun skroad--tail-find-or-emplace ()
   "Find or emplace the tail in the current node, and store its location."
   (goto-char (point-min))
   (unless (funcall (get 'skroad--text-node-tail 'find-any-forward))
-    (goto-char (point-max))
+    (skroad--jump-to-computed-tail)
     (let ((tail (point)))
-      (while (and
-              (skroad--link-jump-from (point) t)
-              (eq (match-end 0)
-                  (save-mark-and-excursion
-                    (goto-char tail)
-                    (skip-syntax-backward " ")
-                    (point))))
-        (setq tail (point)))
-      (goto-char tail)
       (ensure-empty-lines 1)
       (setq tail (point))
       (insert skroad--node-tail)
