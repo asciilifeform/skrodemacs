@@ -2267,30 +2267,32 @@ formerly linked to the VICTIM will now link to the current node instead.
 After all of this, the VICTIM is permanently deleted."
   (skroad--buf-indices-sync) ;; Make sure current indices are up to date
   (skroad--complete-all-deferred) ;; Ensure that there are no pending ops
-  (let ((this-node (skroad--current-node)))
-    (when (and victim
-               (skroad--cache-peek victim) ;; Victim must exist
+  (let ((this-node (skroad--current-node))) ;; The node we're merging into
+    (when (and victim ;; Victim is not nil
+               (skroad--cache-peek victim) ;; Victim is a node which exists
                (not (or buffer-read-only ;; Destination must be writable
-                        (string-equal this-node victim) ;; Not self
-                        (skroad--node-special-p victim))) ;; Not a special node
-               (y-or-n-p ;; Ask first, because merged node will be perma-deleted
+                        (string-equal this-node victim) ;; May not merge self
+                        (skroad--node-special-p victim))) ;; ... or special node
+               (y-or-n-p ;; Ask first, because the victim will be perma-deleted!
                 (format "Permanently merge node '%s' into this node ?" victim)))
       (skroad--disconnect-from victim t) ;; Delete this node's links to victim
-      (let (victim-body victim-linked-from) ;; Get victim's body and linked-from
-        (skroad--with-node victim t
+      (let (victim-is-stub victim-body victim-linked-from)
+        (skroad--with-node victim t ;; Get victim's body and nodes linking to it
+          (setq victim-is-stub (skroad--node-stub-p))
           (setq victim-body (skroad--node-extract-body))
           (setq victim-linked-from (skroad--current-node-linked-from)))
-        (skroad--tail-do-before
-         (let ((merge-point (point)))
-           (skroad--atomic-comment-insert
-            (format "Start of merged node '%s'" victim))
-           (newline)
-           (insert victim-body)
-           (newline)
-           (skroad--atomic-comment-insert
-            (format "End of merged node '%s'" victim))
-           (newline)
-           (goto-char merge-point)))
+        (unless victim-is-stub ;; Don't insert anything if victim is a stub
+          (skroad--tail-do-before ;; Insert a demarcated copy of victim's body
+           (let ((merge-point (point)))
+             (skroad--atomic-comment-insert
+              (format "Start of merged node '%s'" victim))
+             (newline)
+             (insert victim-body)
+             (newline)
+             (skroad--atomic-comment-insert
+              (format "End of merged node '%s'" victim))
+             (newline)
+             (goto-char merge-point)))) ;; Jump to the start indicator
         (skroad--link-replace victim this-node) ;; Fix self-links in the above
         (skroad--buf-indices-sync t) ;; Sync indices, but don't run actions
         ;; Nodes that linked to the victim will now link to this node instead:
