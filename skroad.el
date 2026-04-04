@@ -2277,7 +2277,7 @@ After all of this, the VICTIM is permanently deleted."
                 (format "Permanently merge node '%s' into this node ?" victim)))
       (skroad--disconnect-from victim t) ;; Delete this node's links to victim
       (let (victim-is-stub victim-body victim-linked-from)
-        (skroad--with-node victim t ;; Get victim's body and nodes linking to it
+        (skroad--with-node victim t ;; Get all relevant info from the victim
           (setq victim-body (skroad--node-extract-body))
           (setq victim-linked-from (skroad--current-node-linked-from))
           (setq victim-is-stub (skroad--node-stub-p)))
