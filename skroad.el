@@ -2318,15 +2318,13 @@ Warning: undo info is lost in all affected buffers!"
   (let ((linked-from (skroad--with-node old t
                        (skroad--current-node-linked-from t))))
     (if (and (skroad--cache-rename old new)
-             (skroad--mv-file
-              (skroad--node-path old) (skroad--node-path new)))
-        (progn
-          (skroad--with-node new t
-            (skroad--change-internal-title new)
-            (setq-local skroad--current-node-title nil) ;; Zap cached title
-            (skroad--link-replace old new) ;; Update any self-links
-            (skroad--clear-buf-undo-info)) ;; Zap undo info
-          (skroad--link-replace-in-nodes old new linked-from))
+             (skroad--mv-file (skroad--node-path old) (skroad--node-path new)))
+        (skroad--with-node new t
+          (skroad--change-internal-title new)
+          (setq-local skroad--current-node-title nil) ;; Zap cached title
+          (skroad--link-replace old new) ;; Update any self-links
+          (skroad--link-replace-in-nodes old new linked-from)
+          (skroad--clear-buf-undo-info)) ;; Zap undo info
       (error "Could not rename node '%s' to '%s'!" old new))))
 
 (defun skroad--lint ()
