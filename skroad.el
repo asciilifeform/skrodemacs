@@ -1730,6 +1730,10 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-atomic-delimited)
 
+(defun skroad--atomic-comment-insert (text)
+  "Insert TEXT as an atomic comment at the current point."
+  (insert (funcall (get 'skroad--text-atomic-comment 'generate) text)))
+
 ;; Timestamps. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (skroad--deftype skroad--text-timestamp
@@ -2278,11 +2282,13 @@ After all of this, the VICTIM is permanently deleted."
           (setq victim-linked-from (skroad--current-node-linked-from)))
         (skroad--tail-do-before
          (let ((merge-point (point)))
-           (insert (format "*$* Start of merged node '%s' *$*" victim))
+           (skroad--atomic-comment-insert
+            (format "Start of merged node '%s'" victim))
            (newline)
            (insert victim-body)
            (newline)
-           (insert (format "*$* End of merged node '%s' *$*" victim))
+           (skroad--atomic-comment-insert
+            (format "End of merged node '%s'" victim))
            (newline)
            (goto-char merge-point)))
         (skroad--link-replace victim this-node) ;; Fix self-links in the above
