@@ -1655,6 +1655,7 @@ and entirely remove all live links to NODE found below the current node's tail."
     (skroad--link-deaden node nil tail)
     (skroad--link-delete node tail)))
 
+;; TODO: if revived in body, delete from tail
 (defun skroad--link-revive (node)
   "Transform all dead links to NODE in the current node to live links."
   (funcall
