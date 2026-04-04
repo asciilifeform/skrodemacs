@@ -2292,8 +2292,8 @@ After all of this, the VICTIM is permanently deleted."
              (skroad--atomic-comment-insert
               (format "End of merged node '%s'" victim))
              (newline)
-             (goto-char merge-point)))) ;; Jump to the start indicator
-        (skroad--link-replace victim this-node) ;; Fix self-links in the above
+             (goto-char merge-point))) ;; Jump to the start indicator
+          (skroad--link-replace victim this-node)) ;; Fix self-links
         (skroad--buf-indices-sync t) ;; Sync indices, but don't run actions
         ;; Nodes that linked to the victim will now link to this node instead:
         (skroad--link-replace-in-nodes victim this-node victim-linked-from t))
