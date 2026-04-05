@@ -2104,7 +2104,8 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 (defun skroad--pre-command-deferred ()
   "Ensure that we clean up window settings when flipping buffers."
-  (let ((window (selected-window)))
+  (let ((window (selected-window))
+        (buffer (current-buffer)))
     (when (window-parameter window 'header-line-format)
       (run-with-idle-timer
        0 nil
