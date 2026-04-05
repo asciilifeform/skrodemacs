@@ -1819,13 +1819,11 @@ Any dead links found below the computed tail are deleted."
   (goto-char (point-min))
   (unless (funcall (get 'skroad--text-node-tail 'find-any-forward))
     (skroad--jump-to-computed-tail)
-    (let ((tail (point)))
-      (ensure-empty-lines 1)
-      (setq tail (point))
+    (ensure-empty-lines 1)
+    (save-mark-and-excursion
       (insert skroad--node-tail)
-      (ensure-empty-lines 1)
-      (goto-char tail)
-      (goto-char (line-end-position))))
+      (ensure-empty-lines 1))
+    (goto-char (line-end-position)))
   (setq-local skroad--buf-tail-marker (copy-marker (point))))
 
 ;; TODO: update stub status every time we obtain the tail, when it is cheap
@@ -2086,6 +2084,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skip-syntax-forward " ")
   )
 
+;; BUG: an active header persists when window switches to a non-skroad buffer!
 (defun skroad--update-header-line (window &optional _start)
   "Update the header line for the given WINDOW."
   (with-selected-window window
