@@ -1775,7 +1775,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
 
 ;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defconst skroad--node-tail "@@@" "Node tail marker.")
+(defconst skroad--node-tail "@@@" "Node tail indicator.")
 
 ;; TODO: readonly tail, bg colour, etc
 (skroad--deftype skroad--text-node-tail
@@ -1784,17 +1784,17 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   :face 'skroad--node-tail-face
   :help-echo "Node tail."
   :match-number 0
-  :regex-any "^\\(@@@\\)$"
+  ;; :regex-any "^\\(@@@\\)$"
+  :regex-any (rx (seq line-start (literal skroad--node-tail) line-end))
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-rendered-zoned
   )
 
-;; (rx (seq line-start (literal skroad--node-tail) line-end))
-
 (defvar-local skroad--buf-tail-marker nil
   "Marker which points after the current node's tail, if known.")
 
+;; TODO: make sure this runs during lint even if node has a tail
 (defun skroad--jump-to-computed-tail ()
   "Determine where the tail ought to be per the tail heuristic, and go there.
 Any dead links found below the computed tail are deleted."
@@ -2102,6 +2102,7 @@ If the tail did not previously exist in the current node, it is emplaced."
             (buffer-substring (point) (line-end-position)) ;; Fontified title
             (progn (vertical-motion 1) (point))))))))) ;; Abbrev'd to width
 
+;; NOTE: Can probably be removed under emacs 31.
 (defun skroad--pre-command-deferred ()
   "Ensure that we clean up window settings when flipping buffers."
   (let ((window (selected-window))
@@ -2110,8 +2111,9 @@ If the tail did not previously exist in the current node, it is emplaced."
       (run-with-idle-timer
        0 nil
        #'(lambda ()
-           (skroad--update-header-line window)
-           (force-window-update window))))))
+           (unless (eq (current-buffer) buffer)
+             (skroad--update-header-line window)
+             (force-window-update window)))))))
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
   "Cache storing the last known interactive point position in a node.")
