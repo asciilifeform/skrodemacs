@@ -2107,7 +2107,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (let ((window (selected-window)))
     (when (window-parameter window 'header-line-format)
       (run-with-idle-timer
-       0.001 nil
+       0 nil
        #'(lambda ()
            (skroad--update-header-line window)
            (force-window-update window))))))
