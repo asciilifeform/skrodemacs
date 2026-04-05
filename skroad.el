@@ -2008,7 +2008,9 @@ If the tail did not previously exist in the current node, it is emplaced."
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
   (setq-local mouse-highlight nil
-              skroad--buf-pre-command-point-state (skroad--get-point-state)))
+              skroad--buf-pre-command-point-state (skroad--get-point-state))
+  ;; Detect buffer switch in window to update header
+  (skroad--pre-command-deferred))
 
 ;; TODO: some of these should be done only if buffer modified?
 (defun skroad--post-command-hook ()
@@ -2084,7 +2086,6 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skip-syntax-forward " ")
   )
 
-;; BUG: an active header persists when window switches to a non-skroad buffer!
 (defun skroad--update-header-line (window &optional _start)
   "Update the header line for the given WINDOW."
   (with-selected-window window
@@ -2100,6 +2101,16 @@ If the tail did not previously exist in the current node, it is emplaced."
            (skroad--abbrev-string
             (buffer-substring (point) (line-end-position)) ;; Fontified title
             (progn (vertical-motion 1) (point))))))))) ;; Abbrev'd to width
+
+(defun skroad--pre-command-deferred ()
+  "Ensure that we clean up window settings when flipping buffers."
+  (let ((window (selected-window)))
+    (when (window-parameter window 'header-line-format)
+      (run-with-idle-timer
+       0.001 nil
+       #'(lambda ()
+           (skroad--update-header-line window)
+           (force-window-update window))))))
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
   "Cache storing the last known interactive point position in a node.")
@@ -2413,6 +2424,7 @@ Warning: undo info is lost in all affected buffers!"
   (add-hook 'kill-buffer-hook 'skroad--before-kill-buffer-hook nil t)
   (add-hook 'window-scroll-functions #'skroad--update-header-line nil t)
   (add-hook 'window-state-change-functions #'skroad--update-header-line nil t)
+  (add-hook 'window-buffer-change-functions #'skroad--update-header-line nil t)
   
   ;; Overlay for when an atomic is under the point. Initially inactive:
   (setq-local skroad--buf-selector (make-overlay (point-min) (point-min)))
