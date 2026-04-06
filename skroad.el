@@ -110,11 +110,11 @@
   "Face used for skroad tails."
   :group 'skroad-faces)
 
-(defface skroad--timestamp-face
-  '((t :inherit skroad--text-face
-       :foreground "black" :background "white"))
-  "Face used for timestamps."
-  :group 'skroad-faces)
+;; (defface skroad--timestamp-face
+;;   '((t :inherit skroad--text-face
+;;        :foreground "black" :background "white"))
+;;   "Face used for timestamps."
+;;   :group 'skroad-faces)
 
 ;;; Utility functions. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -733,24 +733,21 @@ call the action with ARGS."
   :require '(face face-function display-function get-payload)
   :render
   '(lambda ()
-     (set-text-properties
-      (match-beginning 0) (match-end 0)
-      (let* ((payload (funcall get-payload))
-             (props
-              (list 'category type-name
-                    'zone (gensym)
-                    'face (if (functionp face-function)
-                              (funcall face-function payload)
-                            face)
-                    'data payload))
-             (props
-              (if (facep mouse-face)
-                  (plist-put props 'mouse-face (list mouse-face)) props))
-             (props
-              (if (functionp display-function)
-                  (plist-put props 'display (funcall display-function payload))
-                props)))
-        props)))
+     (let* ((start (match-beginning 0))
+            (end (match-end 0))
+            (payload (funcall get-payload))
+            (props
+             (list 'category type-name
+                   'zone (gensym)
+                   'data payload))
+            (use-face
+             (if (functionp face-function)
+                 (funcall face-function payload)
+               face)))
+       (if (facep mouse-face)
+           (plist-put props 'mouse-face (list mouse-face)) props)
+       (add-text-properties start end props)
+       (add-face-text-property start end use-face)))
   :use 'skroad--text-mixin-rendered)
 
 (defun skroad--zone-start (&optional pos)
@@ -1757,21 +1754,21 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
 
 ;; Timestamps. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(skroad--deftype skroad--text-timestamp
-  :doc "Timestamp."
-  :use 'skroad--text-atomic
-  :face 'skroad--timestamp-face
-  :match-number 1
-  :payload-regex (rx (+ digit))
-  :begins "$%&_Time=" :ends "_&%$"
-  :display-function
-  '(lambda (payload)
-     (format-time-string
-      "%B %d, %Y"
-      (seconds-to-time (string-to-number payload))))
-  :finder-filter #'skroad--in-node-body-p
-  :use 'skroad--text-mixin-atomic-delimited
-  )
+;; (skroad--deftype skroad--text-timestamp
+;;   :doc "Timestamp."
+;;   :use 'skroad--text-atomic
+;;   :face 'skroad--timestamp-face
+;;   :match-number 1
+;;   :payload-regex (rx (+ digit))
+;;   :begins "$%&_Time=" :ends "_&%$"
+;;   :display-function
+;;   '(lambda (payload)
+;;      (format-time-string
+;;       "%B %d, %Y"
+;;       (seconds-to-time (string-to-number payload))))
+;;   :finder-filter #'skroad--in-node-body-p
+;;   :use 'skroad--text-mixin-atomic-delimited
+;;   )
 
 ;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1854,6 +1851,11 @@ Any dead links found below the computed tail are deleted."
        ,@body
        (newline 2))
      (skroad--update-stub-status)))
+
+(defun skroad--below-tail-p ()
+  "Return t if the tail marker exists and the current point is below it."
+  (and skroad--buf-tail-marker
+       (> point skroad--buf-tail-marker)))
 
 ;; (defun skroad--pos-after-tail-p (pos)
 ;;   "Return t if POS is after the tail (created if it did not exist)."
