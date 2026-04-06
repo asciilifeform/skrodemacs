@@ -730,7 +730,7 @@ call the action with ARGS."
 (skroad--deftype skroad--text-mixin-rendered-zoned
   :doc "Mixin for zoned text types rendered by font-lock."
   :mixin t
-  :require '(face face-function display-function get-payload)
+  :require '(face face-function get-payload)
   :render
   '(lambda ()
      (let* ((start (match-beginning 0))
@@ -740,14 +740,15 @@ call the action with ARGS."
              (list 'category type-name
                    'zone (gensym)
                    'data payload))
-            (use-face
+            (add-face
              (if (functionp face-function)
                  (funcall face-function payload)
                face)))
        (if (facep mouse-face)
            (plist-put props 'mouse-face (list mouse-face)) props)
        (add-text-properties start end props)
-       (add-face-text-property start end use-face)))
+       (add-face-text-property start end add-face)
+       ))
   :use 'skroad--text-mixin-rendered)
 
 (defun skroad--zone-start (&optional pos)
