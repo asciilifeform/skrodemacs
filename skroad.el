@@ -2134,16 +2134,35 @@ If the tail did not previously exist in the current node, it is emplaced."
     char-table)
   "Assigned to `find-word-boundary-function-table' in skroad mode.")
 
-;; TODO: does this need with-silent-modifications for textmode temp buffers
-;;       where skroad--silence-modifications is not in effect?
-(defun skroad--yank-handler (category start end)
-  "Handler for use with `yank-handled-properties'."
-  (message (format "yank! c=%s" category))
-  (skroad--with-whole-lines start end
-    (remove-list-of-text-properties
-     start-expanded end-expanded skroad--font-lock-properties)
-    (font-lock-ensure start-expanded end-expanded))
-  (skroad--deactivate-mark))
+(defun skroad--str-url-at (pos str)
+  "URL at POS in STR, or nil.  For use strictly in `skroad--yank-transformer'."
+  (or (get-text-property pos 'shr-url str)
+      (let ((type (get-text-property pos 'type str))
+            (args (get-text-property pos 'help-args str)))
+        (when (and type args (listp args))
+          (let* ((raw (format "%s" (car args)))
+                 (val (if (string-match-p "/" raw)
+                          (file-name-nondirectory raw)
+                        raw)))
+            (format "%s:%s" type val))))))
+
+(defun skroad--yank-transformer (str)
+  "Skroadify links in STR; strip all text properties."
+  (let ((pos 0) (len (length str)) out)
+    (while (< pos len)
+      (let ((url (skroad--str-url-at pos str))
+            (nxt (or (next-property-change pos str) len)))
+        (if (not url)
+            (push (substring-no-properties str pos nxt) out)
+          (let ((beg pos))
+            (while (and (< nxt len) (equal url (skroad--str-url-at nxt str)))
+              (setq nxt (or (next-property-change nxt str) len)))
+            (push (format "[%s](%s)"
+                          (string-trim (substring-no-properties str beg nxt))
+                          url)
+                  out)))
+        (setq pos nxt)))
+    (apply #'concat (nreverse out))))
 
 (defun skroad--set-writability ()
   "If the current node is a special node, interactive editing is prohibited."
@@ -2492,11 +2511,7 @@ Warning: undo info is lost in all affected buffers!"
 ;; TODO: do NOT set the mode if file is not in the data dir
 (define-derived-mode skroad-mode text-mode "Skroad"
   (skroad--global-init)
-
-  ;; TODO?
-  ;; Zap properties and refontify during yank.
-  (setq-local yank-handled-properties '((id . skroad--yank-handler)))
-
+  
   ;; Prevent text properties from infesting the kill ring (emacs 28+) :
   (setq-local kill-transform-function #'substring-no-properties)
   
@@ -2509,6 +2524,7 @@ Warning: undo info is lost in all affected buffers!"
   (add-hook 'window-scroll-functions #'skroad--update-header-line nil t)
   (add-hook 'window-state-change-functions #'skroad--update-header-line nil t)
   (add-hook 'window-buffer-change-functions #'skroad--update-header-line nil t)
+  (add-hook 'yank-transform-functions #'skroad--yank-transformer nil t)
   
   ;; Overlay for when an atomic is under the point. Initially inactive:
   (setq-local skroad--buf-selector (make-overlay (point-min) (point-min)))
