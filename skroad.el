@@ -2117,6 +2117,10 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 ;; Misc. major mode setup. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun skroad--set-writability ()
+  "If the current node is a special node, interactive editing is prohibited."
+  (setq-local buffer-read-only (skroad--node-special-p)))
+
 (defun skroad--find-word-boundary (pos limit)
   "Function for use in `find-word-boundary-function-table'."
   (save-mark-and-excursion
@@ -2163,10 +2167,6 @@ If the tail did not previously exist in the current node, it is emplaced."
                   out)))
         (setq pos nxt)))
     (apply #'concat (nreverse out))))
-
-(defun skroad--set-writability ()
-  "If the current node is a special node, interactive editing is prohibited."
-  (setq-local buffer-read-only (skroad--node-special-p)))
 
 (defun skroad--open-node ()
   "Open a skroad node."
