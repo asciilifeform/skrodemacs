@@ -797,11 +797,14 @@ call the action with ARGS."
 (defvar-local skroad--buf-block-overlays nil
   "List of block overlays active in the current buffer.")
 
+(defconst skroad--block-overlay-id 'skroad--block
+  "Identifies a skroad text block overlay.")
+
 (defun skroad--block-add-block (start end)
   "Add a block overlay spanning START and END in the current buffer."
   (let ((ov (make-overlay start end nil nil t)))
     (overlay-put ov 'evaporate t)
-    (overlay-put ov 'block t)
+    (overlay-put ov skroad--block-overlay-id t)
     (push ov skroad--buf-block-overlays)
     ov))
 
@@ -814,7 +817,7 @@ call the action with ARGS."
   "Return the block depth at POS in the current buffer."
   (let ((depth 0))
     (dolist (ov (overlays-at pos))
-      (when (overlay-get ov 'block)
+      (when (overlay-get ov skroad--block-overlay-id)
         (setq depth (1+ depth))))
     depth))
 
