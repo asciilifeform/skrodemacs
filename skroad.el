@@ -61,6 +61,10 @@
 (defconst skroad--renamer-faces-invalid-background "red"
   "Background colour during invalid renamer state.")
 
+(defconst skroad--block-backgrounds
+  ["#202050" "#204020" "#5c2020" "#4a2050" "#205050"]
+  "Pool of block backgrounds.")
+
 (defface skroad--highlight-link-face
   '((t :inherit highlight))
   "Face used for highlighted links."
@@ -638,19 +642,24 @@ call the action with ARGS."
 
 (defvar skroad--text-types-rendered nil "Text types for use with font-lock.")
 
-(skroad--deftype skroad--text-mixin-rendered
-  :doc "Finalization mixin for all text types rendered by font-lock."
+(skroad--deftype skroad--text-mixin-regexp-rendered
+  :doc "Mixin for regexp text types rendered by font-lock."
   :mixin t
   :require '(find-any-forward render)
   :render-next
   '(lambda (limit)
      (when (funcall find-any-forward limit)
-       (with-silent-modifications (funcall render) t)))
+       (with-silent-modifications (funcall render) t))))
+
+(skroad--deftype skroad--text-mixin-rendered
+  :doc "Finalization mixin for all text types rendered by font-lock."
+  :mixin t
+  :require 'render-next
   :font-lock-rule '(lambda () (list render-next '(0 nil append)))
   :register 'skroad--text-types-rendered)
 
 (defconst skroad--font-lock-properties
-  '(category face mouse-face zone data display)
+  '(category face mouse-face zone data display line-prefix wrap-prefix)
   "Let font lock know what props we use in renderers, so it will clean them.")
 
 (defvar skroad--font-lock-keywords nil "Font lock keywords for skroad mode.")
@@ -709,24 +718,6 @@ call the action with ARGS."
 
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (skroad--deftype skroad--text-mixin-rendered-zoned
-;;   :doc "Mixin for zoned text types rendered by font-lock."
-;;   :mixin t
-;;   :require '(face face-function get-payload)
-;;   :render
-;;   '(lambda ()
-;;      (set-text-properties
-;;       (match-beginning 0) (match-end 0)
-;;       (let ((payload (funcall get-payload)))
-;;         (list 'category type-name
-;;               'zone (gensym)
-;;               'face (if (functionp face-function)
-;;                         (funcall face-function payload)
-;;                       face)
-;;               'mouse-face (when mouse-face (list mouse-face)) ;; no glomming
-;;               'data payload))))
-;;   :use 'skroad--text-mixin-rendered)
-
 (skroad--deftype skroad--text-mixin-rendered-zoned
   :doc "Mixin for zoned text types rendered by font-lock."
   :mixin t
@@ -749,6 +740,7 @@ call the action with ARGS."
        (add-text-properties start end props)
        (add-face-text-property start end add-face)
        ))
+  :use 'skroad--text-mixin-regexp-rendered
   :use 'skroad--text-mixin-rendered)
 
 (defun skroad--zone-start (&optional pos)
@@ -766,6 +758,83 @@ call the action with ARGS."
   `(let ((start (skroad--zone-start)) (end (skroad--zone-end)))
      ,@body))
 
+;; Block highlighter text type. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defvar skroad--block-indent-columns 3
+  "Padding width per nesting level in columns.")
+
+(defvar skroad--block-level-cache (make-hash-table :test 'eql)
+  "Cache of level -> (prefix . face).")
+
+(defun skroad--block-invalidate-cache ()
+  "Invalidate the block level cache.  Do it when changing colours or indent."
+  (clrhash skroad--block-level-cache))
+
+(defun skroad--block-bg-for-level (level)
+  "Obtain the background colour used for blocks of LEVEL."
+  (aref skroad--block-backgrounds
+        (mod (1- level) (length skroad--block-backgrounds))))
+
+(defun skroad--block-level-props (level)
+  "Obtain the properties that must be set for a block of LEVEL."
+  (or (gethash level skroad--block-level-cache)
+      (let* ((prefix "")
+             (i 1)
+             (face nil))
+        (while (<= i level)
+          (setq face `(:background ,(skroad--block-bg-for-level i) :extend t))
+          (setq prefix
+                (concat prefix
+                        (propertize
+                         (make-string skroad--block-indent-columns ?\s)
+                         'face face)))
+          (setq i (1+ i)))
+        (puthash level (list 'line-prefix prefix
+                             'wrap-prefix prefix
+                             'face face)
+                 skroad--block-level-cache))))
+
+(defvar-local skroad--buf-block-overlays nil
+  "List of block overlays active in the current buffer.")
+
+(defun skroad--block-add-block (start end)
+  "Add a block overlay spanning START and END in the current buffer."
+  (let ((ov (make-overlay start end nil nil t)))
+    (overlay-put ov 'evaporate t)
+    (overlay-put ov 'block t)
+    (push ov skroad--buf-block-overlays)
+    ov))
+
+(defun skroad--block-remove-block (ov)
+  "Remove the block overlay OV from the current buffer."
+  (setq skroad--buf-block-overlays (delq ov skroad--buf-block-overlays))
+  (delete-overlay ov))
+
+(defun skroad--block-depth-at (pos)
+  "Return the block depth at POS in the current buffer."
+  (let ((depth 0))
+    (dolist (ov (overlays-at pos))
+      (when (overlay-get ov 'block)
+        (setq depth (1+ depth))))
+    depth))
+
+(skroad--deftype skroad--text-block
+  :doc "Text type for block highlighter rendered by font lock."
+  :order 1 ;; Must render before all others to avoid bg clobbering
+  :render-next
+  '(lambda (limit)
+     (while (< (point) limit)
+       (let ((depth (skroad--block-depth-at (point)))
+             (next (min (next-overlay-change (point)) limit)))
+         (when (> depth 0)
+           (with-silent-modifications
+             (skroad--with-whole-lines (point) next
+               (set-text-properties start-expanded end-expanded
+                                    (skroad--block-level-props depth)))))
+         (goto-char next)))
+     nil)
+  :use 'skroad--text-mixin-rendered)
+
 ;; Decorative text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (skroad--deftype skroad--text-mixin-render-delimited-decorative
@@ -777,6 +846,7 @@ call the action with ARGS."
   '(lambda () (add-face-text-property (match-beginning 0) (match-end 0) face))
   :order 1000 ;; Render these last, so they can amend all other rendered faces
   :use 'skroad--text-mixin-delimited
+  :use 'skroad--text-mixin-regexp-rendered
   :use 'skroad--text-mixin-rendered)
 
 (skroad--deftype skroad--text-decorative-heading
@@ -2087,6 +2157,11 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
   (skroad--goto-node-body-start)
   (skip-syntax-forward " ")
+
+  ;; tail block test
+  (save-mark-and-excursion
+    (skroad--tail-jump-before)
+    (skroad--block-add-block (point) (point-max)))
   )
 
 (defun skroad--update-header-line (window &optional _start)
