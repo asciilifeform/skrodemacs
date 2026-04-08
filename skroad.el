@@ -2207,8 +2207,8 @@ If the tail did not previously exist in the current node, it is emplaced."
   )
 
 (defun skroad--header-line-text ()
-  "If the title is not visible in the current window, enable the header line.
-Otherwise, simply return nil."
+  "If the title is not visible in the current window, enable the header in it.
+Otherwise (including if current buffer is not in the mode), simply return nil."
   (when (and skroad--floating-title-enable
              (skroad--mode-p)
              (skroad--in-node-body-p (window-start)))
@@ -2219,9 +2219,9 @@ Otherwise, simply return nil."
        (progn (vertical-motion 1) (point))))))
 
 (defun skroad--clear-stale-header (window)
-  "Destroy the header line in WINDOW after redisplay is complete."
+  "If the current buffer is not in Skroad mode, disable the header in WINDOW."
   (unless (skroad--mode-p)
-    (run-with-timer
+    (run-with-timer ;; Do this so that it fires after redraw is complete
      0 nil
      (lambda ()
        (when (window-parameter window 'header-line-format)
