@@ -1780,7 +1780,8 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defconst skroad--url-regexp
-  (rx (seq (or (seq "http" (? "s")) "file" "ftp" "magnet") "://") (+ graph) eow)
+  (rx (seq (or (seq "http" (? "s")) "file" "ftp" "magnet" "help") "://")
+      (+ graph) eow)
   "Regexp matching URLs.")
 
 ;; Turn the URL at point into plain text by placing a space after the prefix.
