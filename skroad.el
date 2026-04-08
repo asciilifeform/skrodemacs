@@ -2225,6 +2225,8 @@ If the tail did not previously exist in the current node, it is emplaced."
                              (buffer-substring (point)
                                                (line-end-position))
                              (progn (vertical-motion 1) (point))))
+                        ;; If we merely eval to nil, header remains enabled,
+                        ;; so we dispatch a zapper which runs after redisplay:
                         (run-with-timer
                          0 nil
                          (lambda ()
