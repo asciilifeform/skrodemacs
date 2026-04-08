@@ -2216,7 +2216,7 @@ If the tail did not previously exist in the current node, it is emplaced."
                   (skroad--mode-p)
                   (skroad--in-node-body-p (window-start)))
          (or (window-parameter nil 'skroad--header-eval)
-             (let ((f
+             (let ((header-updater
                     `(:eval
                       (if (skroad--mode-p)
                           (save-mark-and-excursion
@@ -2236,8 +2236,8 @@ If the tail did not previously exist in the current node, it is emplaced."
                               ,window 'header-line-format nil)
                              (force-window-update ,window))))
                         nil))))
-               (set-window-parameter nil 'skroad--header-eval f)
-               f)))))))
+               (set-window-parameter nil 'skroad--header-eval header-updater)
+               header-updater)))))))
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
   "Cache storing the last known interactive point position in a node.")
