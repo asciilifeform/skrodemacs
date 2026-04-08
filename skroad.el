@@ -2087,10 +2087,7 @@ If the tail did not previously exist in the current node, it is emplaced."
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
   (setq-local mouse-highlight nil
-              skroad--buf-pre-command-point-state (skroad--get-point-state))
-  ;; Detect buffer switch in window to update header
-  ;; (skroad--pre-command-deferred)
-  )
+              skroad--buf-pre-command-point-state (skroad--get-point-state)))
 
 ;; TODO: some of these should be done only if buffer modified?
 (defun skroad--post-command-hook ()
