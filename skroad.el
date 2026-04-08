@@ -2206,6 +2206,8 @@ If the tail did not previously exist in the current node, it is emplaced."
     (skroad--block-add-block (point) (point-max)))
   )
 
+;; Floating header line. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun skroad--header-line-text ()
   "If the title is not visible in the current window, enable the header in it.
 Otherwise (including if current buffer is not in the mode), simply return nil."
@@ -2243,6 +2245,8 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
                           (skroad--clear-stale-header ,window)))))
                (set-window-parameter nil 'skroad--header-eval header-updater)
                header-updater)))))))
+
+;; Point cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
   "Cache storing the last known interactive point position in a node.")
