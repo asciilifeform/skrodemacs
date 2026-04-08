@@ -2186,7 +2186,7 @@ If the tail did not previously exist in the current node, it is emplaced."
         (ignore-errors (funcall fn val))
       (skroad--info "Help page '%s' was not found!" url))))
 
-(defvar skroad--url-handlers
+(defconst skroad--url-handlers
   '(("\\`help:" . skroad--emacs-help-url-handler))
   "Skroad additional URL handlers.")
 
