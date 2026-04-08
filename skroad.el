@@ -2154,7 +2154,7 @@ If the tail did not previously exist in the current node, it is emplaced."
             (format "help://%s:%s" type val))))))
 
 (defun skroad--yank-transformer (str)
-  "Skroadify Eww and Help-compatible links in STR; strip all text properties."
+  "Recover Eww and Help links in STR; strip all text properties."
   (let ((pos 0) (len (length str)) out)
     (while (< pos len)
       (let ((url (skroad--str-url-at pos str))
@@ -2172,6 +2172,7 @@ If the tail did not previously exist in the current node, it is emplaced."
     (apply #'concat (nreverse out))))
 
 (defun skroad--emacs-help-url-handler (url &rest args)
+  "URL handler for Emacs help links."
   (with-temp-buffer (help-mode))
   (let* ((payload (when (string-match "://" url)
                     (substring url (match-end 0))))
@@ -2185,10 +2186,6 @@ If the tail did not previously exist in the current node, it is emplaced."
     (if (and fn val)
         (ignore-errors (funcall fn val))
       (skroad--info "Help page '%s' was not found!" url))))
-
-(defconst skroad--url-handlers
-  '(("\\`help:" . skroad--emacs-help-url-handler))
-  "Skroad additional URL handlers.")
 
 (defun skroad--open-node ()
   "Open a skroad node."
@@ -2538,7 +2535,8 @@ Warning: undo info is lost in all affected buffers!"
   (setq-local kill-transform-function #'substring-no-properties)
 
   ;; Install handler for Emacs help URLs:
-  (setq-local browse-url-handlers skroad--url-handlers)
+  (setq-local browse-url-handlers
+              '(("\\`help:" . skroad--emacs-help-url-handler)))
   
   ;; Buffer-local hooks:
   (skroad--buf-indices-install-tracker)
