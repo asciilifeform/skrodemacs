@@ -1779,6 +1779,10 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defconst skroad--url-regexp
+  (rx (seq (or (seq "http" (? "s")) "file" "ftp" "magnet") "://") (+ graph) eow)
+  "Regexp matching URLs.")
+
 ;; Turn the URL at point into plain text by placing a space after the prefix.
 (defun skroad--cmd-url-comment ()
   "Textify"
@@ -1795,8 +1799,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   :help-echo "External link."
   :face 'skroad--url-link-face
   :match-number 0
-  :regex-any
-  (rx (seq (or (seq "http" (? "s")) "file" "ftp" "magnet") "://") (+ graph) eow)
+  :regex-any skroad--url-regexp
   :on-activate #'browse-url
   :keymap (define-keymap "t" #'skroad--cmd-url-comment)
   :finder-filter #'skroad--in-node-body-p
@@ -2151,7 +2154,7 @@ If the tail did not previously exist in the current node, it is emplaced."
             (format "%s:%s" type val))))))
 
 (defun skroad--yank-transformer (str)
-  "Skroadify links in STR; strip all text properties."
+  "Skroadify Eww and Help-compatible links in STR; strip all text properties."
   (let ((pos 0) (len (length str)) out)
     (while (< pos len)
       (let ((url (skroad--str-url-at pos str))
@@ -2167,6 +2170,25 @@ If the tail did not previously exist in the current node, it is emplaced."
                   out)))
         (setq pos nxt)))
     (apply #'concat (nreverse out))))
+
+(defun skroad--emacs-help-url-handler (url &rest args)
+  (with-temp-buffer (help-mode))
+  (let* ((payload (when (string-match "://" url)
+                    (substring url (match-end 0))))
+         (offset (and payload (string-search ":" payload)))
+         (scheme (and offset (substring payload 0 offset)))
+         (arg    (and offset (substring payload (1+ offset))))
+         (type   (and offset (intern-soft scheme)))
+         (cat    (and type (get type 'button-category-symbol)))
+         (fn     (and cat (get cat 'help-function)))
+         (val    (and fn (intern-soft arg))))
+    (if (and fn val)
+        (ignore-errors (funcall fn val))
+      (skroad--info "Help page '%s' was not found!" url))))
+
+(defvar skroad--url-handlers
+  '(("\\`help:" . skroad--emacs-help-url-handler))
+  "Skroad additional URL handlers.")
 
 (defun skroad--open-node ()
   "Open a skroad node."
@@ -2514,6 +2536,9 @@ Warning: undo info is lost in all affected buffers!"
   
   ;; Prevent text properties from infesting the kill ring (emacs 28+) :
   (setq-local kill-transform-function #'substring-no-properties)
+
+  ;; Install handler for Emacs help URLs:
+  (setq-local browse-url-handlers skroad--url-handlers)
   
   ;; Buffer-local hooks:
   (skroad--buf-indices-install-tracker)
