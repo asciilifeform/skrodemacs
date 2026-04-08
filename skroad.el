@@ -2206,35 +2206,40 @@ If the tail did not previously exist in the current node, it is emplaced."
     (skroad--block-add-block (point) (point-max)))
   )
 
+(defun skroad--header-line-text ()
+  "If the title is not visible in the current window, enable the header line.
+Otherwise, simply return nil."
+  (when (and skroad--floating-title-enable
+             (skroad--mode-p)
+             (skroad--in-node-body-p (window-start)))
+    (save-mark-and-excursion
+      (goto-char (point-min))
+      (skroad--abbrev-string
+       (buffer-substring (point) (line-end-position))
+       (progn (vertical-motion 1) (point))))))
+
+(defun skroad--clear-stale-header (window)
+  "Destroy the header line in WINDOW after redisplay is complete."
+  (run-with-timer
+   0 nil
+   (lambda ()
+     (when (window-parameter window 'header-line-format)
+       (set-window-parameter window 'header-line-format nil)
+       (force-window-update window))))
+  nil)
+
 (defun skroad--update-header-line (window &optional _start)
   "Update the header line for the given WINDOW."
   (with-selected-window window
     (with-current-buffer (window-buffer)
       (set-window-parameter
        nil 'header-line-format
-       (when (and skroad--floating-title-enable
-                  (skroad--mode-p)
-                  (skroad--in-node-body-p (window-start)))
+       (when (skroad--header-line-text)
          (or (window-parameter nil 'skroad--header-eval)
              (let ((header-updater
                     `(:eval
-                      (if (skroad--mode-p)
-                          (save-mark-and-excursion
-                            (goto-char (point-min))
-                            (skroad--abbrev-string
-                             (buffer-substring (point)
-                                               (line-end-position))
-                             (progn (vertical-motion 1) (point))))
-                        ;; If we merely eval to nil, header remains enabled,
-                        ;; so we dispatch a zapper which runs after redisplay:
-                        (run-with-timer
-                         0 nil
-                         (lambda ()
-                           (when (window-parameter ,window 'header-line-format)
-                             (set-window-parameter
-                              ,window 'header-line-format nil)
-                             (force-window-update ,window))))
-                        nil))))
+                      (or (skroad--header-line-text)
+                          (skroad--clear-stale-header ,window)))))
                (set-window-parameter nil 'skroad--header-eval header-updater)
                header-updater)))))))
 
