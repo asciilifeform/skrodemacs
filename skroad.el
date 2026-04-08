@@ -2206,7 +2206,7 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 ;; Floating header line. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--header-line-text ()
+(defun skroad--header-text-for-current-window ()
   "If the title is not visible in the current window, enable the header in it.
 Otherwise (including if current buffer is not in the mode), simply return nil."
   (when (and skroad--floating-title-enable
@@ -2229,17 +2229,17 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
          (force-window-update window)))))
   nil)
 
-(defun skroad--update-header-line (window &optional _start)
-  "Update the header line for the given WINDOW."
+(defun skroad--update-window-state (window &optional _start)
+  "Update the state of the given WINDOW (currently containing a Skroad node)."
   (with-selected-window window
     (with-current-buffer (window-buffer)
       (set-window-parameter
        nil 'header-line-format
-       (when (skroad--header-line-text)
+       (when (skroad--header-text-for-current-window)
          (or (window-parameter nil 'skroad--header-eval)
              (let ((header-updater
                     `(:eval
-                      (or (skroad--header-line-text)
+                      (or (skroad--header-text-for-current-window)
                           (skroad--clear-stale-header ,window)))))
                (set-window-parameter nil 'skroad--header-eval header-updater)
                header-updater)))))))
@@ -2557,9 +2557,9 @@ Warning: undo info is lost in all affected buffers!"
   (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
   (add-hook 'kill-buffer-hook 'skroad--before-kill-buffer-hook nil t)
   (add-hook 'yank-transform-functions #'skroad--yank-transformer nil t)
-  (add-hook 'window-scroll-functions #'skroad--update-header-line nil t)
-  (add-hook 'window-state-change-functions #'skroad--update-header-line nil t)
-  (add-hook 'window-buffer-change-functions #'skroad--update-header-line nil t)
+  (add-hook 'window-scroll-functions #'skroad--update-window-state nil t)
+  (add-hook 'window-state-change-functions #'skroad--update-window-state nil t)
+  (add-hook 'window-buffer-change-functions #'skroad--update-window-state nil t)
   
   ;; Overlay for when an atomic is under the point. Initially inactive:
   (setq-local skroad--buf-selector (make-overlay (point-min) (point-min)))
