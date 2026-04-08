@@ -2220,12 +2220,13 @@ Otherwise, simply return nil."
 
 (defun skroad--clear-stale-header (window)
   "Destroy the header line in WINDOW after redisplay is complete."
-  (run-with-timer
-   0 nil
-   (lambda ()
-     (when (window-parameter window 'header-line-format)
-       (set-window-parameter window 'header-line-format nil)
-       (force-window-update window))))
+  (unless (skroad--mode-p)
+    (run-with-timer
+     0 nil
+     (lambda ()
+       (when (window-parameter window 'header-line-format)
+         (set-window-parameter window 'header-line-format nil)
+         (force-window-update window)))))
   nil)
 
 (defun skroad--update-header-line (window &optional _start)
