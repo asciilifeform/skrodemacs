@@ -2089,7 +2089,8 @@ If the tail did not previously exist in the current node, it is emplaced."
   (setq-local mouse-highlight nil
               skroad--buf-pre-command-point-state (skroad--get-point-state))
   ;; Detect buffer switch in window to update header
-  (skroad--pre-command-deferred))
+  ;; (skroad--pre-command-deferred)
+  )
 
 ;; TODO: some of these should be done only if buffer modified?
 (defun skroad--post-command-hook ()
@@ -2209,30 +2210,25 @@ If the tail did not previously exist in the current node, it is emplaced."
   "Update the header line for the given WINDOW."
   (with-selected-window window
     (with-current-buffer (window-buffer)
-      (skroad--renamer-deactivate)
       (set-window-parameter
        nil 'header-line-format
        (when (and skroad--floating-title-enable
                   (skroad--mode-p)
                   (skroad--in-node-body-p (window-start)))
-         (save-mark-and-excursion
-           (goto-char (point-min))
-           (skroad--abbrev-string
-            (buffer-substring (point) (line-end-position)) ;; Fontified title
-            (progn (vertical-motion 1) (point))))))))) ;; Abbrev'd to width
-
-;; NOTE: Can probably be removed under emacs 31.
-(defun skroad--pre-command-deferred ()
-  "Ensure that we clean up window settings when flipping buffers."
-  (let ((window (selected-window))
-        (buffer (current-buffer)))
-    (when (window-parameter window 'header-line-format)
-      (run-with-idle-timer
-       0 nil
-       #'(lambda ()
-           (unless (eq (current-buffer) buffer)
-             (skroad--update-header-line window)
-             (force-window-update window)))))))
+         `(:eval
+           (if (skroad--mode-p)
+               (save-mark-and-excursion
+                 (goto-char (point-min))
+                 (skroad--abbrev-string
+                  (buffer-substring (point) (line-end-position))
+                  (progn (vertical-motion 1) (point))))
+             (run-with-timer
+              0 nil
+              (lambda ()
+                (when (window-parameter ,window 'header-line-format)
+                  (set-window-parameter ,window 'header-line-format nil)
+                  (force-window-update ,window))))
+             nil)))))))
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
   "Cache storing the last known interactive point position in a node.")
@@ -2544,10 +2540,10 @@ Warning: undo info is lost in all affected buffers!"
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
   (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
   (add-hook 'kill-buffer-hook 'skroad--before-kill-buffer-hook nil t)
+  (add-hook 'yank-transform-functions #'skroad--yank-transformer nil t)
   (add-hook 'window-scroll-functions #'skroad--update-header-line nil t)
   (add-hook 'window-state-change-functions #'skroad--update-header-line nil t)
   (add-hook 'window-buffer-change-functions #'skroad--update-header-line nil t)
-  (add-hook 'yank-transform-functions #'skroad--yank-transformer nil t)
   
   ;; Overlay for when an atomic is under the point. Initially inactive:
   (setq-local skroad--buf-selector (make-overlay (point-min) (point-min)))
