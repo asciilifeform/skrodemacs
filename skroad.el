@@ -2163,7 +2163,7 @@ If the tail did not previously exist in the current node, it is emplaced."
           (let ((beg pos))
             (while (and (< nxt len) (equal url (skroad--str-url-at nxt str)))
               (setq nxt (or (next-property-change nxt str) len)))
-            (push (format "[%s](%s)"
+            (push (format "[%s](%s)" ;; TODO: escape [] in caption?
                           (string-trim (substring-no-properties str beg nxt))
                           (browse-url-encode-url url))
                   out)))
