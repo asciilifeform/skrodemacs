@@ -2151,7 +2151,7 @@ If the tail did not previously exist in the current node, it is emplaced."
                  (val (if (string-match-p "/" raw)
                           (file-name-nondirectory raw)
                         raw)))
-            (format "%s:%s" type val))))))
+            (format "help://%s:%s" type val))))))
 
 (defun skroad--yank-transformer (str)
   "Skroadify Eww and Help-compatible links in STR; strip all text properties."
