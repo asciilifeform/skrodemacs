@@ -2230,8 +2230,7 @@ If the tail did not previously exist in the current node, it is emplaced."
                         (run-with-timer
                          0 nil
                          (lambda ()
-                           (when (window-parameter
-                                  ,window 'header-line-format)
+                           (when (window-parameter ,window 'header-line-format)
                              (set-window-parameter
                               ,window 'header-line-format nil)
                              (force-window-update ,window))))
