@@ -2165,7 +2165,7 @@ If the tail did not previously exist in the current node, it is emplaced."
               (setq nxt (or (next-property-change nxt str) len)))
             (push (format "[%s](%s)"
                           (string-trim (substring-no-properties str beg nxt))
-                          url)
+                          (browse-url-encode-url url))
                   out)))
         (setq pos nxt)))
     (apply #'concat (nreverse out))))
