@@ -1804,7 +1804,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
 (skroad--deftype skroad-text-bare-url-link
   :doc "Bare URL."
   :use 'skroad--text-atomic
-  :help-echo "External link."
+  :help-echo 'skroad--link-mouseover
   :face 'skroad--url-link-face
   :mouse-face 'skroad--highlight-link-face
   :match-number 0
@@ -1815,7 +1815,6 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-rendered-zoned
-  ;; :use 'skroad--text-mixin-indexed ;; TODO: do we need this?
   )
 
 (defconst skroad--md-url-regexp
@@ -1826,15 +1825,6 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
            ?\) ))
   "Regexp matching Markdown-style URLs.")
 
-;; (with-temp-buffer
-;;   (insert "[foo](help://help-type:special-form)")
-;;   (goto-char (point-min))
-;;   (when (re-search-forward skroad--md-url-regexp nil t)
-;;     (list (match-string 1) ;; caption
-;;           (match-string 2) ;; ](
-;;           (match-string 3))) ;; url
-;;   )
-
 ;; Turn the MD URL at point into plain text by placing a space after ']'.
 (defun skroad--cmd-md-url-comment ()
   "Textify"
@@ -1844,7 +1834,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
 (skroad--deftype skroad-text-md-url-link
   :doc "Markdown-style URL."
   :use 'skroad--text-atomic
-  :help-echo "External link."
+  :help-echo 'skroad--link-mouseover
   :face 'skroad--url-link-face
   :mouse-face 'skroad--highlight-link-face
   :order 200 ;; Render after bare URLs
