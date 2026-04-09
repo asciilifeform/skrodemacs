@@ -2223,10 +2223,10 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
   (unless (skroad--mode-p)
     (run-with-timer ;; Do this so that it fires after redraw is complete
      0 nil
-     (lambda ()
-       (when (window-parameter window 'header-line-format)
-         (set-window-parameter window 'header-line-format nil)
-         (force-window-update window)))))
+     #'(lambda ()
+         (when (window-parameter window 'header-line-format)
+           (set-window-parameter window 'header-line-format nil)
+           (force-window-update window)))))
   nil)
 
 (defun skroad--update-window-state (window &optional _start)
