@@ -862,10 +862,10 @@ call the action with ARGS."
   :doc "Heading text."
   :begins "##" :ends "\n"
   :face 'skroad--heading-face
-  :finder-filter #'(lambda ()
-                     (and (skroad--in-node-body-p)
-                          (not (text-property-any ;; May not overlap an atomic
-                                (match-beginning 0) (match-end 0) 'atomic t))))
+  :finder-filter '(lambda ()
+                    (and (skroad--in-node-body-p)
+                         (not (text-property-any ;; May not overlap an atomic
+                               (match-beginning 0) (match-end 0) 'atomic t))))
   :use 'skroad--text-mixin-render-delimited-decorative
   :order 999)
 
@@ -1600,9 +1600,9 @@ Return the new position if the jump actually happened; otherwise nil."
   :mouse-face 'skroad--highlight-link-face
   :payload-regex skroad--in-brackets-regexp
   :index-filter ;; Do not index self-links or links to special nodes
-  #'(lambda (node)
-      (not (or (skroad--node-self-p node)
-               (skroad--node-special-p node)))))
+  '(lambda (node)
+     (not (or (skroad--node-self-p node)
+              (skroad--node-special-p node)))))
 
 ;; TODO: somehow generalize to file links, www (when emacs handles), help, etc.
 (defun skroad--action-open-node (node)
@@ -1655,7 +1655,7 @@ If NODE does not exist, this is a no-op."
 
 (defun skroad--action-orphaned (origin)
   "ORIGIN is an orphan (i.e. it has NO live links)."
-    (skroad--node-set-orphan origin t))
+  (skroad--node-set-orphan origin t))
 
 (defun skroad--action-unorphaned (origin)
   "ORIGIN is NOT an orphan (i.e. it has live links)."
@@ -1689,12 +1689,12 @@ If NODE does not exist, this is a no-op."
   :on-destroy #'skroad--action-disconnected
   :on-activate #'skroad--action-open-node
   :face-function
-  #'(lambda (payload)
-      (cond ((skroad--node-self-p payload)
-             'skroad--self-link-face)
-            ((skroad--node-stub-p payload)
-             'skroad--stub-link-face)
-            (t 'skroad--live-link-face)))
+  '(lambda (payload)
+     (cond ((skroad--node-self-p payload)
+            'skroad--self-link-face)
+           ((skroad--node-stub-p payload)
+            'skroad--stub-link-face)
+           (t 'skroad--live-link-face)))
   :help-echo 'skroad--link-mouseover
   :begins "[[" :ends "]]"
   :keymap (define-keymap
