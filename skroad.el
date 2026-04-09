@@ -4,6 +4,8 @@
 ;;; (add-to-list 'auto-mode-alist '("\\.skroad\\'" . skroad-mode))
 ;;; After this is done, s/skroad/skrode.
 
+(require 'browse-url)
+
 ;;; Knobs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--debug t)
@@ -2022,7 +2024,7 @@ Any dead links found below the computed tail are deleted."
 (defun skroad--below-tail-p ()
   "Return t if the tail marker exists and the current point is below it."
   (and skroad--buf-tail-marker
-       (> point skroad--buf-tail-marker)))
+       (> (point) skroad--buf-tail-marker)))
 
 ;; (defun skroad--pos-after-tail-p (pos)
 ;;   "Return t if POS is after the tail (created if it did not exist)."
@@ -2546,9 +2548,9 @@ After all of this, the VICTIM is permanently deleted."
              (skroad--atomic-comment-insert
               (format "End of merged node '%s'" victim))
              (newline)
-             (goto-char import-start))) ;; Jump to the start indicator
-          ;; Fix self-links of the victim in the imported body:
-          (skroad--link-replace victim this-node import-start import-end))
+             (goto-char import-start) ;; Jump to the start indicator
+             ;; Fix self-links of the victim in the imported body:
+             (skroad--link-replace victim this-node import-start import-end))))
         (skroad--buf-indices-sync t) ;; Sync indices, but don't run actions
         ;; Nodes that linked to the victim will now link to this node instead:
         (dolist (affected-node victim-linked-from)
