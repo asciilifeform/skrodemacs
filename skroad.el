@@ -739,10 +739,10 @@ call the action with ARGS."
        (add-face-text-property start end add-face)
        (when (numberp visible-match-number)
          (put-text-property start end 'invisible t)
-         (put-text-property
+         (remove-text-properties
           (match-beginning visible-match-number)
           (match-end visible-match-number)
-          'invisible nil))))
+          '(invisible)))))
   :use 'skroad--text-mixin-regexp-rendered
   :use 'skroad--text-mixin-rendered)
 
