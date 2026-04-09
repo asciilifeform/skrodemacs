@@ -573,6 +573,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :doc "Mixin for all findable text types. (Internal use only.)"
   :mixin t
   :require '(regex-any finder-filter)
+  :defaults '((visible-match-number nil))
   :find
   '(lambda (method regex &optional lim)
      (skroad--re-search method regex lim finder-filter))
@@ -656,7 +657,7 @@ call the action with ARGS."
   :register 'skroad--text-types-rendered)
 
 (defconst skroad--font-lock-properties
-  '(category face mouse-face zone data display line-prefix wrap-prefix)
+  '(category face mouse-face zone data display line-prefix wrap-prefix invisible)
   "Let font lock know what props we use in renderers, so it will clean them.")
 
 (defvar skroad--font-lock-keywords nil "Font lock keywords for skroad mode.")
@@ -736,7 +737,12 @@ call the action with ARGS."
            (plist-put props 'mouse-face (list mouse-face)) props)
        (add-text-properties start end props)
        (add-face-text-property start end add-face)
-       ))
+       (when (numberp visible-match-number)
+         (put-text-property start end 'invisible t)
+         (put-text-property
+          (match-beginning visible-match-number)
+          (match-end visible-match-number)
+          'invisible nil))))
   :use 'skroad--text-mixin-regexp-rendered
   :use 'skroad--text-mixin-rendered)
 
@@ -1781,15 +1787,19 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
       (+ graph) eow)
   "Regexp matching URLs.")
 
-;; Turn the URL at point into plain text by placing a space after the prefix.
-(defun skroad--cmd-url-comment ()
-  "Textify"
-  (interactive)
+(defun skroad--zone-insert-space-after (string)
+  "Insert a space after STRING in the current zone."
   (skroad--with-current-zone
     (save-mark-and-excursion
       (goto-char start)
-      (search-forward "//" end)
+      (search-forward string end)
       (insert " "))))
+
+;; Turn the URL at point into plain text by placing a space after the prefix.
+(defun skroad--cmd-bare-url-comment ()
+  "Textify"
+  (interactive)
+  (skroad--zone-insert-space-after "//"))
 
 (skroad--deftype skroad-text-bare-url-link
   :doc "Bare URL."
@@ -1799,26 +1809,53 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   :match-number 0
   :regex-any skroad--url-regexp
   :on-activate #'browse-url
-  :keymap (define-keymap "t" #'skroad--cmd-url-comment)
+  :keymap (define-keymap "t" #'skroad--cmd-bare-url-comment)
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-rendered-zoned
-  :use 'skroad--text-mixin-indexed ;; TODO: do we need this?
+  ;; :use 'skroad--text-mixin-indexed ;; TODO: do we need this?
   )
 
 (defconst skroad--md-url-regexp
-  (rx (seq
-       ?\[ (group (regexp skroad--in-brackets-regexp)) ?\]
-       ?\( (group (regexp skroad--url-regexp))) ?\))
+  (rx (seq ?\[
+           (group (regexp skroad--in-brackets-regexp))
+           (group ?\] ?\()
+           (group (regexp skroad--url-regexp))
+           ?\) ))
   "Regexp matching Markdown-style URLs.")
 
 ;; (with-temp-buffer
 ;;   (insert "[foo](help://help-type:special-form)")
 ;;   (goto-char (point-min))
 ;;   (when (re-search-forward skroad--md-url-regexp nil t)
-;;     (list (match-string 1) (match-string 2)))
+;;     (list (match-string 1) ;; caption
+;;           (match-string 2) ;; ](
+;;           (match-string 3))) ;; url
 ;;   )
+
+;; Turn the MD URL at point into plain text by placing a space after ']'.
+(defun skroad--cmd-md-url-comment ()
+  "Textify"
+  (interactive)
+  (skroad--zone-insert-space-after "]"))
+
+(skroad--deftype skroad-text-md-url-link
+  :doc "Markdown-style URL."
+  :use 'skroad--text-atomic
+  :help-echo "External link."
+  :face 'skroad--url-link-face
+  :order 200 ;; Render after bare URLs
+  :match-number 3
+  :visible-match-number 1
+  :regex-any skroad--md-url-regexp
+  :on-activate #'browse-url
+  :keymap (define-keymap "t" #'skroad--cmd-md-url-comment)
+  :finder-filter #'skroad--in-node-body-p
+  :use 'skroad--text-mixin-link-navigable
+  :use 'skroad--text-mixin-findable
+  :use 'skroad--text-mixin-rendered-zoned
+  )
 
 ;; Atomic Comments. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
