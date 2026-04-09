@@ -738,6 +738,9 @@ call the action with ARGS."
        (add-text-properties start end props)
        (add-face-text-property start end add-face)
        (when (numberp visible-match-number)
+         (put-text-property
+          start end 'name ;; For renamer
+          (match-string-no-properties visible-match-number))
          (put-text-property start end 'invisible t)
          (remove-text-properties
           (match-beginning visible-match-number)
@@ -1336,7 +1339,7 @@ Return the new position if the jump actually happened; otherwise nil."
   "Return t when the renamer is active."
   (skroad--overlay-active-p skroad--buf-renamer))
 
-;; Activate the renamer in the current zone, unless already active.
+;; Try to activate the renamer in the current zone.
 (defun skroad--cmd-renamer-activate-here ()
   "Rename"
   (interactive)
@@ -1344,9 +1347,10 @@ Return the new position if the jump actually happened; otherwise nil."
     (let ((renamer-type (skroad--prop-at 'renamer-overlay-type)))
       (when renamer-type
         (skroad--with-current-zone
-          (let ((current-title (skroad--prop-at 'data start)))
-            (if (skroad--node-special-p current-title)
-                (skroad--info "Special nodes cannot be renamed!")
+          (let ((current-name
+                 (or (skroad--prop-at 'name start)
+                     (skroad--prop-at 'data start))))
+            (when (funcall (get renamer-type 'permit-rename) current-name)
               (setq buffer-read-only nil)
               (skroad--suspend-font-lock)
               (skroad--deactivate-mark)
@@ -1354,7 +1358,7 @@ Return the new position if the jump actually happened; otherwise nil."
               (setq-local
                skroad--buf-indices-scan-enable nil
                cursor-type t
-               skroad--buf-renamer-original current-title)
+               skroad--buf-renamer-original current-name)
               (skroad--hide-text start end)
               (goto-char end)
               (insert (concat " " skroad--buf-renamer-original " "))
@@ -1379,33 +1383,25 @@ Return the new position if the jump actually happened; otherwise nil."
                 skroad--buf-renamer-original nil)
     (skroad--set-writability)))
 
-(defun skroad--renamer-text ()
+(defun skroad--get-renamer-text ()
   "Get the proposed text in the current renamer."
   (skroad--clean-whitespace
    (field-string-no-properties (overlay-start skroad--buf-renamer))))
 
+(defun skroad--get-renamer-attrib (attrib)
+  "Obtain the value of attribute ATTRIB of the current renamer."
+  (overlay-get skroad--buf-renamer attrib))
+
 (defun skroad--renamer-get-default-face ()
   "Get the default face of the current renamer."
-  (get (overlay-get skroad--buf-renamer 'category) 'face))
+  (get (skroad--get-renamer-attrib 'category) 'face))
 
 (defun skroad--renamer-validate ()
   "If a renamer is active, validate the proposed text.  Return t when valid."
   (when (skroad--renamer-active-p)
-    (let* ((proposed (skroad--renamer-text))
-           (valid
-            (cond ((not (skroad--validate-title proposed))
-                   (skroad--info "Proposed node name is invalid!")
-                   nil)
-                  ((string-equal proposed skroad--buf-renamer-original)
-                   (skroad--info "No change proposed")
-                   t)
-                  ((skroad--cache-peek proposed)
-                   (skroad--info "A node named '%s' already exists!" proposed)
-                   nil)
-                  (t
-                   (skroad--info
-                    "Press <return> to rename, or leave field to cancel.")
-                   t))))
+    (let ((valid
+           (funcall (skroad--get-renamer-attrib 'validate-rename)
+                    skroad--buf-renamer-original (skroad--get-renamer-text))))
       (overlay-put
        skroad--buf-renamer 'face
        (if valid
@@ -1418,11 +1414,12 @@ Return the new position if the jump actually happened; otherwise nil."
   "Accept the proposed renaming, if the renamer is currently active and valid."
   (interactive)
   (when (skroad--renamer-validate)
-    (let ((old-title skroad--buf-renamer-original)
-          (new-title (skroad--renamer-text)))
+    (let ((old skroad--buf-renamer-original)
+          (new (skroad--get-renamer-text))
+          (do-rename (skroad--get-renamer-attrib 'do-rename)))
       (skroad--renamer-deactivate)
-      (unless (string-equal old-title new-title)
-        (skroad--rename-node old-title new-title)))))
+      (unless (string-equal old new)
+        (funcall do-rename old new)))))
 
 (skroad--deftype skroad--text-mixin-renamer-overlay
   :doc "Base mixin for renamer overlays."
@@ -1449,6 +1446,63 @@ Return the new position if the jump actually happened; otherwise nil."
   :mixin t
   :require 'renamer-overlay-type
   :keymap (define-keymap "r" #'skroad--cmd-renamer-activate-here))
+
+(defun skroad--node-renamer-permit (current)
+  "Determine whether a node titled CURRENT is renameable."
+  (cond ((skroad--node-special-p current)
+         (skroad--info "Special nodes cannot be renamed!")
+         nil)
+        (t t)))
+
+(defun skroad--node-renamer-validate (current proposed)
+  "Determine whether a node titled CURRENT may be renamed to PROPOSED."
+  (cond ((not (skroad--validate-title proposed))
+         (skroad--info "Proposed node name is invalid!")
+         nil)
+        ((string-equal proposed current)
+         (skroad--info "No change proposed")
+         t)
+        ((skroad--cache-peek proposed)
+         (skroad--info "A node named '%s' already exists!" proposed)
+         nil)
+        (t
+         (skroad--info
+          "Press <return> to rename, or leave field to cancel.")
+         t)))
+
+(defun skroad--node-renamer-do-rename (current proposed)
+  "Rename the node titled CURRENT to PROPOSED."
+  (skroad--rename-node current proposed))
+
+(skroad--deftype skroad--text-mixin-node-renamer
+  :doc "Mixin for the use of the rename command to rename nodes."
+  :mixin t
+  :permit-rename #'skroad--node-renamer-permit
+  :validate-rename #'skroad--node-renamer-validate
+  :do-rename #'skroad--node-renamer-do-rename)
+
+(skroad--deftype skroad--text-node-renamer-direct
+  :doc "Renamer for editing a node's title directly."
+  :use 'skroad--text-mixin-renamer-overlay
+  :use 'skroad--text-mixin-node-renamer
+  :face 'skroad--direct-renamer-face
+  :before-string "" :after-string " \n")
+
+(skroad--deftype skroad--text-node-renamer-indirect
+  :doc "Renamer for editing a node's title while standing on a link to the node."
+  :use 'skroad--text-mixin-renamer-overlay
+  :use 'skroad--text-mixin-node-renamer
+  :face 'skroad--indirect-renamer-face
+  :before-string " " :after-string " ")
+
+(skroad--deftype skroad--text-md-url-renamer
+  :doc "Renamer for recaptioning a Markdown-style URL link."
+  :use 'skroad--text-mixin-renamer-overlay
+  :permit-rename '(lambda (current) t)
+  :validate-rename '(lambda (old new) t)
+  :do-rename '(lambda (old new) (message "MD rename: %s -> %s" old new))
+  :face 'skroad--indirect-renamer-face
+  :before-string " " :after-string " ")
 
 ;; Link types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1607,12 +1661,6 @@ If NODE does not exist, this is a no-op."
   "ORIGIN is NOT an orphan (i.e. it has live links)."
   (skroad--node-set-orphan origin nil))
 
-(skroad--deftype skroad--text-renamer-indirect
-  :doc "Renamer for editing a node's title while standing on a link to the node."
-  :use 'skroad--text-mixin-renamer-overlay
-  :face 'skroad--indirect-renamer-face
-  :before-string " " :after-string " ")
-
 ;; Yank (with optional ARGS) into a node when standing on a live link to it.
 (defun skroad--cmd-teleyank-at (&rest args)
   "Teleyank"
@@ -1655,7 +1703,7 @@ If NODE does not exist, this is a no-op."
             "y" #'skroad--cmd-teleyank-at ;; Official teleyank trigger
             "<remap> <yank>" #'skroad--cmd-teleyank-at ;; Regular yank also
             )
-  :renamer-overlay-type 'skroad--text-renamer-indirect
+  :renamer-overlay-type 'skroad--text-node-renamer-indirect
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-atomic-delimited
@@ -1844,8 +1892,10 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   :on-activate #'browse-url
   :keymap (define-keymap "t" #'skroad--cmd-md-url-comment)
   :finder-filter #'skroad--in-node-body-p
+  :renamer-overlay-type 'skroad--text-md-url-renamer
   :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-findable
+  :use 'skroad--text-mixin-renameable
   :use 'skroad--text-mixin-rendered-zoned
   )
 
@@ -2049,12 +2099,6 @@ If the tail did not previously exist in the current node, it is emplaced."
       (skroad--link-insert-live node)
       (copy-region-as-kill (point-min) (point-max)))))
 
-(skroad--deftype skroad--text-renamer-direct
-  :doc "Renamer for editing a node's title directly."
-  :use 'skroad--text-mixin-renamer-overlay
-  :face 'skroad--direct-renamer-face
-  :before-string "" :after-string " \n")
-
 (skroad--deftype skroad--text-node-title
   :doc "Node title."
   :use 'skroad--text-atomic
@@ -2071,7 +2115,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   :face 'skroad--title-face
   :inhibit-isearch t ;; Don't interactive-search in the title
   :read-only "Title must be changed via rename command!"
-  :renamer-overlay-type 'skroad--text-renamer-direct
+  :renamer-overlay-type 'skroad--text-node-renamer-direct
   :use 'skroad--text-mixin-renameable
   :match-number 0
   :regex-any (rx (seq string-start (* not-newline) "\n"))
@@ -2236,7 +2280,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
   (skroad--goto-node-body-start)
   (skip-syntax-forward " ")
-
+  
   ;; tail block test
   (save-mark-and-excursion
     (skroad--tail-jump-before)
