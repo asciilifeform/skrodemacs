@@ -18,12 +18,9 @@
 (defconst skroad--file-extension "skroad"
   "File extension denoting a skroad node.")
 
-(defconst skroad--node-title-regex
-  (rx (seq (* blank)
-           (+ (not (any "[]" blank ?\n)))
-           (*? (not (any "[]\n")))
-           (* blank)))
-  "Regex for valid node titles.")
+(defconst skroad--in-brackets-regexp
+  (rx (* blank) (+ (not (any "[]" blank ?\n))) (*? (not (any "[]\n"))))
+  "Regexp matching text that could be delimited by square brackets.")
 
 ;;; Fonts. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1541,7 +1538,7 @@ Return the new position if the jump actually happened; otherwise nil."
   :doc "Fundamental type for skroad node links (live or dead)."
   :use 'skroad--text-atomic
   :mouse-face 'skroad--highlight-link-face
-  :payload-regex skroad--node-title-regex
+  :payload-regex skroad--in-brackets-regexp
   :index-filter ;; Do not index self-links or links to special nodes
   #'(lambda (node)
       (not (or (skroad--node-self-p node)
@@ -1794,8 +1791,8 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
       (search-forward "//" end)
       (insert " "))))
 
-(skroad--deftype skroad-text-url-link
-  :doc "URL."
+(skroad--deftype skroad-text-bare-url-link
+  :doc "Bare URL."
   :use 'skroad--text-atomic
   :help-echo "External link."
   :face 'skroad--url-link-face
@@ -1809,6 +1806,19 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   :use 'skroad--text-mixin-rendered-zoned
   :use 'skroad--text-mixin-indexed ;; TODO: do we need this?
   )
+
+(defconst skroad--md-url-regexp
+  (rx (seq
+       ?\[ (group (regexp skroad--in-brackets-regexp)) ?\]
+       ?\( (group (regexp skroad--url-regexp))) ?\))
+  "Regexp matching Markdown-style URLs.")
+
+;; (with-temp-buffer
+;;   (insert "[foo](help://help-type:special-form)")
+;;   (goto-char (point-min))
+;;   (when (re-search-forward skroad--md-url-regexp nil t)
+;;     (list (match-string 1) (match-string 2)))
+;;   )
 
 ;; Atomic Comments. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
