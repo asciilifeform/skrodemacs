@@ -208,7 +208,7 @@
   (skroad--delete-line-if-empty))
 
 (defun skroad--prop-at (prop &optional pos)
-  "Determine value of PROP, if any, including overlays, at POS (or point.)"
+  "Determine value of PROP, if any, including overlays, at POS (or point)."
   (get-char-property (or pos (point)) prop))
 
 (defun skroad--overlay-active-p (overlay)
@@ -685,7 +685,7 @@ call the action with ARGS."
   "Suspend font lock rendering in a skroad buffer, but don't depropertize text."
   (setq-local
    skroad--font-lock-unfontify-region font-lock-unfontify-region-function
-   font-lock-unfontify-region-function #'(lambda (&rest args) ())
+   font-lock-unfontify-region-function #'(lambda (&rest _args) ())
    font-lock-defaults '(nil t))
   (font-lock-refresh-defaults))
 
@@ -939,7 +939,7 @@ or the node's indices, if it has been indexed; or `empty' (indices are null).")
 
 (defun skroad--cache-foreach (fn)
   "Evaluate (for side effects) FN applied to each node currently in the cache."
-  (maphash #'(lambda (key val) (funcall fn key)) (skroad--cache)))
+  (maphash #'(lambda (key _val) (funcall fn key)) (skroad--cache)))
 
 (defun skroad--node-must-exist (node)
   "Signal an error if NODE does not exist."
@@ -1103,7 +1103,7 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
   "Triggers prior to a change in the buffer in region START...END."
   (skroad--index-scan-region start end -1))
 
-(defun skroad--after-change-function (start end length)
+(defun skroad--after-change-function (start end _length)
   "Triggers following a change in the buffer in region START...END."
   (skroad--index-scan-region start end 1))
 
@@ -1126,7 +1126,7 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
   "Apply FN to all payloads of TEXT-TYPE in the current node's indices."
   (let ((index (alist-get text-type (skroad--buf-indices))))
     (when index
-      (maphash #'(lambda (key val) (apply fn (cons key other-args))) index))))
+      (maphash #'(lambda (key _val) (apply fn (cons key other-args))) index))))
 
 ;; Top-level keymap for the major mode. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1591,7 +1591,7 @@ Return the new position if the jump actually happened; otherwise nil."
         (insert text)))))
 
 ;; TODO: preview linked node, or "Stub node" if stub
-(defun skroad--link-mouseover (window buf position)
+(defun skroad--link-mouseover (_window buf position)
   "User is mousing over a link in WINDOW, BUF, at POSITION."
   (with-current-buffer buf
     (skroad--prop-at 'data position)))
@@ -1669,12 +1669,12 @@ If NODE does not exist, this is a no-op."
   (interactive)
   (skroad--yank-into (skroad--prop-at 'data) args))
 
-(defun skroad--cmd-unlink-at (&rest args)
+(defun skroad--cmd-unlink-at (&rest _args)
   "Unlink"
   (interactive)
   (skroad--link-unlink (skroad--prop-at 'data)))
 
-(defun skroad--cmd-merge-at (&rest args)
+(defun skroad--cmd-merge-at (&rest _args)
   "Merge"
   (interactive)
   (skroad--merge-node-into-current (skroad--prop-at 'data)))
@@ -1744,7 +1744,7 @@ If NODE does not exist, this is a no-op."
 ;;   (interactive)
 ;;   (goto-char (point)))
 
-(defun skroad--cmd-liven-at (&rest args)
+(defun skroad--cmd-liven-at (&rest _args)
   "Liven"
   (interactive)
   (skroad--link-revive (skroad--prop-at 'data)))
@@ -2255,7 +2255,7 @@ If the tail did not previously exist in the current node, it is emplaced."
         (setq pos nxt)))
     (apply #'concat (nreverse out))))
 
-(defun skroad--emacs-help-url-handler (url &rest args)
+(defun skroad--emacs-help-url-handler (url &rest _args)
   "URL handler for Emacs help links."
   (with-temp-buffer (help-mode))
   (let* ((payload (when (string-match "://" url)
