@@ -1806,6 +1806,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   :use 'skroad--text-atomic
   :help-echo "External link."
   :face 'skroad--url-link-face
+  :mouse-face 'skroad--highlight-link-face
   :match-number 0
   :regex-any skroad--url-regexp
   :on-activate #'browse-url
@@ -1845,6 +1846,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   :use 'skroad--text-atomic
   :help-echo "External link."
   :face 'skroad--url-link-face
+  :mouse-face 'skroad--highlight-link-face
   :order 200 ;; Render after bare URLs
   :match-number 3
   :visible-match-number 1
