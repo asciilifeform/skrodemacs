@@ -2218,10 +2218,10 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
        (buffer-substring (point) (line-end-position))
        (progn (vertical-motion 1) (point))))))
 
-(defun skroad--clear-stale-header (window)
-  "If the current buffer is not in Skroad mode, disable the header in WINDOW."
+(defun skroad--vacate-window (window)
+  "If the current buffer is in a different mode, disable the header in WINDOW."
   (unless (skroad--mode-p)
-    (run-with-timer ;; Do this so that it fires after redraw is complete
+    (run-with-timer ;; Fires after redraw is complete
      0 nil
      #'(lambda ()
          (when (window-parameter window 'header-line-format)
@@ -2240,7 +2240,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
              (let ((header-updater
                     `(:eval
                       (or (skroad--header-text-for-current-window)
-                          (skroad--clear-stale-header ,window)))))
+                          (skroad--vacate-window ,window)))))
                (set-window-parameter nil 'skroad--header-eval header-updater)
                header-updater)))))))
 
