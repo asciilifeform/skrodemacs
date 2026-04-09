@@ -1820,7 +1820,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
 (defconst skroad--md-url-regexp
   (rx (seq ?\[
            (group (regexp skroad--in-brackets-regexp))
-           (group ?\] ?\()
+           ?\] ?\(
            (group (regexp skroad--url-regexp))
            ?\) ))
   "Regexp matching Markdown-style URLs.")
@@ -1838,7 +1838,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   :face 'skroad--url-link-face
   :mouse-face 'skroad--highlight-link-face
   :order 200 ;; Render after bare URLs
-  :match-number 3
+  :match-number 2
   :visible-match-number 1
   :regex-any skroad--md-url-regexp
   :on-activate #'browse-url
