@@ -1264,6 +1264,12 @@ Return the new position if the jump actually happened; otherwise nil."
   (interactive)
   (skroad--link-jump-from (skroad--zone-end) nil t))
 
+(defun skroad--show-key-help ()
+  "Display the keymap help of the current point."
+  (unless (listp last-input-event) ;; Don't trigger during mouse scrolling
+    (let ((km (skroad--prop-at 'keymap))) ;; Display keymap help
+      (skroad--info (skroad--make-keymap-help km)))))
+
 ;; TODO: require zone?
 ;; TODO: allow mouse click point motion by default
 ;; TODO: process enter/leave between buffers?
@@ -1273,8 +1279,7 @@ Return the new position if the jump actually happened; otherwise nil."
   :on-enter '(lambda (pos-from auto)
                (skroad--selector-activate-here)
                (goto-char (skroad--zone-start)) ;; point can only sit on start
-               (let ((km (skroad--prop-at 'keymap))) ;; Display keymap help
-                 (skroad--info (skroad--make-keymap-help km))))
+               (skroad--show-key-help)) ;; Show keymap help
   :on-leave '(lambda (pos-from auto)
                (skroad--selector-deactivate)
                (skroad--info)) ;; Clear the echo bar
@@ -2210,12 +2215,14 @@ If the tail did not previously exist in the current node, it is emplaced."
 ;; TODO: make on-leave fire when leaving a buffer, and on-enter when entering
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
+  ;; (message "pre-event: %S" last-input-event)
   (setq-local mouse-highlight nil
               skroad--buf-pre-command-point-state (skroad--get-point-state)))
 
 ;; TODO: some of these should be done only if buffer modified?
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
+  ;; (message "post-event: %S" last-input-event)
   (skroad--refontify-current-line)
   (skroad--motion skroad--buf-pre-command-point-state)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
@@ -2674,7 +2681,7 @@ Warning: undo info is lost in all affected buffers!"
   (setq-local kill-transform-function #'substring-no-properties)
   
   ;; Don't allow the point to move when a node is scrolled via the mouse:
-  (setq-local scroll-preserve-screen-position t)
+  ;; (setq-local scroll-preserve-screen-position t)
   
   ;; Install handler for Emacs help URLs:
   (setq-local browse-url-handlers
