@@ -1349,6 +1349,10 @@ Return the new position if the jump actually happened; otherwise nil."
   "Return t when the renamer is active."
   (skroad--overlay-active-p skroad--buf-renamer))
 
+(defun skroad--fn-or-t (fn &rest args)
+  "Call FN on ARGS when it is a function; if it isn't, return t."
+  (if (functionp fn) (apply fn args) t))
+
 ;; Try to activate the renamer in the current zone.
 (defun skroad--cmd-renamer-activate-here ()
   "Rename"
@@ -1358,9 +1362,9 @@ Return the new position if the jump actually happened; otherwise nil."
       (when renamer-type
         (skroad--with-current-zone
           (let ((current-name
-                 (or (skroad--prop-at 'name start)
-                     (skroad--prop-at 'data start))))
-            (when (funcall (get renamer-type 'permit-rename) current-name)
+                 (funcall (get renamer-type 'name-rename) start)))
+            (when (skroad--fn-or-t
+                   (get renamer-type 'permit-rename) current-name)
               (setq buffer-read-only nil)
               (skroad--suspend-font-lock)
               (skroad--deactivate-mark)
@@ -1398,20 +1402,17 @@ Return the new position if the jump actually happened; otherwise nil."
   (skroad--clean-whitespace
    (field-string-no-properties (overlay-start skroad--buf-renamer))))
 
-(defun skroad--get-renamer-attrib (attrib)
-  "Obtain the value of attribute ATTRIB of the current renamer."
-  (overlay-get skroad--buf-renamer attrib))
-
 (defun skroad--renamer-get-default-face ()
   "Get the default face of the current renamer."
-  (get (skroad--get-renamer-attrib 'category) 'face))
+  (get (overlay-get skroad--buf-renamer 'category) 'face))
 
 (defun skroad--renamer-validate ()
   "If a renamer is active, validate the proposed text.  Return t when valid."
   (when (skroad--renamer-active-p)
     (let ((valid
-           (funcall (skroad--get-renamer-attrib 'validate-rename)
-                    skroad--buf-renamer-original (skroad--get-renamer-text))))
+           (skroad--fn-or-t
+            (overlay-get skroad--buf-renamer 'validate-rename)
+            skroad--buf-renamer-original (skroad--get-renamer-text))))
       (overlay-put
        skroad--buf-renamer 'face
        (if valid
@@ -1426,7 +1427,7 @@ Return the new position if the jump actually happened; otherwise nil."
   (when (skroad--renamer-validate)
     (let ((old skroad--buf-renamer-original)
           (new (skroad--get-renamer-text))
-          (do-rename (skroad--get-renamer-attrib 'do-rename)))
+          (do-rename (overlay-get skroad--buf-renamer 'do-rename)))
       (skroad--renamer-deactivate)
       (unless (string-equal old new)
         (funcall do-rename old new)))))
@@ -1514,13 +1515,22 @@ Return the new position if the jump actually happened; otherwise nil."
   "Obtain the current name of the renameable item at POS."
   (skroad--prop-at 'name pos))
 
+;; TODO: escape [] in caption
+(defun skroad--md-url-rename (_old new)
+  "Recaption the Markdown-style URL at point from OLD to NEW."
+  (skroad--with-current-zone
+    (let ((url (skroad--prop-at 'data start)))
+      (delete-region start end)
+      (insert (skroad--make-md-url url new))
+      (goto-char start))))
+
 (skroad--deftype skroad--text-md-url-renamer
   :doc "Renamer for recaptioning a Markdown-style URL link."
   :use 'skroad--text-mixin-renamer-overlay
   :permit-rename '(lambda (current) t)
   :name-rename #'skroad--md-url-renamer-name
   :validate-rename '(lambda (old new) t)
-  :do-rename '(lambda (old new) (message "MD rename: %s -> %s" old new))
+  :do-rename #'skroad--md-url-rename
   :face 'skroad--indirect-renamer-face
   :before-string " " :after-string " ")
 
@@ -1957,6 +1967,12 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   :use 'skroad--text-mixin-rendered-zoned
   )
 
+(defun skroad--make-md-url (url caption)
+  "Return a Markdown-style URL with CAPTION."
+  (format "[%s](%s)" ;; TODO: escape [] in caption?
+          caption
+          (browse-url-encode-url url)))
+
 ;; Atomic Comments. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (skroad--deftype skroad--text-atomic-comment
@@ -2306,9 +2322,8 @@ If the tail did not previously exist in the current node, it is emplaced."
           (let ((beg pos))
             (while (and (< nxt len) (equal url (skroad--str-url-at nxt str)))
               (setq nxt (or (next-property-change nxt str) len)))
-            (push (format "[%s](%s)" ;; TODO: escape [] in caption?
-                          (string-trim (substring-no-properties str beg nxt))
-                          (browse-url-encode-url url))
+            (push (skroad--make-md-url
+                   url (string-trim (substring-no-properties str beg nxt)))
                   out)))
         (setq pos nxt)))
     (apply #'concat (nreverse out))))
