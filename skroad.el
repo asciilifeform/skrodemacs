@@ -33,16 +33,6 @@
   "Default face used for skrode text types."
   :group 'skroad-faces)
 
-(defface skroad--bold-face
-  '((t :inherit skroad--text-face :weight bold))
-  "Bold face."  
-  :group 'skroad-faces)
-
-(defface skroad--italic-face
-  '((t :inherit skroad--text-face :slant italic))
-  "Italic face."
-  :group 'skroad-faces)
-
 (defface skroad--selector-face
   '((t :inherit highlight :extend t))
   "Face for use with atomic selections."
@@ -883,13 +873,13 @@ call the action with ARGS."
 
 (skroad--deftype skroad--text-decorative-italic
   :doc "Italicized text."
-  :face 'skroad--italic-face
+  :face 'italic
   :begins "__" :ends "__"
   :use 'skroad--text-mixin-render-delimited-decorative)
 
 (skroad--deftype skroad--text-decorative-bold
   :doc "Bold text."
-  :face 'skroad--bold-face
+  :face 'bold
   :begins "**" :ends "**"
   :use 'skroad--text-mixin-render-delimited-decorative)
 
