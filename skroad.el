@@ -2629,18 +2629,23 @@ Warning: undo info is lost in all affected buffers!"
   "Perform a full rescan of all known nodes."
   (message "Lint started...")
   (skroad--complete-all-deferred) ;; Ensure no ops are pending
-  (skroad--delete-node skroad--special-node-orphans t) ;; We'll regen it
-  (skroad--delete-node skroad--special-node-stubs t) ;; We'll regen it
+  (dolist (node ;; Hollow out (don't delete) the nodes we regenerate :
+           (list skroad--special-node-orphans skroad--special-node-stubs))
+    (skroad--with-node node t
+      (skroad--rectify-node-title)
+      (skroad--goto-node-body-start)
+      (delete-region (point) (point-max))))
   (skroad--cache-foreach ;; Dispatch for each known non-special node:
    #'(lambda (node)
-       (skroad--defer
-        (let ((skroad--lint-in-progress t))
-          (message "Linting node: %s" node)
-          (skroad--cache-invalidate node)
-          (skroad--with-node node t
-            (skroad--rectify-node-title)
-            (skroad--update-stub-status)
-            )))))
+       (unless (skroad--node-special-p node)
+         (skroad--defer
+          (let ((skroad--lint-in-progress t))
+            (message "Linting node: %s" node)
+            (skroad--cache-invalidate node)
+            (skroad--with-node node t
+              (skroad--rectify-node-title)
+              (skroad--update-stub-status)
+              ))))))
   (skroad--defer (message "Lint completed.")))
 
 (defvar skroad--global-init-done nil
@@ -2667,7 +2672,10 @@ Warning: undo info is lost in all affected buffers!"
   
   ;; Prevent text properties from infesting the kill ring (emacs 28+) :
   (setq-local kill-transform-function #'substring-no-properties)
-
+  
+  ;; Don't allow the point to move when a node is scrolled via the mouse:
+  (setq-local scroll-preserve-screen-position t)
+  
   ;; Install handler for Emacs help URLs:
   (setq-local browse-url-handlers
               '(("\\`help:" . skroad--emacs-help-url-handler)))
