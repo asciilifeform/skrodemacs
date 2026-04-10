@@ -2488,9 +2488,10 @@ If NODE is open in a buffer, prompt to ask permission (unless FORCE is t)."
                             skroad--lint-in-progress ;; If linting, ditto;
                             (y-or-n-p ;; ... otherwise, user may veto deletion.
                              (format "Permanently delete node '%s' ?" node)))
-                    (kill-all-local-variables)
-                    (restore-buffer-modified-p nil)
-                    (kill-buffer))))
+                    (let ((inhibit-read-only t))
+                      (kill-all-local-variables)
+                      (restore-buffer-modified-p nil)
+                      (kill-buffer)))))
         (skroad--node-set-orphan node nil) ;; Banish from orphans
         (skroad--node-set-stub node nil) ;; Banish from stubs
         (skroad--cache-evict node) ;; Banish from cache
@@ -2604,8 +2605,6 @@ Warning: undo info is lost in all affected buffers!"
             )))))
   (skroad--defer (message "Lint completed.")))
 
-;; (skroad--lint)
-
 (defvar skroad--global-init-done nil
   "Set to t when the Skroad mode global init was completed in this session.")
 
@@ -2620,7 +2619,7 @@ Warning: undo info is lost in all affected buffers!"
     (skroad--silence-modifications 'set-text-properties)
     (skroad--silence-modifications 'add-face-text-property)
     ;; Perform a lint on boot:
-    (skroad--lint)
+    (run-with-timer 0 nil #'skroad--lint)
     (setq skroad--global-init-done t)))
 
 ;; TODO: proper mode exit cleanup
