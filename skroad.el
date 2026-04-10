@@ -124,7 +124,10 @@
 (defun skroad--info (&rest args)
   "Message with ARGS in the echo bar without polluting the message buffer."
   (let ((message-log-max nil))
-    (apply #'message (or args '(nil)))))
+    (if (car args)
+        (apply #'message args)
+      (when (current-message)
+        (message nil)))))
 
 (defmacro measure-time (&rest body)
   "Measure the time it takes to evaluate BODY."
