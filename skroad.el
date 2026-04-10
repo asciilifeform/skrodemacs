@@ -2619,7 +2619,7 @@ Warning: undo info is lost in all affected buffers!"
     (skroad--silence-modifications 'set-text-properties)
     (skroad--silence-modifications 'add-face-text-property)
     ;; Perform a lint on boot:
-    (run-with-timer 0 nil #'skroad--lint)
+    (run-with-idle-timer 0 nil #'skroad--lint)
     (setq skroad--global-init-done t)))
 
 ;; TODO: proper mode exit cleanup
