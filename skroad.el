@@ -1508,11 +1508,27 @@ Return the new position if the jump actually happened; otherwise nil."
 
 ;; Link types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--do-link-action (pos)
-  "Run action of link at POS, if one was defined, and no region is active."
+(defconst skroad--disp-mode-force-this-window
+  '((display-buffer-same-window))
+  "Open new buffers in this window, even if visible in others.")
+
+(defconst skroad--disp-mode-this-window-or-existing
+  '((display-buffer-reuse-window display-buffer-same-window))
+  "Open new buffers in this window, unless already visible in another.")
+
+(defconst skroad--disp-mode-force-new-window
+  '((display-buffer-pop-up-window))
+  "Open new buffers in a new window.")
+
+(defun skroad--do-link-action (pos &optional display-mode)
+  "Run action of link at POS, if one was defined, and no region is active.
+DISPLAY-MODE controls what happens when this results in opening a buffer."
   (unless (use-region-p)
-    (skroad--type-action
-     (skroad--prop-at 'category pos) 'on-activate (skroad--prop-at 'data pos))))
+    (let ((display-buffer-overriding-action
+           (or display-mode skroad--disp-mode-this-window-or-existing)))
+      (skroad--type-action
+       (skroad--prop-at 'category pos)
+       'on-activate (skroad--prop-at 'data pos)))))
 
 (defun skroad--mouse-warp ()
   "Warp mouse to the middle of the current zone, if possible; else, to point."
@@ -1531,8 +1547,9 @@ Return the new position if the jump actually happened; otherwise nil."
                    (/ (line-pixel-height) 2))))
         (set-mouse-pixel-position (selected-frame) x y)))))
 
-(defun skroad--cmd-link-left-click (click)
-  "Perform the action attribute of the link that got the CLICK."
+(defun skroad--cmd-link-mouse-activate (click &optional display-mode)
+  "Perform the action attribute of the link that got the CLICK.
+DISPLAY-MODE is passed to `skroad--do-link-action'."
   (interactive "e")
   (let* ((posn (event-start click))
          (click-pos (posn-point posn))
@@ -1544,8 +1561,13 @@ Return the new position if the jump actually happened; otherwise nil."
       (select-window window))
     (goto-char (skroad--zone-start click-pos))
     (skroad--save-cache-point)
-    (skroad--do-link-action click-pos) ;; After this, we're in the target:
+    (skroad--do-link-action click-pos display-mode)
     (skroad--mouse-warp)))
+
+(defun skroad--cmd-link-mouse-activate-new-win (click)
+  "Activate a link via the mouse, opening any buffers in a new window."
+  (interactive "e")
+  (skroad--cmd-link-mouse-activate click skroad--disp-mode-force-new-window))
 
 ;; Transform the item under the point to plain text by removing delimiters.
 (defun skroad--cmd-atomic-delimited-textify ()
@@ -1572,12 +1594,19 @@ Return the new position if the jump actually happened; otherwise nil."
   (interactive)
   (skroad--do-link-action (point)))
 
+(defun skroad--cmd-link-activate-new-win ()
+  "Nav.NewWin."
+  (interactive)
+  (skroad--do-link-action (point) skroad--disp-mode-force-new-window))
+
 (skroad--deftype skroad--text-mixin-link-navigable
   :doc "Mixin denoting a navigable link."
   :mixin t
   :keymap (define-keymap
-            "<mouse-1>" #'skroad--cmd-link-left-click
-            "<return>" #'skroad--cmd-link-activate))
+            "<mouse-1>" #'skroad--cmd-link-mouse-activate
+            "<mouse-2>" #'skroad--cmd-link-mouse-activate-new-win
+            "<return>" #'skroad--cmd-link-activate
+            "C-<return>" #'skroad--cmd-link-activate-new-win))
 
 ;; Transform the link under the point to plain text by removing delimiters.
 (defun skroad--cmd-link-comment ()
