@@ -1464,6 +1464,10 @@ Return the new position if the jump actually happened; otherwise nil."
          nil)
         (t t)))
 
+(defun skroad--node-renamer-name (pos)
+  "Obtain the current node title at POS."
+  (skroad--prop-at 'data pos))
+
 (defun skroad--node-renamer-validate (current proposed)
   "Determine whether a node titled CURRENT may be renamed to PROPOSED."
   (cond ((not (skroad--validate-title proposed))
@@ -1488,6 +1492,7 @@ Return the new position if the jump actually happened; otherwise nil."
   :doc "Mixin for the use of the rename command to rename nodes."
   :mixin t
   :permit-rename #'skroad--node-renamer-permit
+  :name-rename #'skroad--node-renamer-name
   :validate-rename #'skroad--node-renamer-validate
   :do-rename #'skroad--node-renamer-do-rename)
 
@@ -1505,10 +1510,15 @@ Return the new position if the jump actually happened; otherwise nil."
   :face 'skroad--indirect-renamer-face
   :before-string " " :after-string " ")
 
+(defun skroad--md-url-renamer-name (pos)
+  "Obtain the current name of the renameable item at POS."
+  (skroad--prop-at 'name pos))
+
 (skroad--deftype skroad--text-md-url-renamer
   :doc "Renamer for recaptioning a Markdown-style URL link."
   :use 'skroad--text-mixin-renamer-overlay
   :permit-rename '(lambda (current) t)
+  :name-rename #'skroad--md-url-renamer-name
   :validate-rename '(lambda (old new) t)
   :do-rename '(lambda (old new) (message "MD rename: %s -> %s" old new))
   :face 'skroad--indirect-renamer-face
