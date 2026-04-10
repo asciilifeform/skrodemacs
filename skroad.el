@@ -1606,7 +1606,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
             "<mouse-1>" #'skroad--cmd-link-mouse-activate
             "<mouse-2>" #'skroad--cmd-link-mouse-activate-new-win
             "<return>" #'skroad--cmd-link-activate
-            "C-<return>" #'skroad--cmd-link-activate-new-win))
+            "M-<return>" #'skroad--cmd-link-activate-new-win))
 
 ;; Transform the link under the point to plain text by removing delimiters.
 (defun skroad--cmd-link-comment ()
@@ -1655,7 +1655,8 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
                   (select-frame-set-input-focus node-frame)) ;; ... focus it.
                 (select-window node-win))
             (switch-to-buffer node-buf))) ;; ... else, unbury in current window
-      (find-file node-path)) ;; If node wasn't open, open it, burying the orig
+      ;; If node wasn't open, open it, burying the orig
+      (pop-to-buffer (find-file-noselect node-path)))
     ;; TODO: this should be configurable
     (unless (or (skroad--maybe-restore-cached-point) ;; If no cached point...
                 (skroad--node-special-p orig-node)) ;; ... and not from special
@@ -1861,6 +1862,14 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun skroad--browse-url (url)
+  "Browse URL, respecting `display-buffer-overriding-action'."
+  (let ((buf (save-window-excursion
+               (browse-url url)
+               (current-buffer))))
+    (unless (eq buf (current-buffer))
+      (pop-to-buffer buf))))
+
 (defconst skroad--url-regexp
   (rx (seq (or (seq "http" (? "s")) "file" "ftp" "magnet" "help") "://")
       (+ graph) eow)
@@ -1888,7 +1897,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   :mouse-face 'skroad--highlight-link-face
   :match-number 0
   :regex-any skroad--url-regexp
-  :on-activate #'browse-url
+  :on-activate #'skroad--browse-url
   :keymap (define-keymap "t" #'skroad--cmd-bare-url-comment)
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-link-navigable
@@ -1920,7 +1929,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   :match-number 2
   :visible-match-number 1
   :regex-any skroad--md-url-regexp
-  :on-activate #'browse-url
+  :on-activate #'skroad--browse-url
   :keymap (define-keymap "t" #'skroad--cmd-md-url-comment)
   :finder-filter #'skroad--in-node-body-p
   :renamer-overlay-type 'skroad--text-md-url-renamer
