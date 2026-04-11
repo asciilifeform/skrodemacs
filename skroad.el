@@ -1914,7 +1914,8 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
 (defconst skroad--regexp-url-clean
   (rx-to-string
    `(: (regex ,skroad--regexp-url-common)
-       (+ (not (in " \t\n\r\"<>" ,@skroad--unsafe-url-rx))))))
+       (+ (not (in " \t\n\r\"<>" ,@skroad--unsafe-url-rx)))))
+  "Regexp for sanitized URLs.")
 
 (defun skroad--sanitize-urls (text)
   "Percent-encode unsafe characters in URLs found in TEXT.
