@@ -21,7 +21,11 @@
   "File extension denoting a skroad node.")
 
 (defconst skroad--regexp-text-in-brackets
-  (rx (* blank) (+ (not (any "[]" blank ?\n))) (*? (not (any "[]\n"))))
+  (rx (* blank)
+      (+ (or (: ?\\ not-newline)
+             (not (any "[]" blank ?\n))))
+      (*? (or (: ?\\ not-newline)
+              (not (any "[]\n")))))
   "Regexp matching text that could be delimited by square brackets.")
 
 ;;; Fonts. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1516,13 +1520,12 @@ Return the new position if the jump actually happened; otherwise nil."
   "Obtain the current name of the renameable item at POS."
   (skroad--prop-at 'name pos))
 
-;; TODO: escape [] in caption
 (defun skroad--md-url-rename (_old new)
   "Recaption the Markdown-style URL at point from OLD to NEW."
   (skroad--with-current-zone
     (let ((url (skroad--prop-at 'data start)))
       (delete-region start end)
-      (insert (skroad--make-md-url url new))
+      (insert (skroad--md-make-url url new))
       (goto-char start))))
 
 (skroad--deftype skroad--text-md-url-renamer
@@ -1913,6 +1916,14 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   (rx-to-string `(in ,@skroad--unsafe-url-rx))
   "An enumeration of unsafe URL chars (see `browse-url-url-encode-chars').")
 
+(defun skroad--url-strip-trailing-paren (url)
+  "Remove trailing ) from URL if parens are unbalanced."
+  (if (and (string-suffix-p ")" url)
+           (< (seq-count (lambda (c) (= c ?\()) url)
+              (seq-count (lambda (c) (= c ?\))) url)))
+      (substring url 0 -1)
+    url))
+
 (defun skroad--sanitize-urls (text)
   "Percent-encode unsafe characters in URLs found in TEXT.
 Already-encoded URLs are left untouched to avoid double-encoding."
@@ -1922,7 +1933,10 @@ Already-encoded URLs are left untouched to avoid double-encoding."
      (save-match-data
        (if (string-match-p (rx ?% (= 2 xdigit)) url)
            url
-         (browse-url-url-encode-chars url skroad--unsafe-url-chars))))
+         (let ((trimmed (skroad--url-strip-trailing-paren url)))
+           (concat
+            (browse-url-url-encode-chars trimmed skroad--unsafe-url-chars)
+            (substring url (length trimmed)))))))
    text nil t))
 
 (defun skroad--browse-url (url)
@@ -1971,6 +1985,33 @@ Already-encoded URLs are left untouched to avoid double-encoding."
            ?\) ))
   "Regexp matching Markdown-style URLs.")
 
+(defconst skroad--md-unsafe-caption-chars '("[]"))
+
+(defconst skroad--regexp-md-unsafe-caption-chars
+  (rx-to-string `(in ,@skroad--md-unsafe-caption-chars)))
+
+(defun skroad--md-escape-caption (text)
+  "Backslash-escape characters in TEXT that break link captions."
+  (save-match-data
+    (replace-regexp-in-string
+     skroad--regexp-md-unsafe-caption-chars
+     (lambda (ch) (concat "\\" ch))
+     text nil t)))
+
+(defun skroad--md-unescape-caption (text)
+  "Remove backslash escapes from link caption TEXT."
+  (save-match-data
+    (replace-regexp-in-string
+     (concat "\\\\" skroad--regexp-md-unsafe-caption-chars)
+     (lambda (match) (substring match 1))
+     text nil t)))
+
+(defun skroad--md-make-url (url caption)
+  "Return a Markdown-style URL with CAPTION."
+  (format "[%s](%s)" ;; TODO: escape [] in caption?
+          (skroad--md-escape-caption caption)
+          (browse-url-url-encode-chars url skroad--unsafe-url-chars)))
+
 ;; Turn the MD URL at point into plain text by placing a space after ']'.
 (defun skroad--cmd-md-url-comment ()
   "Textify"
@@ -1996,12 +2037,6 @@ Already-encoded URLs are left untouched to avoid double-encoding."
   :use 'skroad--text-mixin-renameable
   :use 'skroad--text-mixin-rendered-zoned
   )
-
-(defun skroad--make-md-url (url caption)
-  "Return a Markdown-style URL with CAPTION."
-  (format "[%s](%s)" ;; TODO: escape [] in caption?
-          caption
-          (browse-url-encode-url url)))
 
 ;; Atomic Comments. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2355,7 +2390,7 @@ If the tail did not previously exist in the current node, it is emplaced."
           (let ((beg pos))
             (while (and (< nxt len) (equal url (skroad--str-url-at nxt str)))
               (setq nxt (or (next-property-change nxt str) len)))
-            (push (skroad--make-md-url
+            (push (skroad--md-make-url
                    url (string-trim (substring-no-properties str beg nxt)))
                   out)))
         (setq pos nxt)))
