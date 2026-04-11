@@ -20,7 +20,7 @@
 (defconst skroad--file-extension "skroad"
   "File extension denoting a skroad node.")
 
-(defconst skroad--in-brackets-regexp
+(defconst skroad--regexp-text-in-brackets
   (rx (* blank) (+ (not (any "[]" blank ?\n))) (*? (not (any "[]\n"))))
   "Regexp matching text that could be delimited by square brackets.")
 
@@ -721,6 +721,7 @@ call the action with ARGS."
 
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: prevent overlap
 (skroad--deftype skroad--text-mixin-rendered-zoned
   :doc "Mixin for zoned text types rendered by font-lock."
   :mixin t
@@ -1657,7 +1658,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   :doc "Fundamental type for skroad node links (live or dead)."
   :use 'skroad--text-atomic
   :mouse-face 'skroad--highlight-link-face
-  :payload-regex skroad--in-brackets-regexp
+  :payload-regex skroad--regexp-text-in-brackets
   :index-filter ;; Do not index self-links or links to special nodes
   '(lambda (node)
      (not (or (skroad--node-self-p node)
@@ -1890,6 +1891,43 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defconst skroad--regexp-url-common
+  (rx (seq (or (seq "http" (? "s")) "file" "ftp" "magnet" "help") "://"))
+  "Regexp for URL stem.")
+
+(defconst skroad--regexp-url-any
+  (rx (regex skroad--regexp-url-common)
+      (+ (not (in " \t\n\r\"<>"))))
+  "Regexp for raw URLs.")
+
+(defconst skroad--regexp-url-encoded
+  (rx (regex skroad--regexp-url-common)
+      (+ (or (: ?% (= 2 xdigit))
+             (not (in " \t\n\r\"<>")))))
+  "Regexp for URLs that have been sanitized.")
+
+(defconst skroad--unsafe-url-rx '("()" "[]" " " "\\" "`"))
+
+(defconst skroad--unsafe-url-chars
+  (rx-to-string `(in ,@skroad--unsafe-url-rx)))
+
+(defconst skroad--regexp-url-clean
+  (rx-to-string
+   `(: (regex ,skroad--regexp-url-common)
+       (+ (not (in " \t\n\r\"<>" ,@skroad--unsafe-url-rx))))))
+
+(defun skroad--sanitize-urls (text)
+  "Percent-encode unsafe characters in URLs found in TEXT.
+Already-encoded URLs are left untouched to avoid double-encoding."
+  (replace-regexp-in-string
+   skroad--regexp-url-any
+   (lambda (url)
+     (save-match-data
+       (if (string-match-p (rx ?% (= 2 xdigit)) url)
+           url
+         (browse-url-url-encode-chars url skroad--unsafe-url-chars))))
+   text nil t))
+
 (defun skroad--browse-url (url)
   "Browse URL, respecting `display-buffer-overriding-action'."
   (let ((buf (save-window-excursion
@@ -1897,11 +1935,6 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
                (current-buffer))))
     (unless (eq buf (current-buffer))
       (pop-to-buffer buf))))
-
-(defconst skroad--url-regexp
-  (rx (seq (or (seq "http" (? "s")) "file" "ftp" "magnet" "help") "://")
-      (+ graph) eow)
-  "Regexp matching URLs.")
 
 (defun skroad--zone-insert-space-after (string)
   "Insert a space after STRING in the current zone."
@@ -1924,7 +1957,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   :face 'skroad--url-link-face
   :mouse-face 'skroad--highlight-link-face
   :match-number 0
-  :regex-any skroad--url-regexp
+  :regex-any skroad--regexp-url-clean
   :on-activate #'skroad--browse-url
   :keymap (define-keymap "t" #'skroad--cmd-bare-url-comment)
   :finder-filter #'skroad--in-node-body-p
@@ -1935,9 +1968,9 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
 
 (defconst skroad--md-url-regexp
   (rx (seq ?\[
-           (group (regexp skroad--in-brackets-regexp))
+           (group (regexp skroad--regexp-text-in-brackets))
            ?\] ?\(
-           (group (regexp skroad--url-regexp))
+           (group (regexp skroad--regexp-url-encoded))
            ?\) ))
   "Regexp matching Markdown-style URLs.")
 
@@ -2311,6 +2344,7 @@ If the tail did not previously exist in the current node, it is emplaced."
                         raw)))
             (format "help://%s:%s" type val))))))
 
+;; TODO: escape bare URLs when they appear in the yank
 (defun skroad--yank-transformer (str)
   "Recover Eww and Help links in STR; strip all text properties."
   (let ((pos 0) (len (length str)) out)
@@ -2318,7 +2352,9 @@ If the tail did not previously exist in the current node, it is emplaced."
       (let ((url (skroad--str-url-at pos str))
             (nxt (or (next-property-change pos str) len)))
         (if (not url)
-            (push (substring-no-properties str pos nxt) out)
+            (push
+             (skroad--sanitize-urls (substring-no-properties str pos nxt))
+             out)
           (let ((beg pos))
             (while (and (< nxt len) (equal url (skroad--str-url-at nxt str)))
               (setq nxt (or (next-property-change nxt str) len)))
