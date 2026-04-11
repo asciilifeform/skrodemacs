@@ -1892,7 +1892,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defconst skroad--regexp-url-common
-  (rx (seq (or (seq "http" (? "s")) "file" "ftp" "magnet" "help") "://"))
+  (rx (or (seq "http" (? "s")) "file" "ftp" "magnet" "help") "://")
   "Regexp for URL stem.")
 
 (defconst skroad--regexp-url-any
@@ -1900,22 +1900,17 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
       (+ (not (in " \t\n\r\"<>"))))
   "Regexp for raw URLs.")
 
-(defconst skroad--regexp-url-encoded
-  (rx (regex skroad--regexp-url-common)
-      (+ (or (: ?% (= 2 xdigit))
-             (not (in " \t\n\r\"<>")))))
-  "Regexp for URLs that have been sanitized.")
-
 (defconst skroad--unsafe-url-rx '("()" "[]" " " "\\" "`"))
+
+(defconst skroad--regexp-url-encoded
+  (rx-to-string
+   `(: (regex ,skroad--regexp-url-common)
+       (+ (or (: ?% (= 2 xdigit))
+              (not (in " \t\n\r\"<>" ,@skroad--unsafe-url-rx))))))
+  "Regexp for sanitized URLs.")
 
 (defconst skroad--unsafe-url-chars
   (rx-to-string `(in ,@skroad--unsafe-url-rx)))
-
-(defconst skroad--regexp-url-clean
-  (rx-to-string
-   `(: (regex ,skroad--regexp-url-common)
-       (+ (not (in " \t\n\r\"<>" ,@skroad--unsafe-url-rx)))))
-  "Regexp for sanitized URLs.")
 
 (defun skroad--sanitize-urls (text)
   "Percent-encode unsafe characters in URLs found in TEXT.
@@ -1958,7 +1953,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
   :face 'skroad--url-link-face
   :mouse-face 'skroad--highlight-link-face
   :match-number 0
-  :regex-any skroad--regexp-url-clean
+  :regex-any skroad--regexp-url-encoded
   :on-activate #'skroad--browse-url
   :keymap (define-keymap "t" #'skroad--cmd-bare-url-comment)
   :finder-filter #'skroad--in-node-body-p
