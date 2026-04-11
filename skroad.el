@@ -752,10 +752,12 @@ call the action with ARGS."
           start end 'name ;; For renamer
           (match-string-no-properties visible-match-number))
          (put-text-property start end 'invisible t)
-         (remove-text-properties
-          (match-beginning visible-match-number)
-          (match-end visible-match-number)
-          '(invisible)))))
+         (let ((vis-start (match-beginning visible-match-number))
+               (vis-end (match-end visible-match-number)))
+           (remove-text-properties vis-start vis-end '(invisible))
+           (skroad--hide-escape-slashes vis-start vis-end))
+         )
+       ))
   :use 'skroad--text-mixin-regexp-rendered
   :use 'skroad--text-mixin-rendered)
 
@@ -1947,19 +1949,15 @@ Already-encoded URLs are left untouched to avoid double-encoding."
     (unless (eq buf (current-buffer))
       (pop-to-buffer buf))))
 
-(defun skroad--zone-insert-space-after (string)
-  "Insert a space after STRING in the current zone."
-  (skroad--with-current-zone
-    (save-mark-and-excursion
-      (goto-char start)
-      (search-forward string end)
-      (insert " "))))
-
 ;; Turn the URL at point into plain text by placing a space after the prefix.
 (defun skroad--cmd-bare-url-comment ()
   "Textify"
   (interactive)
-  (skroad--zone-insert-space-after "//"))
+  (skroad--with-current-zone
+    (save-mark-and-excursion
+      (goto-char start)
+      (when (search-forward "//" end)
+        (insert " ")))))
 
 (skroad--deftype skroad-text-bare-url-link
   :doc "Bare URL."
@@ -1987,14 +1985,22 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 
 (defconst skroad--md-unsafe-caption-chars '("[]"))
 
-(defconst skroad--regexp-md-unsafe-caption-chars
+(defconst skroad--regexp-brackets
   (rx-to-string `(in ,@skroad--md-unsafe-caption-chars)))
+
+(defconst skroad--regexp-escape-slash
+  (rx-to-string `(: (group ?\\) (in ,@skroad--md-unsafe-caption-chars))))
+
+(defconst skroad--regexp-maybe-escape-slash
+  (rx-to-string `(: (? "\\") (group (in ,@skroad--md-unsafe-caption-chars)))))
+
+;;; Caption escaping
 
 (defun skroad--md-escape-caption (text)
   "Backslash-escape characters in TEXT that break link captions."
   (save-match-data
     (replace-regexp-in-string
-     skroad--regexp-md-unsafe-caption-chars
+     skroad--regexp-brackets
      (lambda (ch) (concat "\\" ch))
      text nil t)))
 
@@ -2002,21 +2008,45 @@ Already-encoded URLs are left untouched to avoid double-encoding."
   "Remove backslash escapes from link caption TEXT."
   (save-match-data
     (replace-regexp-in-string
-     (concat "\\\\" skroad--regexp-md-unsafe-caption-chars)
+     skroad--regexp-escape-slash
      (lambda (match) (substring match 1))
      text nil t)))
 
+(defun skroad--isearch-search-fun ()
+  "Return a search function that treats escape backslashes as optional."
+  (lambda (string &optional bound noerror count)
+    (let* ((re (regexp-quote string))
+           (adjusted (replace-regexp-in-string
+                      skroad--regexp-maybe-escape-slash
+                      (lambda (match)
+                        (concat "\\\\?" (regexp-quote (match-string 1 match))))
+                      re nil t)))
+      (re-search-forward adjusted bound noerror count))))
+
+(defun skroad--hide-escape-slashes (from to)
+  "Hide backslash escapes between FROM and TO."
+  (save-match-data
+    (save-excursion
+      (goto-char from)
+      (while (re-search-forward skroad--regexp-escape-slash to t)
+        (put-text-property (match-beginning 1) (match-end 1)
+                           'invisible t)))))
+
 (defun skroad--md-make-url (url caption)
   "Return a Markdown-style URL with CAPTION."
-  (format "[%s](%s)" ;; TODO: escape [] in caption?
+  (format "[%s](%s)"
           (skroad--md-escape-caption caption)
           (browse-url-url-encode-chars url skroad--unsafe-url-chars)))
 
-;; Turn the MD URL at point into plain text by placing a space after ']'.
+;; Turn the MD URL at point into plain text by breaking it with a space
 (defun skroad--cmd-md-url-comment ()
   "Textify"
   (interactive)
-  (skroad--zone-insert-space-after "]"))
+  (skroad--with-current-zone
+    (save-mark-and-excursion
+      (goto-char end)
+      (when (search-backward "](" start)
+        (replace-match "] (")))))
 
 (skroad--deftype skroad-text-md-url-link
   :doc "Markdown-style URL."
@@ -2776,8 +2806,8 @@ Warning: undo info is lost in all affected buffers!"
   ;; Prevent text properties from infesting the kill ring (emacs 28+) :
   (setq-local kill-transform-function #'substring-no-properties)
   
-  ;; Don't allow the point to move when a node is scrolled via the mouse:
-  ;; (setq-local scroll-preserve-screen-position t)
+  ;; Modified isearch which ignores escaped brackets:
+  (setq-local isearch-search-fun-function #'skroad--isearch-search-fun)
   
   ;; Install handler for Emacs help URLs:
   (setq-local browse-url-handlers
