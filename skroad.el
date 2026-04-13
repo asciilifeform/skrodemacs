@@ -133,6 +133,10 @@
       (when (current-message)
         (message nil)))))
 
+(defun skroad--via (fn &optional arg)
+  "If FN is a function, return FN called on ARG; otherwise return ARG."
+  (if (functionp fn) (funcall fn arg) arg))
+
 (defmacro measure-time (&rest body)
   "Measure the time it takes to evaluate BODY."
   `(let ((time (current-time)))
@@ -576,13 +580,20 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :display-function t
   :rear-nonsticky t
   :finder-filter t
+  :escapable nil
+  :escaper t
+  :unescaper t
   )
 
 (skroad--deftype skroad--text-mixin-findable
   :doc "Mixin for all findable text types. (Internal use only.)"
   :mixin t
-  :require '(regex-any finder-filter)
+  :require '(regex-any finder-filter escaper unescaper)
   :defaults '((visible-match-number nil))
+  :escape
+  '(lambda (text) (skroad--via escaper text))
+  :unescape
+  '(lambda (text) (skroad--via unescaper text))
   :find
   '(lambda (method regex &optional lim)
      (skroad--re-search method regex lim finder-filter))
@@ -597,11 +608,12 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
      (skroad--re-foreach regex-any fn finder-filter start end))
   :get-match
   '(lambda () (match-string-no-properties match-number))
-  :get-payload
-  '(lambda () (skroad--clean-whitespace (funcall get-match)))
-  :swap
-  '(lambda (payload &optional only-payload)
-     (replace-match payload t t nil (and only-payload match-number)))
+  :get-unescaped-payload
+  '(lambda ()
+     (funcall unescape (skroad--clean-whitespace (funcall get-match))))
+  :swap-match
+  '(lambda (new-payload &optional only-payload)
+     (replace-match new-payload t t nil (and only-payload match-number)))
   )
 
 (defvar skroad--text-types-delimited nil "Text types having delimiters.")
@@ -611,23 +623,30 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :mixin t
   :require '(begins ends payload-regex finder-filter)
   :defaults '((match-number 1))
-  :generate '(lambda (payload) (concat begins payload ends))
   :make-regex
   '(lambda (payload)
-     (rx (seq (literal begins) (group (regexp payload)) (literal ends))))
+     (rx (literal begins) (group (regexp payload)) (literal ends)))
   :regex-any '(funcall make-regex payload-regex)
   :use 'skroad--text-mixin-findable
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  :regex-validator '(rx (seq bos (regexp payload-regex) eos))
+  :generate
+  '(lambda (payload)
+     (concat begins (funcall escape payload) ends))
+  :make-escaped-regex
+  '(lambda (payload)
+     (funcall make-regex (rx (literal (funcall escape payload)))))
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  :regex-validator '(rx bos (regexp payload-regex) eos)
   :validate
   '(lambda (string) (string-match-p regex-validator string))
   :search
   '(lambda (payload &optional lim)
-     (funcall find #'re-search-forward (funcall make-regex payload) lim))
+     (funcall find #'re-search-forward
+              (funcall make-escaped-regex payload) lim))
   :walk
   '(lambda (payload fn &optional start end)
      (skroad--re-foreach
-      (funcall make-regex payload) fn finder-filter start end))
+      (funcall make-escaped-regex payload) fn finder-filter start end))
   :zap
   '(lambda (payload &optional start end)
      (funcall walk payload #'skroad--zap-match start end))
@@ -635,7 +654,8 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   '(lambda (payload &optional new-type new-payload start end)
      (let ((new-text (funcall (if new-type (get new-type 'generate) generate)
                               (or new-payload payload))))
-       (funcall walk payload #'(lambda () (funcall swap new-text)) start end)))
+       (funcall walk payload
+                #'(lambda () (funcall swap-match new-text)) start end)))
   :register 'skroad--text-types-delimited
   )
 
@@ -662,7 +682,7 @@ call the action with ARGS."
   :doc "Finalization mixin for all text types rendered by font-lock."
   :mixin t
   :require 'render-next
-  :font-lock-rule '(lambda () (list render-next '(0 nil append)))
+  :font-lock-rule '(lambda () (list render-next))
   :register 'skroad--text-types-rendered)
 
 (defconst skroad--font-lock-properties
@@ -729,12 +749,12 @@ call the action with ARGS."
 (skroad--deftype skroad--text-mixin-rendered-zoned
   :doc "Mixin for zoned text types rendered by font-lock."
   :mixin t
-  :require '(face face-function get-payload)
+  :require '(face face-function get-unescaped-payload)
   :render
   '(lambda ()
      (let* ((start (match-beginning 0))
             (end (match-end 0))
-            (payload (funcall get-payload))
+            (payload (funcall get-unescaped-payload))
             (props
              (list 'category type-name
                    'zone (gensym)
@@ -747,17 +767,19 @@ call the action with ARGS."
            (plist-put props 'mouse-face (list mouse-face)) props)
        (add-text-properties start end props)
        (add-face-text-property start end add-face)
-       (when (numberp visible-match-number)
-         (put-text-property
-          start end 'name ;; For renamer
-          (match-string-no-properties visible-match-number))
-         (put-text-property start end 'invisible t)
-         (let ((vis-start (match-beginning visible-match-number))
-               (vis-end (match-end visible-match-number)))
-           (remove-text-properties vis-start vis-end '(invisible))
-           (skroad--hide-escape-slashes vis-start vis-end))
-         )
-       ))
+       (cond ((numberp visible-match-number)
+              (put-text-property
+               start end 'name ;; For renamer
+               (match-string-no-properties visible-match-number))
+              (put-text-property start end 'invisible t)
+              (let ((vis-start (match-beginning visible-match-number))
+                    (vis-end (match-end visible-match-number)))
+                (remove-text-properties vis-start vis-end '(invisible))
+                (when escapable
+                  (skroad--hide-escape-slashes vis-start vis-end))))
+             ;; No visible match number is set:
+             (t (when escapable
+                  (skroad--hide-escape-slashes start end))))))
   :use 'skroad--text-mixin-regexp-rendered
   :use 'skroad--text-mixin-rendered)
 
@@ -839,21 +861,27 @@ call the action with ARGS."
         (setq depth (1+ depth))))
     depth))
 
+(defun skroad--render-next-text-block (limit)
+  "Find and render the next text block between current point and LIMIT."
+  (while (< (point) limit)
+    (let ((depth (skroad--block-depth-at (point)))
+          (next (min (next-overlay-change (point)) limit)))
+      (when (> depth 0)
+        (with-silent-modifications
+          (let ((start-expanded (skroad--get-start-of-line (point)))
+                (end-expanded
+                 (save-mark-and-excursion
+                   (goto-char next)
+                   (if (bolp) (point) (line-beginning-position 2)))))
+            (add-text-properties start-expanded end-expanded
+                                 (skroad--block-level-props depth)))))
+      (goto-char next)))
+  nil)
+
 (skroad--deftype skroad--text-block
   :doc "Text type for block highlighter rendered by font lock."
   :order 1 ;; Must render before all others to avoid bg clobbering
-  :render-next
-  '(lambda (limit)
-     (while (< (point) limit)
-       (let ((depth (skroad--block-depth-at (point)))
-             (next (min (next-overlay-change (point)) limit)))
-         (when (> depth 0)
-           (with-silent-modifications
-             (skroad--with-whole-lines (point) next
-               (set-text-properties start-expanded end-expanded
-                                    (skroad--block-level-props depth)))))
-         (goto-char next)))
-     nil)
+  :render-next #'skroad--render-next-text-block
   :use 'skroad--text-mixin-rendered)
 
 ;; Decorative text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -861,7 +889,7 @@ call the action with ARGS."
 (skroad--deftype skroad--text-mixin-render-delimited-decorative
   :doc "Mixin for decorative delimited text types rendered by font-lock."
   :mixin t
-  :payload-regex (rx (seq (* blank) (+ print) (* blank)))
+  :payload-regex (rx (* blank) (+ print) (* blank))
   :require 'face
   :render
   '(lambda () (add-face-text-property (match-beginning 0) (match-end 0) face))
@@ -1073,10 +1101,11 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
 
 (defvar-local skroad--buf-indices-scan-enable t "Toggle index scanning.")
 
+;; TODO: unescape payloads?
 (skroad--deftype skroad--text-mixin-indexed
   :doc "Mixin for indexed text types."
   :mixin t
-  :require '(for-all-in-region-forward get-match swap)
+  :require '(for-all-in-region-forward get-match swap-match)
   :defaults '((index-filter nil))
   :scan-region
   '(lambda (start end delta)
@@ -1086,16 +1115,18 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
         for-all-in-region-forward start end
         #'(lambda ()
             (let* ((raw-match (funcall get-match))
-                   (payload (skroad--clean-whitespace raw-match)))
-              ;; If there's an index filter, use it:
+                   (payload (funcall get-unescaped-payload))
+                   (escaped-payload (funcall escape payload))
+                   )
+              ;; If there's an index filter, apply it to the indexed payload:
               (when (or (null index-filter) (funcall index-filter payload))
                 (skroad--index-delta pending-index payload delta))
-              ;; Always rectify the payload, if not already canonical:
+              ;; Always rectify, if not already canonical:
               (when (and (= delta 1) (not undo-in-progress)
-                         (not (string-equal raw-match payload)))
+                         (not (string-equal raw-match escaped-payload)))
                 (let ((skroad--buf-indices-scan-enable nil) ;; Don't recurse
                       (inhibit-read-only t)) ;; Force writability
-                  (funcall swap payload t))))))))
+                  (funcall swap-match escaped-payload t))))))))
   :register 'skroad--text-types-indexed)
 
 (defun skroad--index-scan-region (start end delta)
@@ -1659,11 +1690,22 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   (with-current-buffer buf
     (skroad--prop-at 'data position)))
 
+(defun skroad--link-escaper (payload)
+  "Escape PAYLOAD for links."
+  (skroad--bracket-escape payload))
+
+(defun skroad--link-unescaper (payload)
+  "Unescape PAYLOAD for links."
+  (skroad--bracket-unescape payload))
+
 (skroad--deftype skroad--text-link-node
   :doc "Fundamental type for skroad node links (live or dead)."
   :use 'skroad--text-atomic
   :mouse-face 'skroad--highlight-link-face
   :payload-regex skroad--regexp-text-in-brackets
+  :escapable t
+  :escaper #'skroad--link-escaper
+  :unescaper #'skroad--link-unescaper
   :index-filter ;; Do not index self-links or links to special nodes
   '(lambda (node)
      (not (or (skroad--node-self-p node)
@@ -1976,14 +2018,14 @@ Already-encoded URLs are left untouched to avoid double-encoding."
   )
 
 (defconst skroad--md-url-regexp
-  (rx (seq ?\[
-           (group (regexp skroad--regexp-text-in-brackets))
-           ?\] ?\(
-           (group (regexp skroad--regexp-url-encoded))
-           ?\) ))
+  (rx ?\[
+      (group (regexp skroad--regexp-text-in-brackets))
+      ?\] ?\(
+      (group (regexp skroad--regexp-url-encoded))
+      ?\) )
   "Regexp matching Markdown-style URLs.")
 
-(defconst skroad--md-unsafe-caption-chars '("[]"))
+(defconst skroad--md-unsafe-caption-chars '("[]" "\\"))
 
 (defconst skroad--regexp-brackets
   (rx-to-string `(in ,@skroad--md-unsafe-caption-chars)))
@@ -1996,7 +2038,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 
 ;;; Caption escaping
 
-(defun skroad--md-escape-caption (text)
+(defun skroad--bracket-escape (text)
   "Backslash-escape characters in TEXT that break link captions."
   (save-match-data
     (replace-regexp-in-string
@@ -2004,7 +2046,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
      (lambda (ch) (concat "\\" ch))
      text nil t)))
 
-(defun skroad--md-unescape-caption (text)
+(defun skroad--bracket-unescape (text)
   "Remove backslash escapes from link caption TEXT."
   (save-match-data
     (replace-regexp-in-string
@@ -2026,7 +2068,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 (defun skroad--hide-escape-slashes (from to)
   "Hide backslash escapes between FROM and TO."
   (save-match-data
-    (save-excursion
+    (save-mark-and-excursion
       (goto-char from)
       (while (re-search-forward skroad--regexp-escape-slash to t)
         (put-text-property (match-beginning 1) (match-end 1)
@@ -2035,7 +2077,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 (defun skroad--md-make-url (url caption)
   "Return a Markdown-style URL with CAPTION."
   (format "[%s](%s)"
-          (skroad--md-escape-caption caption)
+          (skroad--bracket-escape caption)
           (browse-url-url-encode-chars url skroad--unsafe-url-chars)))
 
 ;; Turn the MD URL at point into plain text by breaking it with a space
@@ -2118,7 +2160,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
   :help-echo "Node tail."
   :match-number 0
   ;; :regex-any "^\\(@@@\\)$"
-  :regex-any (rx (seq line-start (literal skroad--node-tail) line-end))
+  :regex-any (rx line-start (literal skroad--node-tail) line-end)
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-rendered-zoned
@@ -2287,7 +2329,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   :renamer-overlay-type 'skroad--text-node-renamer-direct
   :use 'skroad--text-mixin-renameable
   :match-number 0
-  :regex-any (rx (seq string-start (* not-newline) "\n"))
+  :regex-any (rx string-start (* not-newline) "\n")
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-rendered-zoned
   )
@@ -2339,14 +2381,12 @@ If the tail did not previously exist in the current node, it is emplaced."
 ;; TODO: make on-leave fire when leaving a buffer, and on-enter when entering
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
-  ;; (message "pre-event: %S" last-input-event)
   (setq-local mouse-highlight nil
               skroad--buf-pre-command-point-state (skroad--get-point-state)))
 
 ;; TODO: some of these should be done only if buffer modified?
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
-  ;; (message "post-event: %S" last-input-event)
   (skroad--refontify-current-line)
   (skroad--motion skroad--buf-pre-command-point-state)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
