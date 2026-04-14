@@ -1674,16 +1674,10 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   (interactive)
   (skroad--do-link-action (point) skroad--disp-mode-force-new-window))
 
-(defun skroad--cmd-link-show ()
-  "Show"
-  (interactive)
-  (skroad--info (skroad--prop-at 'data)))
-
 (skroad--deftype skroad--text-mixin-link-navigable
   :doc "Mixin denoting a navigable link."
   :mixin t
   :keymap (define-keymap
-            "s" #'skroad--cmd-link-show
             "<mouse-1>" #'skroad--cmd-link-mouse-activate
             "<mouse-2>" #'skroad--cmd-link-mouse-activate-new-win
             "<return>" #'skroad--cmd-link-activate
@@ -2098,6 +2092,11 @@ Already-encoded URLs are left untouched to avoid double-encoding."
           (skroad--bracket-escape caption)
           (browse-url-url-encode-chars url skroad--unsafe-url-chars)))
 
+(defun skroad--cmd-link-show ()
+  "Show"
+  (interactive)
+  (skroad--info (skroad--prop-at 'data)))
+
 ;; Turn the MD URL at point into plain text by breaking it with a space
 (defun skroad--cmd-md-url-comment ()
   "Textify"
@@ -2120,7 +2119,9 @@ Already-encoded URLs are left untouched to avoid double-encoding."
   :hide-escapes t
   :regex-any skroad--md-url-regexp
   :on-activate #'skroad--browse-url
-  :keymap (define-keymap "t" #'skroad--cmd-md-url-comment)
+  :keymap (define-keymap
+            "t" #'skroad--cmd-md-url-comment
+            "s" #'skroad--cmd-link-show)
   :finder-filter #'skroad--in-node-body-p
   :renamer-overlay-type 'skroad--text-url-renamer
   :use 'skroad--text-mixin-link-navigable
