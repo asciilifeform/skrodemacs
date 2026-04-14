@@ -133,10 +133,6 @@
       (when (current-message)
         (message nil)))))
 
-(defun skroad--via (fn &optional arg)
-  "If FN is a function, return FN called on ARG; otherwise return ARG."
-  (if (functionp fn) (funcall fn arg) arg))
-
 (defmacro measure-time (&rest body)
   "Measure the time it takes to evaluate BODY."
   `(let ((time (current-time)))
@@ -581,19 +577,15 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :rear-nonsticky t
   :finder-filter t
   :hide-escapes nil
-  :escaper t
-  :unescaper t
+  :escape #'identity
+  :unescape #'identity
   )
 
 (skroad--deftype skroad--text-mixin-findable
   :doc "Mixin for all findable text types. (Internal use only.)"
   :mixin t
-  :require '(regex-any finder-filter escaper unescaper)
+  :require '(regex-any finder-filter escape unescape)
   :defaults '((visible-match-number nil))
-  :escape
-  '(lambda (text) (skroad--via escaper text))
-  :unescape
-  '(lambda (text) (skroad--via unescaper text))
   :find
   '(lambda (method regex &optional lim)
      (skroad--re-search method regex lim finder-filter))
@@ -628,14 +620,12 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
      (rx (literal begins) (group (regexp payload)) (literal ends)))
   :regex-any '(funcall make-regex payload-regex)
   :use 'skroad--text-mixin-findable
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   :generate
   '(lambda (payload)
      (concat begins (funcall escape payload) ends))
   :make-escaped-regex
   '(lambda (payload)
      (funcall make-regex (rx (literal (funcall escape payload)))))
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   :regex-validator '(rx bos (regexp payload-regex) eos)
   :validate
   '(lambda (payload) (string-match-p regex-validator payload))
@@ -1705,8 +1695,8 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   :mouse-face 'skroad--highlight-link-face
   :payload-regex skroad--regexp-text-in-brackets
   :hide-escapes t
-  :escaper #'skroad--link-escaper
-  :unescaper #'skroad--link-unescaper
+  :escape #'skroad--link-escaper
+  :unescape #'skroad--link-unescaper
   :index-filter ;; Do not index self-links or links to special nodes
   '(lambda (node)
      (not (or (skroad--node-self-p node)
