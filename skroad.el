@@ -133,6 +133,16 @@
       (when (current-message)
         (message nil)))))
 
+(defun skroad--visible-buffer-substring (from to)
+  "Return buffer text between FROM and TO, excluding invisible characters."
+  (let (parts (pos from))
+    (while (< pos to)
+      (let ((next (next-single-property-change pos 'invisible nil to)))
+        (unless (invisible-p pos)
+          (push (buffer-substring-no-properties pos next) parts))
+        (setq pos next)))
+    (apply #'concat (nreverse parts))))
+
 (defmacro measure-time (&rest body)
   "Measure the time it takes to evaluate BODY."
   `(let ((time (current-time)))
@@ -760,9 +770,6 @@ call the action with ARGS."
        (add-face-text-property start end add-face)
        ;; If visible-match-number is given, hide everything but that match:
        (cond ((numberp visible-match-number)
-              (put-text-property
-               start end 'name ;; For renamer
-               (match-string-no-properties visible-match-number))
               (put-text-property start end 'invisible t)
               (let ((vis-start (match-beginning visible-match-number))
                     (vis-end (match-end visible-match-number)))
@@ -1543,7 +1550,10 @@ Return the new position if the jump actually happened; otherwise nil."
 
 (defun skroad--url-renamer-name (pos)
   "Obtain the current caption (if any) of the URL at POS."
-  (or (skroad--prop-at 'name pos) ""))
+  (if (eq (skroad--prop-at 'category pos) 'skroad-text-md-url-link)
+      (skroad--with-current-zone
+        (skroad--visible-buffer-substring start end))
+    ""))
 
 (defun skroad--url-renamer-validate (_current proposed)
   "Determine whether a URL may be recaptioned to PROPOSED."
@@ -1564,8 +1574,7 @@ Return the new position if the jump actually happened; otherwise nil."
   :name-rename #'skroad--url-renamer-name
   :validate-rename #'skroad--url-renamer-validate
   :do-rename #'skroad--url-recaption
-  :face 'skroad--indirect-renamer-face
-  :before-string " " :after-string " ")
+  :face 'skroad--indirect-renamer-face)
 
 ;; Link types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
