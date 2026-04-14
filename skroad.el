@@ -1854,12 +1854,6 @@ If NODE does not exist, this is a no-op."
      #'(lambda (l) (push l live-links)))
     live-links))
 
-;;;;; TODO: when dead link clicked, simply move the point there
-;; (defun skroad--cmd-dead-link-activate ()
-;;   "Move the point to a dead link."
-;;   (interactive)
-;;   (goto-char (point)))
-
 (defun skroad--cmd-liven-at (&rest _args)
   "Liven"
   (interactive)
@@ -1870,7 +1864,9 @@ If NODE does not exist, this is a no-op."
   :use 'skroad--text-link-node
   :begins "[-[" :ends "]-]"
   :face 'skroad--dead-link-face
-  :keymap (define-keymap "l" #'skroad--cmd-liven-at)
+  :keymap (define-keymap
+            "l" #'skroad--cmd-liven-at
+            "<mouse-1>" #'skroad--cmd-link-mouse-activate) ;; Only move point
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-atomic-delimited
   :use 'skroad--text-mixin-indexed)
