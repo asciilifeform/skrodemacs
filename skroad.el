@@ -1670,7 +1670,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   (skroad--do-link-action (point)))
 
 (defun skroad--cmd-link-activate-new-win ()
-  "Nav.NewWin."
+  "NewWin."
   (interactive)
   (skroad--do-link-action (point) skroad--disp-mode-force-new-window))
 
