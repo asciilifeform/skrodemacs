@@ -1785,7 +1785,7 @@ If NODE does not exist, this is a no-op."
   (interactive)
   (skroad--yank-into (skroad--prop-at 'data) args))
 
-(defun skroad--cmd-unlink-at (&rest _args)
+(defun skroad--cmd-deaden-at (&rest _args)
   "Deaden"
   (interactive)
   (skroad--link-unlink (skroad--prop-at 'data)))
@@ -1817,7 +1817,7 @@ If NODE does not exist, this is a no-op."
   :begins "[[" :ends "]]"
   :keymap (define-keymap
             "m" #'skroad--cmd-merge-at
-            "l" #'skroad--cmd-unlink-at
+            "l" #'skroad--cmd-deaden-at
             "y" #'skroad--cmd-teleyank-at ;; Official teleyank trigger
             "<remap> <yank>" #'skroad--cmd-teleyank-at ;; Regular yank also
             )
