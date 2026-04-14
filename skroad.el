@@ -1541,25 +1541,29 @@ Return the new position if the jump actually happened; otherwise nil."
   :face 'skroad--indirect-renamer-face
   :before-string " " :after-string " ")
 
-(defun skroad--md-url-renamer-name (pos)
-  "Obtain the current name of the renameable item at POS."
-  (skroad--prop-at 'name pos))
+(defun skroad--url-renamer-name (pos)
+  "Obtain the current caption (if any) of the URL at POS."
+  (or (skroad--prop-at 'name pos) ""))
 
-(defun skroad--md-url-rename (_old new)
-  "Recaption the Markdown-style URL at point from OLD to NEW."
+(defun skroad--url-renamer-validate (_current proposed)
+  "Determine whether a URL may be recaptioned to PROPOSED."
+  (not (string-equal (skroad--clean-whitespace proposed) "")))
+
+(defun skroad--url-recaption (_old new)
+  "Recaption the URL at point from OLD to NEW."
   (skroad--with-current-zone
     (let ((url (skroad--prop-at 'data start)))
       (delete-region start end)
       (insert (skroad--md-make-url url new))
       (goto-char start))))
 
-(skroad--deftype skroad--text-md-url-renamer
-  :doc "Renamer for recaptioning a Markdown-style URL link."
+(skroad--deftype skroad--text-url-renamer
+  :doc "Renamer for recaptioning a URL link."
   :use 'skroad--text-mixin-renamer-overlay
   :permit-rename '(lambda (current) t)
-  :name-rename #'skroad--md-url-renamer-name
-  :validate-rename '(lambda (old new) t)
-  :do-rename #'skroad--md-url-rename
+  :name-rename #'skroad--url-renamer-name
+  :validate-rename #'skroad--url-renamer-validate
+  :do-rename #'skroad--url-recaption
   :face 'skroad--indirect-renamer-face
   :before-string " " :after-string " ")
 
@@ -2004,8 +2008,10 @@ Already-encoded URLs are left untouched to avoid double-encoding."
   :on-activate #'skroad--browse-url
   :keymap (define-keymap "t" #'skroad--cmd-bare-url-comment)
   :finder-filter #'skroad--in-node-body-p
+  :renamer-overlay-type 'skroad--text-url-renamer
   :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-findable
+  :use 'skroad--text-mixin-renameable
   :use 'skroad--text-mixin-rendered-zoned
   )
 
@@ -2096,7 +2102,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
   :on-activate #'skroad--browse-url
   :keymap (define-keymap "t" #'skroad--cmd-md-url-comment)
   :finder-filter #'skroad--in-node-body-p
-  :renamer-overlay-type 'skroad--text-md-url-renamer
+  :renamer-overlay-type 'skroad--text-url-renamer
   :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-renameable
