@@ -1550,10 +1550,12 @@ Return the new position if the jump actually happened; otherwise nil."
 
 (defun skroad--url-renamer-name (pos)
   "Obtain the current caption (if any) of the URL at POS."
-  (if (eq (skroad--prop-at 'category pos) 'skroad-text-md-url-link)
-      (skroad--with-current-zone
-        (skroad--visible-buffer-substring start end))
-    ""))
+  (save-mark-and-excursion
+    (goto-char pos)
+    (if (eq (skroad--prop-at 'category) 'skroad-text-md-url-link)
+        (skroad--with-current-zone
+          (skroad--visible-buffer-substring start end))
+      "")))
 
 (defun skroad--url-renamer-validate (_current proposed)
   "Determine whether a URL may be recaptioned to PROPOSED."
