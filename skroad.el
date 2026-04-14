@@ -580,7 +580,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :display-function t
   :rear-nonsticky t
   :finder-filter t
-  :escapable nil
+  :hide-escapes nil
   :escaper t
   :unescaper t
   )
@@ -638,7 +638,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   :regex-validator '(rx bos (regexp payload-regex) eos)
   :validate
-  '(lambda (string) (string-match-p regex-validator string))
+  '(lambda (payload) (string-match-p regex-validator payload))
   :search
   '(lambda (payload &optional lim)
      (funcall find #'re-search-forward
@@ -767,6 +767,7 @@ call the action with ARGS."
            (plist-put props 'mouse-face (list mouse-face)) props)
        (add-text-properties start end props)
        (add-face-text-property start end add-face)
+       ;; If visible-match-number is given, hide everything but that match:
        (cond ((numberp visible-match-number)
               (put-text-property
                start end 'name ;; For renamer
@@ -775,10 +776,10 @@ call the action with ARGS."
               (let ((vis-start (match-beginning visible-match-number))
                     (vis-end (match-end visible-match-number)))
                 (remove-text-properties vis-start vis-end '(invisible))
-                (when escapable
+                (when hide-escapes
                   (skroad--hide-escape-slashes vis-start vis-end))))
              ;; No visible match number is set:
-             (t (when escapable
+             (t (when hide-escapes
                   (skroad--hide-escape-slashes start end))))))
   :use 'skroad--text-mixin-regexp-rendered
   :use 'skroad--text-mixin-rendered)
@@ -1703,7 +1704,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   :use 'skroad--text-atomic
   :mouse-face 'skroad--highlight-link-face
   :payload-regex skroad--regexp-text-in-brackets
-  :escapable t
+  :hide-escapes t
   :escaper #'skroad--link-escaper
   :unescaper #'skroad--link-unescaper
   :index-filter ;; Do not index self-links or links to special nodes
@@ -2099,6 +2100,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
   :order 200 ;; Render after bare URLs
   :match-number 2
   :visible-match-number 1
+  :hide-escapes t
   :regex-any skroad--md-url-regexp
   :on-activate #'skroad--browse-url
   :keymap (define-keymap "t" #'skroad--cmd-md-url-comment)
