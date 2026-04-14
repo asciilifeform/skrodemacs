@@ -387,6 +387,14 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
   "Save the current node."
   (save-buffer))
 
+(defun skroad--autosave-hook ()
+  "Autosave."
+  (when (and buffer-file-name
+             (buffer-modified-p)
+             (not (skroad--renamer-active-p)))
+    (message "Skroad autosave.")
+    (skroad--save-current-node)))
+
 (defun skroad--mv-file (old-file new-file &optional overwrite)
   "Move OLD-FILE to NEW-FILE (may NOT be equal), updating buffers if required.
 If OVERWRITE is t, allow overwriting.  Return success."
@@ -2860,6 +2868,9 @@ Warning: undo info is lost in all affected buffers!"
 (define-derived-mode skroad-mode text-mode "Skroad"
   (skroad--global-init)
   
+  ;; Disable default auto-save:
+  (setq-local buffer-auto-save-file-name nil)
+  
   ;; Prevent text properties from infesting the kill ring (emacs 28+) :
   (setq-local kill-transform-function #'substring-no-properties)
   
@@ -2880,6 +2891,7 @@ Warning: undo info is lost in all affected buffers!"
   (add-hook 'window-scroll-functions #'skroad--update-window-state nil t)
   (add-hook 'window-state-change-functions #'skroad--update-window-state nil t)
   (add-hook 'window-buffer-change-functions #'skroad--update-window-state nil t)
+  (add-hook 'auto-save-hook #'skroad--autosave-hook nil t)
   
   ;; Overlay for when an atomic is under the point. Initially inactive:
   (setq-local skroad--buf-selector (make-overlay (point-min) (point-min)))
