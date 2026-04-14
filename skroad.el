@@ -1674,10 +1674,16 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   (interactive)
   (skroad--do-link-action (point) skroad--disp-mode-force-new-window))
 
+(defun skroad--cmd-link-show ()
+  "Show"
+  (interactive)
+  (skroad--info (skroad--prop-at 'data)))
+
 (skroad--deftype skroad--text-mixin-link-navigable
   :doc "Mixin denoting a navigable link."
   :mixin t
   :keymap (define-keymap
+            "s" #'skroad--cmd-link-show
             "<mouse-1>" #'skroad--cmd-link-mouse-activate
             "<mouse-2>" #'skroad--cmd-link-mouse-activate-new-win
             "<return>" #'skroad--cmd-link-activate
