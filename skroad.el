@@ -628,7 +628,8 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
      (funcall make-regex (rx (literal (funcall escape payload)))))
   :regex-validator '(rx bos (regexp payload-regex) eos)
   :validate
-  '(lambda (payload) (string-match-p regex-validator payload))
+  '(lambda (payload)
+     (string-match-p regex-validator (funcall escape payload)))
   :search
   '(lambda (payload &optional lim)
      (funcall find #'re-search-forward
