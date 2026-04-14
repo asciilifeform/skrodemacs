@@ -1786,7 +1786,7 @@ If NODE does not exist, this is a no-op."
   (skroad--yank-into (skroad--prop-at 'data) args))
 
 (defun skroad--cmd-unlink-at (&rest _args)
-  "Unlink"
+  "Deaden"
   (interactive)
   (skroad--link-unlink (skroad--prop-at 'data)))
 
@@ -2088,6 +2088,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
           (skroad--bracket-escape caption)
           (browse-url-url-encode-chars url skroad--unsafe-url-chars)))
 
+;; Simply display the URL without navigating to it.
 (defun skroad--cmd-link-show ()
   "Show"
   (interactive)
