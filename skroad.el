@@ -1665,12 +1665,12 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 
 ;; Perform the action attribute of the link at point.
 (defun skroad--cmd-link-activate ()
-  "Navigate"
+  "Go"
   (interactive)
   (skroad--do-link-action (point)))
 
 (defun skroad--cmd-link-activate-new-win ()
-  "NewWin."
+  "GoNewWin."
   (interactive)
   (skroad--do-link-action (point) skroad--disp-mode-force-new-window))
 
