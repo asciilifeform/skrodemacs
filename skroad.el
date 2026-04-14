@@ -1560,7 +1560,7 @@ Return the new position if the jump actually happened; otherwise nil."
 (defun skroad--url-renamer-validate (_current proposed)
   "Determine whether a URL may be recaptioned to PROPOSED."
   (cond ((string-empty-p (skroad--clean-whitespace proposed))
-         (skroad--info "Blank caption is not allowed!")
+         (skroad--info "Caption may not be empty!")
          nil)
         (t t)))
 
