@@ -385,15 +385,9 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
 ;; TODO: prevent backup files litter?
 (defun skroad--save-current-node ()
   "Save the current node."
-  (save-buffer))
-
-(defun skroad--autosave-hook ()
-  "Autosave."
   (when (and buffer-file-name
-             (buffer-modified-p)
              (not (skroad--renamer-active-p)))
-    (message "Skroad autosave.")
-    (skroad--save-current-node)))
+    (save-buffer)))
 
 (defun skroad--mv-file (old-file new-file &optional overwrite)
   "Move OLD-FILE to NEW-FILE (may NOT be equal), updating buffers if required.
@@ -991,6 +985,66 @@ or the node's indices, if it has been indexed; or `empty' (indices are null).")
   (unless (skroad--cache-peek node)
     (error "Node '%s' does not exist!" node)))
 
+;; Autocomplete for skroad links. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun skroad--autocomplete-collection (string pred action)
+  "Completion table over cache entry keys, ignoring values."
+  (let ((table (skroad--cache))
+        (kpred (when pred (lambda (k _v) (funcall pred k)))))
+    (if (eq action 'lambda)
+        (not (eq (gethash string table 'missing) 'missing))
+      (complete-with-action action table string kpred))))
+
+(defun skroad--autocomplete-start-pos ()
+  "Get position after [[ if point is inside an unclosed one, else nil."
+  (save-mark-and-excursion
+    (let ((original (point)))
+      (when (search-backward "[[" (line-beginning-position) t)
+        (goto-char (match-end 0))
+        (unless (search-forward "]]" original t)
+          (point))))))
+
+(defun skroad--autocomplete-end-pos ()
+  "End of filter text from point.
+Skips forward past non-whitespace characters, stopping at
+whitespace, unescaped ]], or end of line."
+  (save-mark-and-excursion
+    (let ((eol (line-end-position)))
+      (while (and (< (point) eol)
+                  (not (looking-at (rx whitespace)))
+                  (not (and (looking-at (rx (literal "]]")))
+                            (not (eq (char-before) ?\\)))))
+        (forward-char 1))
+      (point))))
+
+(defun skroad--autocomplete-insert (open end candidate)
+  "Replace OPEN..END with escaped CANDIDATE + ]]."
+  (delete-region open end)
+  (insert
+   (skroad--bracket-escape (substring-no-properties candidate)) "]]"))
+
+(defun skroad--autocomplete-capf ()
+  "CAPF for Skroad link autocompletion."
+  (let ((open (skroad--autocomplete-start-pos)))
+    (when open
+      (let ((end (skroad--autocomplete-end-pos)))
+        (list open end #'skroad--autocomplete-collection
+              :exit-function
+              #'(lambda (candidate status)
+                  (when (eq status 'finished)
+                    (skroad--autocomplete-insert open (point) candidate))))))))
+
+(defun skroad--autocomplete-buf-init ()
+  "Initialize autocomplete in the current buffer.."
+  (setq-local completion-at-point-functions '(skroad--autocomplete-capf))
+  (setq-local completion-styles '(substring flex))
+  (setq-local completion-ignore-case t)
+  (setq-local completion-auto-help 'always)
+  (when (boundp 'completions-auto-update)
+    (setq-local completions-auto-update t))
+  (when (boundp 'completions-auto-select)
+    (setq-local completions-auto-select 'first)))
+
 ;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--index-delta (index payload delta &optional final create destroy)
@@ -1229,10 +1283,17 @@ Return the new position if the jump actually happened; otherwise nil."
   (interactive)
   (skroad--link-jump-from (point) t t))
 
-(defvar skroad--mode-keymap
+(defun skroad--cmd-top-tab ()
+  "Top-level key binding for TAB."
+  (interactive)
+  (if (skroad--autocomplete-start-pos) ;; Are we sitting in a [[..... ?
+      (completion-at-point) ;; ... trigger the autocomplete.
+    (skroad--cmd-top-jump-to-next-link))) ;; ... if not, regular tab binding.
+
+(defvar skroad--mode-map
   (define-keymap
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
-    "<tab>" #'skroad--cmd-top-jump-to-next-link
+    "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
     "C-<tab>" #'skroad--cmd-top-jump-to-prev-link
     )
   "Top-level keymap for the skroad major mode.")
@@ -1337,7 +1398,7 @@ Return the new position if the jump actually happened; otherwise nil."
                    (skroad--zone-end) (skroad--zone-start))))
   :keymap
   (define-keymap
-    "<remap> <skroad--cmd-top-jump-to-next-link>"
+    "<remap> <skroad--cmd-top-tab>"
     #'skroad--cmd-atomic-jump-to-next-link
     "SPC" #'skroad--cmd-atomic-prepend-space
     "<remap> <set-mark-command>" #'skroad--cmd-atomic-set-mark
@@ -2869,6 +2930,9 @@ Warning: undo info is lost in all affected buffers!"
   (skroad--global-init)
   
   ;; Disable default auto-save:
+  (add-hook 'auto-save-mode-hook
+            (lambda () (setq buffer-auto-save-file-name nil))
+            nil t)
   (setq-local buffer-auto-save-file-name nil)
   
   ;; Prevent text properties from infesting the kill ring (emacs 28+) :
@@ -2891,7 +2955,7 @@ Warning: undo info is lost in all affected buffers!"
   (add-hook 'window-scroll-functions #'skroad--update-window-state nil t)
   (add-hook 'window-state-change-functions #'skroad--update-window-state nil t)
   (add-hook 'window-buffer-change-functions #'skroad--update-window-state nil t)
-  (add-hook 'auto-save-hook #'skroad--autosave-hook nil t)
+  ;; (add-hook 'auto-save-hook #'skroad--autosave-hook nil t)
   
   ;; Overlay for when an atomic is under the point. Initially inactive:
   (setq-local skroad--buf-selector (make-overlay (point-min) (point-min)))
@@ -2902,12 +2966,14 @@ Warning: undo info is lost in all affected buffers!"
     (overlay-put skroad--buf-selector (car p) (cadr p)))
 
   ;; Keymap:
-  (use-local-map skroad--mode-keymap)
+  (use-local-map skroad--mode-map)
 
   ;; Handle word boundaries correctly (atomics are treated as unitary words) :
   (setq-local find-word-boundary-function-table
               skroad--find-word-boundary-function-table)
 
+  (skroad--autocomplete-buf-init) ;; Initialize autocomplete support.
+  
   ;; Buffer-local hooks:
   (add-hook 'skroad-mode-hook 'skroad--open-node 0 t)
   )
