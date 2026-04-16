@@ -2895,7 +2895,7 @@ Warning: undo info is lost in all affected buffers!"
    (skroad--bracket-escape (substring-no-properties candidate))
    skroad--link-node-live-end-delim))
 
-(defun skroad--autocomplete-capf ()
+(defun skroad--autocomplete-in-buf-capf ()
   "CAPF for node name autocompletion."
   (let ((open (skroad--autocomplete-start-pos)))
     (when open
@@ -2908,7 +2908,6 @@ Warning: undo info is lost in all affected buffers!"
 
 (defun skroad--autocomplete-buf-init ()
   "Initialize autocomplete in the current buffer."
-  (setq-local completion-at-point-functions '(skroad--autocomplete-capf))
   (setq-local completion-styles '(substring flex))
   (setq-local completion-ignore-case t)
   (setq-local completion-auto-help 'always))
@@ -2996,7 +2995,9 @@ Warning: undo info is lost in all affected buffers!"
   (setq-local find-word-boundary-function-table
               skroad--find-word-boundary-function-table)
 
-  (skroad--autocomplete-buf-init) ;; Initialize autocomplete support.
+  ;; Initialize autocomplete support.
+  (setq-local completion-at-point-functions '(skroad--autocomplete-in-buf-capf))
+  (skroad--autocomplete-buf-init)
   
   ;; Buffer-local hooks:
   (add-hook 'skroad-mode-hook 'skroad--open-node 0 t)
