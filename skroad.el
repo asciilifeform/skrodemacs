@@ -803,8 +803,8 @@ call the action with ARGS."
   "If there is atomic data at POS (if given; otherwise, at point), return it."
   (get-text-property (or pos (point)) 'data))
 
-(defun skroad--atomic-any-in-region-p (start end)
-  "Return t if there are any atomics between START and END."
+(defun skroad--find-data-between (start end)
+  "Return the first atomic data between START and END; or nil, if none."
   (text-property-not-all start end 'data nil))
 
 ;; Block highlighter text type. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -2868,29 +2868,23 @@ Warning: undo info is lost in all affected buffers!"
       (complete-with-action action table string kpred))))
 
 (defun skroad--autocomplete-start-pos ()
-  "If autocomplete may engage at point, return the filter text start; else nil."
-  (let ((origin (point)))
-    (unless (or (skroad--data-at origin) ;; Prohibited in an atomic
+  "If autocomplete may engage at point, return the starting position; else nil."
+  (let ((here (point))) ;; Position where autocomplete is being attempted
+    (unless (or (skroad--data-at here) ;; Prohibited inside any atomic
                 (skroad--renamer-active-p)) ;; ... and inside the renamer
       (save-mark-and-excursion
-        (when (search-backward skroad--link-node-live-start-delim
-                               (line-beginning-position) t)
-          (goto-char (match-end 0))
-          (unless (skroad--atomic-any-in-region-p origin (point))
-            (point)))))))
+        (when (search-backward ;; Find a start delimiter to the left of here
+               skroad--link-node-live-start-delim (line-beginning-position) t)
+          (unless (skroad--find-data-between (point) here) ;; Avoid atomics
+            (goto-char (match-end 0))
+            (point))))))) ;; Return position right after the start delimiter
 
 (defun skroad--autocomplete-end-pos ()
-  "End of filter text from point.
-Skips forward past non-whitespace characters, stopping at
-whitespace, unescaped ]], or end of line."
+  "Find the end of a proposed autocomplete interval at the current point."
   (save-mark-and-excursion
-    (let ((eol (line-end-position)))
-      (while (and (< (point) eol)
-                  (not (looking-at (rx whitespace)))
-                  (not (and (looking-at
-                             (regexp-quote skroad--link-node-live-end-delim))
-                            (not (eq (char-before) ?\\)))))
-        (forward-char 1))
+    (let* ((eol (line-end-position))
+           (bound (or (skroad--find-data-between (point) eol) eol)))
+      (skip-chars-forward "^ \t\n" bound)
       (point))))
 
 (defun skroad--autocomplete-insert (open end candidate)
