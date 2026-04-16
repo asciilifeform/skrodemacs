@@ -799,6 +799,14 @@ call the action with ARGS."
   `(let ((start (skroad--zone-start)) (end (skroad--zone-end)))
      ,@body))
 
+(defun skroad--data-at (&optional pos)
+  "If there is atomic data at POS (if given; otherwise, at point), return it."
+  (get-text-property (or pos (point)) 'data))
+
+(defun skroad--atomic-any-in-region-p (start end)
+  "Return t if there are any atomics between START and END."
+  (text-property-not-all start end 'data nil))
+
 ;; Block highlighter text type. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--block-indent-columns 3
@@ -984,66 +992,6 @@ or the node's indices, if it has been indexed; or `empty' (indices are null).")
   "Signal an error if NODE does not exist."
   (unless (skroad--cache-peek node)
     (error "Node '%s' does not exist!" node)))
-
-;; Autocomplete for skroad links. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun skroad--autocomplete-collection (string pred action)
-  "Completion table over cache entry keys, ignoring values."
-  (let ((table (skroad--cache))
-        (kpred (when pred (lambda (k _v) (funcall pred k)))))
-    (if (eq action 'lambda)
-        (not (eq (gethash string table 'missing) 'missing))
-      (complete-with-action action table string kpred))))
-
-(defun skroad--autocomplete-start-pos ()
-  "Get position after [[ if point is inside an unclosed one, else nil."
-  (save-mark-and-excursion
-    (let ((original (point)))
-      (when (search-backward "[[" (line-beginning-position) t)
-        (goto-char (match-end 0))
-        (unless (search-forward "]]" original t)
-          (point))))))
-
-(defun skroad--autocomplete-end-pos ()
-  "End of filter text from point.
-Skips forward past non-whitespace characters, stopping at
-whitespace, unescaped ]], or end of line."
-  (save-mark-and-excursion
-    (let ((eol (line-end-position)))
-      (while (and (< (point) eol)
-                  (not (looking-at (rx whitespace)))
-                  (not (and (looking-at (rx (literal "]]")))
-                            (not (eq (char-before) ?\\)))))
-        (forward-char 1))
-      (point))))
-
-(defun skroad--autocomplete-insert (open end candidate)
-  "Replace OPEN..END with escaped CANDIDATE + ]]."
-  (delete-region open end)
-  (insert
-   (skroad--bracket-escape (substring-no-properties candidate)) "]]"))
-
-(defun skroad--autocomplete-capf ()
-  "CAPF for Skroad link autocompletion."
-  (let ((open (skroad--autocomplete-start-pos)))
-    (when open
-      (let ((end (skroad--autocomplete-end-pos)))
-        (list open end #'skroad--autocomplete-collection
-              :exit-function
-              #'(lambda (candidate status)
-                  (when (eq status 'finished)
-                    (skroad--autocomplete-insert open (point) candidate))))))))
-
-(defun skroad--autocomplete-buf-init ()
-  "Initialize autocomplete in the current buffer.."
-  (setq-local completion-at-point-functions '(skroad--autocomplete-capf))
-  (setq-local completion-styles '(substring flex))
-  (setq-local completion-ignore-case t)
-  (setq-local completion-auto-help 'always)
-  (when (boundp 'completions-auto-update)
-    (setq-local completions-auto-update t))
-  (when (boundp 'completions-auto-select)
-    (setq-local completions-auto-select 'first)))
 
 ;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1239,7 +1187,7 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
         ((bobp) nil)
         (t (let* ((p (point)) (left (1- p)))
              (unless (skroad--in-node-title-p left) ;; Never bite into the title
-               (if (skroad--prop-at 'data left) ;; If in front of an atomic:
+               (if (skroad--data-at left) ;; If in front of an atomic:
                    (delete-region (skroad--zone-start left) p) ;; ... delete it;
                  (delete-backward-char 1))))))) ;; ... if not: normal backspace.
 
@@ -1571,10 +1519,6 @@ Return the new position if the jump actually happened; otherwise nil."
          nil)
         (t t)))
 
-(defun skroad--node-renamer-name (pos)
-  "Obtain the current node title at POS."
-  (skroad--prop-at 'data pos))
-
 (defun skroad--node-renamer-validate (current proposed)
   "Determine whether a node titled CURRENT may be renamed to PROPOSED."
   (cond ((not (skroad--validate-title proposed))
@@ -1599,7 +1543,7 @@ Return the new position if the jump actually happened; otherwise nil."
   :doc "Mixin for the use of the rename command to rename nodes."
   :mixin t
   :permit-rename #'skroad--node-renamer-permit
-  :name-rename #'skroad--node-renamer-name
+  :name-rename #'skroad--data-at
   :validate-rename #'skroad--node-renamer-validate
   :do-rename #'skroad--node-renamer-do-rename)
 
@@ -1636,7 +1580,7 @@ Return the new position if the jump actually happened; otherwise nil."
 (defun skroad--url-recaption (_old new)
   "Recaption the URL at point from OLD to NEW."
   (skroad--with-current-zone
-    (let ((url (skroad--prop-at 'data start)))
+    (let ((url (skroad--data-at start)))
       (delete-region start end)
       (insert (skroad--md-make-url url new))
       (goto-char start))))
@@ -1671,8 +1615,7 @@ DISPLAY-MODE controls what happens when this results in opening a buffer."
     (let ((display-buffer-overriding-action
            (or display-mode skroad--disp-mode-this-window-or-existing)))
       (skroad--type-action
-       (skroad--prop-at 'category pos)
-       'on-activate (skroad--prop-at 'data pos)))))
+       (skroad--prop-at 'category pos) 'on-activate (skroad--data-at pos)))))
 
 (defun skroad--mouse-warp ()
   "Warp mouse to the middle of the current zone, if possible; else, to point."
@@ -1718,7 +1661,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   "Textify"
   (interactive)
   (skroad--with-current-zone
-    (let ((text (skroad--prop-at 'data)))
+    (let ((text (skroad--data-at)))
       (save-mark-and-excursion
         (goto-char start)
         (delete-region start end)
@@ -1757,7 +1700,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   "Textify"
   (interactive)
   (skroad--with-current-zone
-    (let ((text (skroad--prop-at 'data)))
+    (let ((text (skroad--data-at)))
       (save-mark-and-excursion
         (goto-char start)
         (delete-region start end)
@@ -1767,7 +1710,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 (defun skroad--link-mouseover (_window buf position)
   "User is mousing over a link in WINDOW, BUF, at POSITION."
   (with-current-buffer buf
-    (skroad--prop-at 'data position)))
+    (skroad--data-at position)))
 
 (defun skroad--link-escaper (payload)
   "Escape PAYLOAD for links."
@@ -1852,17 +1795,23 @@ If NODE does not exist, this is a no-op."
 (defun skroad--cmd-teleyank-at (&rest args)
   "Teleyank"
   (interactive)
-  (skroad--yank-into (skroad--prop-at 'data) args))
+  (skroad--yank-into (skroad--data-at) args))
 
 (defun skroad--cmd-deaden-at (&rest _args)
   "Deaden"
   (interactive)
-  (skroad--link-unlink (skroad--prop-at 'data)))
+  (skroad--link-unlink (skroad--data-at)))
 
 (defun skroad--cmd-merge-at (&rest _args)
   "Merge"
   (interactive)
-  (skroad--merge-node-into-current (skroad--prop-at 'data)))
+  (skroad--merge-node-into-current (skroad--data-at)))
+
+(defconst skroad--link-node-live-start-delim "[["
+  "Delimiter indicating the start of a live Skroad link.")
+
+(defconst skroad--link-node-live-end-delim "]]"
+  "Delimiter indicating the end of a live Skroad link.")
 
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
@@ -1883,7 +1832,8 @@ If NODE does not exist, this is a no-op."
             'skroad--stub-link-face)
            (t 'skroad--live-link-face)))
   :help-echo 'skroad--link-mouseover
-  :begins "[[" :ends "]]"
+  :begins skroad--link-node-live-start-delim
+  :ends skroad--link-node-live-end-delim
   :keymap (define-keymap
             "m" #'skroad--cmd-merge-at
             "l" #'skroad--cmd-deaden-at
@@ -1926,7 +1876,7 @@ If NODE does not exist, this is a no-op."
 (defun skroad--cmd-liven-at (&rest _args)
   "Liven"
   (interactive)
-  (skroad--link-revive (skroad--prop-at 'data)))
+  (skroad--link-revive (skroad--data-at)))
 
 (skroad--deftype skroad--text-link-node-dead
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
@@ -2161,7 +2111,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 (defun skroad--cmd-link-show ()
   "Show"
   (interactive)
-  (skroad--info (skroad--prop-at 'data)))
+  (skroad--info (skroad--data-at)))
 
 ;; Turn the MD URL at point into plain text by breaking it with a space
 (defun skroad--cmd-md-url-comment ()
@@ -2506,7 +2456,7 @@ If the tail did not previously exist in the current node, it is emplaced."
 (defun skroad--find-word-boundary (pos limit)
   "Function for use in `find-word-boundary-function-table'."
   (save-mark-and-excursion
-    (let ((atomic (skroad--prop-at 'data pos))
+    (let ((atomic (skroad--data-at pos))
           (fwd (<= pos limit)))
       (cond ((and atomic fwd) (goto-char (skroad--zone-end pos)))
             (atomic (goto-char (skroad--zone-start pos)))
@@ -2906,6 +2856,73 @@ Warning: undo info is lost in all affected buffers!"
               (skroad--update-stub-status)
               ))))))
   (skroad--defer (message "Lint completed.")))
+
+;; Autocomplete for live node links. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun skroad--autocomplete-collection (string pred action)
+  "Completion table over cache entry keys, ignoring values."
+  (let ((table (skroad--cache))
+        (kpred (when pred (lambda (k _v) (funcall pred k)))))
+    (if (eq action 'lambda)
+        (not (eq (gethash string table 'missing) 'missing))
+      (complete-with-action action table string kpred))))
+
+(defun skroad--autocomplete-start-pos ()
+  "If autocomplete may engage at point, return the filter text start; else nil."
+  (let ((origin (point)))
+    (unless (or (skroad--data-at origin) ;; Prohibited in an atomic
+                (skroad--renamer-active-p)) ;; ... and inside the renamer
+      (save-mark-and-excursion
+        (when (search-backward skroad--link-node-live-start-delim
+                               (line-beginning-position) t)
+          (goto-char (match-end 0))
+          (unless (skroad--atomic-any-in-region-p origin (point))
+            (point)))))))
+
+(defun skroad--autocomplete-end-pos ()
+  "End of filter text from point.
+Skips forward past non-whitespace characters, stopping at
+whitespace, unescaped ]], or end of line."
+  (save-mark-and-excursion
+    (let ((eol (line-end-position)))
+      (while (and (< (point) eol)
+                  (not (looking-at (rx whitespace)))
+                  (not (and (looking-at
+                             (regexp-quote skroad--link-node-live-end-delim))
+                            (not (eq (char-before) ?\\)))))
+        (forward-char 1))
+      (point))))
+
+(defun skroad--autocomplete-insert (open end candidate)
+  "Replace OPEN..END with escaped CANDIDATE + the live link end delimiter."
+  (delete-region open end)
+  (insert
+   (skroad--bracket-escape (substring-no-properties candidate))
+   skroad--link-node-live-end-delim))
+
+(defun skroad--autocomplete-capf ()
+  "CAPF for Skroad link autocompletion."
+  (let ((open (skroad--autocomplete-start-pos)))
+    (when open
+      (let ((end (skroad--autocomplete-end-pos)))
+        (list open end #'skroad--autocomplete-collection
+              :exit-function
+              #'(lambda (candidate status)
+                  (when (eq status 'finished)
+                    (skroad--autocomplete-insert open (point) candidate))))))))
+
+(defun skroad--autocomplete-buf-init ()
+  "Initialize autocomplete in the current buffer.."
+  (setq-local completion-at-point-functions '(skroad--autocomplete-capf))
+  (setq-local completion-styles '(substring flex))
+  (setq-local completion-ignore-case t)
+  (setq-local completion-auto-help 'always)
+  (when (boundp 'completions-auto-update)
+    (setq-local completions-auto-update t))
+  (when (boundp 'completions-auto-select)
+    (setq-local completions-auto-select 'first)))
+
+;; Mode init. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--global-init-done nil
   "Set to t when the Skroad mode global init was completed in this session.")
