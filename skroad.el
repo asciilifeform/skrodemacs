@@ -1243,6 +1243,7 @@ Return the new position if the jump actually happened; otherwise nil."
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
     "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
     "C-<tab>" #'skroad--cmd-top-jump-to-prev-link
+    "M-o" #'skroad--prompt-and-open-node
     )
   "Top-level keymap for the skroad major mode.")
 
@@ -2895,7 +2896,7 @@ Warning: undo info is lost in all affected buffers!"
    skroad--link-node-live-end-delim))
 
 (defun skroad--autocomplete-capf ()
-  "CAPF for Skroad link autocompletion."
+  "CAPF for node name autocompletion."
   (let ((open (skroad--autocomplete-start-pos)))
     (when open
       (let ((end (skroad--autocomplete-end-pos)))
@@ -2906,15 +2907,27 @@ Warning: undo info is lost in all affected buffers!"
                     (skroad--autocomplete-insert open (point) candidate))))))))
 
 (defun skroad--autocomplete-buf-init ()
-  "Initialize autocomplete in the current buffer.."
+  "Initialize autocomplete in the current buffer."
   (setq-local completion-at-point-functions '(skroad--autocomplete-capf))
   (setq-local completion-styles '(substring flex))
   (setq-local completion-ignore-case t)
-  (setq-local completion-auto-help 'always)
-  (when (boundp 'completions-auto-update)
-    (setq-local completions-auto-update t))
-  (when (boundp 'completions-auto-select)
-    (setq-local completions-auto-select 'first)))
+  (setq-local completion-auto-help 'always))
+
+(defun skroad--autocomplete-minibuffer-prompt (prompt)
+  "PROMPT in minibuffer for a node name; return it (or nil, if none selected)."
+  (minibuffer-with-setup-hook #'skroad--autocomplete-buf-init
+    (let ((choice (completing-read
+                   prompt #'skroad--autocomplete-collection nil t)))
+      (when (and choice (not (string-empty-p choice)))
+        choice))))
+
+(defun skroad--prompt-and-open-node ()
+  "Prompt for and open a known node."
+  (interactive)
+  (let ((display-buffer-overriding-action
+         skroad--disp-mode-this-window-or-existing))
+    (skroad--action-open-node
+     (skroad--autocomplete-minibuffer-prompt "Open node: "))))
 
 ;; Mode init. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
