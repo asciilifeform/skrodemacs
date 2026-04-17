@@ -1238,15 +1238,6 @@ Return the new position if the jump actually happened; otherwise nil."
       (completion-at-point) ;; ... trigger the autocomplete.
     (skroad--cmd-top-jump-to-next-link))) ;; ... if not, regular tab binding.
 
-(defvar skroad--mode-map
-  (define-keymap
-    "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
-    "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
-    "C-<tab>" #'skroad--cmd-top-jump-to-prev-link
-    "M-o" #'skroad--prompt-and-open-node
-    )
-  "Top-level keymap for the skroad major mode.")
-
 ;;; Atomic Text Type. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Insert a space immediately behind the atomic currently under the point.
@@ -2912,7 +2903,7 @@ Warning: undo info is lost in all affected buffers!"
   (setq-local completion-ignore-case t)
   (setq-local completion-auto-help 'always))
 
-(defun skroad--autocomplete-minibuffer-prompt (prompt)
+(defun skroad--autocomplete-minibuffer-prompt (prompt) ;; TODO: limit count?
   "PROMPT in minibuffer for a node name; return it (or nil, if none selected)."
   (minibuffer-with-setup-hook #'skroad--autocomplete-buf-init
     (let ((choice (completing-read
@@ -2928,6 +2919,17 @@ Warning: undo info is lost in all affected buffers!"
          (node (skroad--autocomplete-minibuffer-prompt "Open node: ")))
     (when (and node (skroad--cache-peek node))
       (skroad--action-open-node node))))
+
+;; Top-level key bindings. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defvar skroad--mode-map
+  (define-keymap
+    "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
+    "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
+    "C-<tab>" #'skroad--cmd-top-jump-to-prev-link
+    "M-o" #'skroad--prompt-and-open-node
+    )
+  "Top-level keymap for the skroad major mode.")
 
 ;; Mode init. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
