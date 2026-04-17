@@ -2923,10 +2923,11 @@ Warning: undo info is lost in all affected buffers!"
 (defun skroad--prompt-and-open-node ()
   "Prompt for and open a known node."
   (interactive)
-  (let ((display-buffer-overriding-action
-         skroad--disp-mode-this-window-or-existing))
-    (skroad--action-open-node
-     (skroad--autocomplete-minibuffer-prompt "Open node: "))))
+  (let* ((display-buffer-overriding-action
+          skroad--disp-mode-this-window-or-existing)
+         (node (skroad--autocomplete-minibuffer-prompt "Open node: ")))
+    (when (and node (skroad--cache-peek node))
+      (skroad--action-open-node node))))
 
 ;; Mode init. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
