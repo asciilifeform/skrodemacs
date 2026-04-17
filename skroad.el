@@ -2835,13 +2835,28 @@ Warning: undo info is lost in all affected buffers!"
 
 ;; Autocomplete for live node links. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun skroad--autocomplete-affixation (candidates)
+  "Propertize filtered completion CANDIDATES before they are displayed."
+  (mapcar (lambda (c)
+            (list (propertize c 'face
+                              (if (skroad--node-stub-p c)
+                                  'skroad--stub-link-face
+                                'skroad--live-link-face))
+                  ""
+                  ""))
+          candidates))
+
 (defun skroad--autocomplete-collection (string pred action)
   "Completion table over cache entry keys, ignoring values."
   (let ((table (skroad--cache))
         (kpred (when pred (lambda (k _v) (funcall pred k)))))
-    (if (eq action 'lambda)
-        (not (eq (gethash string table 'missing) 'missing))
-      (complete-with-action action table string kpred))))
+    (cond
+     ((eq action 'metadata)
+      '(metadata (affixation-function . skroad--autocomplete-affixation)))
+     ((eq action 'lambda)
+      (not (eq (gethash string table 'missing) 'missing)))
+     (t
+      (complete-with-action action table string kpred)))))
 
 (defun skroad--autocomplete-start-pos ()
   "If autocomplete may engage at point, return the starting position; else nil."
