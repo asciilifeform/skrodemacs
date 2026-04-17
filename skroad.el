@@ -143,6 +143,10 @@
         (setq pos next)))
     (apply #'concat (nreverse parts))))
 
+(defun skroad--fn-or-t (fn &rest args)
+  "Call FN on ARGS when it is a function; if it isn't, return t."
+  (if (functionp fn) (apply fn args) t))
+
 (defmacro measure-time (&rest body)
   "Measure the time it takes to evaluate BODY."
   `(let ((time (current-time)))
@@ -1221,23 +1225,6 @@ Return the new position if the jump actually happened; otherwise nil."
                         (if backwards (point-max) (point-min)) backwards)))))
     (when found (goto-char found))))
 
-(defun skroad--cmd-top-jump-to-next-link ()
-  "Jump to the next link after the point; try to cycle to first if none."
-  (interactive)
-  (skroad--link-jump-from (point) nil t))
-
-(defun skroad--cmd-top-jump-to-prev-link ()
-  "Jump to the previous link before the point; try to cycle to last if none."
-  (interactive)
-  (skroad--link-jump-from (point) t t))
-
-(defun skroad--cmd-top-tab ()
-  "Top-level key binding for TAB."
-  (interactive)
-  (if (skroad--autocomplete-start-pos) ;; Are we sitting in a [[..... ?
-      (completion-at-point) ;; ... trigger the autocomplete.
-    (skroad--cmd-top-jump-to-next-link))) ;; ... if not, regular tab binding.
-
 ;;; Atomic Text Type. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Insert a space immediately behind the atomic currently under the point.
@@ -1394,10 +1381,6 @@ Return the new position if the jump actually happened; otherwise nil."
 (defun skroad--renamer-active-p ()
   "Return t when the renamer is active."
   (skroad--overlay-active-p skroad--buf-renamer))
-
-(defun skroad--fn-or-t (fn &rest args)
-  "Call FN on ARGS when it is a function; if it isn't, return t."
-  (if (functionp fn) (apply fn args) t))
 
 ;; Try to activate the renamer in the current zone.
 (defun skroad--cmd-renamer-activate-here ()
@@ -1751,6 +1734,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
     (unless (or (skroad--maybe-restore-cached-point) ;; If no cached point...
                 (skroad--node-special-p orig-node)) ;; ... and not from special
       (skroad--link-maybe-jump-to-live orig-node))
+    ;; TODO: this should be configurable
     (unless (get-buffer-window orig-buf t) ;; Kill orig if we had buried it
       (with-current-buffer orig-buf
         (skroad--buf-indices-sync)
@@ -2921,6 +2905,23 @@ Warning: undo info is lost in all affected buffers!"
       (skroad--action-open-node node))))
 
 ;; Top-level key bindings. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun skroad--cmd-top-jump-to-next-link ()
+  "Jump to the next link after the point; try to cycle to first if none."
+  (interactive)
+  (skroad--link-jump-from (point) nil t))
+
+(defun skroad--cmd-top-jump-to-prev-link ()
+  "Jump to the previous link before the point; try to cycle to last if none."
+  (interactive)
+  (skroad--link-jump-from (point) t t))
+
+(defun skroad--cmd-top-tab ()
+  "Top-level key binding for TAB."
+  (interactive)
+  (if (skroad--autocomplete-start-pos) ;; Are we sitting in a [[..... ?
+      (completion-at-point) ;; ... trigger the autocomplete.
+    (skroad--cmd-top-jump-to-next-link))) ;; ... if not, regular tab binding.
 
 (defvar skroad--mode-map
   (define-keymap
