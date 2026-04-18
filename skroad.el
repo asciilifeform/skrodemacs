@@ -1680,7 +1680,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
         (delete-region start end)
         (insert text)))))
 
-(defun skroad--mouseover-preview (_window buf position)
+(defun skroad--mouseover-node-preview (_window buf position)
   "User is mousing over a link in WINDOW, BUF, at POSITION.  Preview body."
   (let ((node (with-current-buffer buf (skroad--data-at position))))
     (when (and node (skroad--cache-peek node))
@@ -1808,7 +1808,7 @@ If NODE does not exist, this is a no-op."
            ((skroad--node-stub-p payload)
             'skroad--stub-link-face)
            (t 'skroad--live-link-face)))
-  :help-echo 'skroad--mouseover-preview
+  :help-echo 'skroad--mouseover-node-preview
   :begins skroad--link-node-live-start-delim
   :ends skroad--link-node-live-end-delim
   :keymap (define-keymap
