@@ -1714,7 +1714,6 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
      (not (or (skroad--node-self-p node)
               (skroad--node-special-p node)))))
 
-;; TODO: somehow generalize to file links, www (when emacs handles), help, etc.
 (defun skroad--action-open-node (node)
   "Navigate to NODE.  If visible, go there; else open in the current window."
   (unless (skroad--cache-peek node) ;; Possibly node creation is still pending?
