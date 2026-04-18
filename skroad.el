@@ -752,7 +752,6 @@ call the action with ARGS."
 
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: prevent overlap
 (skroad--deftype skroad--text-mixin-rendered-zoned
   :doc "Mixin for zoned text types rendered by font-lock."
   :mixin t
@@ -1681,11 +1680,14 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
         (delete-region start end)
         (insert text)))))
 
-;; TODO: preview linked node, or "Stub node" if stub
-(defun skroad--link-mouseover (_window buf position)
-  "User is mousing over a link in WINDOW, BUF, at POSITION."
-  (with-current-buffer buf
-    (skroad--data-at position)))
+(defun skroad--mouseover-preview (_window buf position)
+  "User is mousing over a link in WINDOW, BUF, at POSITION.  Preview body."
+  (let ((node (with-current-buffer buf (skroad--data-at position))))
+    (when (and node (skroad--cache-peek node))
+      (if (skroad--node-stub-p node)
+          "Stub node."
+        (skroad--with-node node t
+          (skroad--node-extract-body))))))
 
 (defun skroad--link-escaper (payload)
   "Escape PAYLOAD for links."
@@ -1807,7 +1809,7 @@ If NODE does not exist, this is a no-op."
            ((skroad--node-stub-p payload)
             'skroad--stub-link-face)
            (t 'skroad--live-link-face)))
-  :help-echo 'skroad--link-mouseover
+  :help-echo 'skroad--mouseover-preview
   :begins skroad--link-node-live-start-delim
   :ends skroad--link-node-live-end-delim
   :keymap (define-keymap
@@ -2002,10 +2004,15 @@ Already-encoded URLs are left untouched to avoid double-encoding."
       (when (search-forward "//" end)
         (insert " ")))))
 
+(defun skroad--mouseover-show-url (_window buf position)
+  "User is mousing over an external link in WINDOW, BUF, at POSITION."
+  (with-current-buffer buf
+    (skroad--data-at position)))
+
 (skroad--deftype skroad-text-bare-url-link
   :doc "Bare URL."
   :use 'skroad--text-atomic
-  :help-echo 'skroad--link-mouseover
+  :help-echo 'skroad--mouseover-show-url
   :face 'skroad--url-link-face
   :mouse-face 'skroad--highlight-link-face
   :match-number 0
@@ -2102,7 +2109,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 (skroad--deftype skroad-text-md-url-link
   :doc "Markdown-style URL."
   :use 'skroad--text-atomic
-  :help-echo 'skroad--link-mouseover
+  :help-echo 'skroad--mouseover-show-url
   :face 'skroad--url-link-face
   :mouse-face 'skroad--highlight-link-face
   :order 200 ;; Render after bare URLs
@@ -2308,10 +2315,10 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 (defun skroad--node-extract-body ()
   "Return the body of the current node."
-  (skroad--clean-whitespace
-   (save-mark-and-excursion
-     (skroad--goto-node-body-start)
-     (skip-syntax-forward " ")
+  (save-mark-and-excursion
+    (skroad--goto-node-body-start)
+    (skip-syntax-forward " ")
+    (string-trim
      (buffer-substring-no-properties (point) (skroad--tail-pos)))))
 
 (defun skroad--cmd-title-kill-ring-save ()
