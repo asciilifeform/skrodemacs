@@ -1685,8 +1685,8 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   "User is mousing over a link in WINDOW, BUF, at POSITION.  Preview body."
   (let ((node (with-current-buffer buf (skroad--data-at position))))
     (when (and node (skroad--cache-peek node))
-      (cond ((skroad--node-stub-p node) (format "Stub node: '%s'" node))
-            ((skroad--node-special-p node) (format "Special node: '%s'" node))
+      (cond ((skroad--node-stub-p node) "Stub.")
+            ((skroad--node-special-p node) "Special.")
             (t (propertize
                 (skroad--with-node node t
                   (skroad--node-extract-body))
