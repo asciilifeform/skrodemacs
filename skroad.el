@@ -2910,12 +2910,12 @@ Warning: undo info is lost in all affected buffers!"
       (when (and choice (not (string-empty-p choice)))
         choice))))
 
-(defun skroad--prompt-and-open-node ()
-  "Prompt for and open a known node."
+(defun skroad--cmd-top-find-node ()
+  "Prompt for and open a Skroad node."
   (interactive)
   (let* ((display-buffer-overriding-action
           skroad--disp-mode-this-window-or-existing)
-         (node (skroad--autocomplete-minibuffer-prompt "Open node: ")))
+         (node (skroad--autocomplete-minibuffer-prompt "Find node: ")))
     (when (and node (skroad--cache-peek node))
       (skroad--action-open-node node))))
 
@@ -2943,7 +2943,7 @@ Warning: undo info is lost in all affected buffers!"
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
     "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
     "C-<tab>" #'skroad--cmd-top-jump-to-prev-link
-    "M-o" #'skroad--prompt-and-open-node
+    "M-o" #'skroad--cmd-top-find-node
     )
   "Top-level keymap for the skroad major mode.")
 
