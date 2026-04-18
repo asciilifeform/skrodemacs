@@ -1685,8 +1685,8 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   "User is mousing over a link in WINDOW, BUF, at POSITION.  Preview body."
   (let ((node (with-current-buffer buf (skroad--data-at position))))
     (when (and node (skroad--cache-peek node))
-      (cond ((skroad--node-stub-p node) "Stub.")
-            ((skroad--node-special-p node) "Special.")
+      (cond ((skroad--node-stub-p node) (format "Stub node '%s'" node))
+            ((skroad--node-special-p node) (format "Special node '%s'" node))
             ((skroad--node-self-p node) "Current node.")
             (t (propertize
                 (skroad--with-node node t
@@ -2136,7 +2136,9 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 ;; Atomic Comments. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (skroad--deftype skroad--text-atomic-comment
-  :doc "Atomic comment."
+  :doc "Atomic comment.
+Used to indicate the effects of certain irreversible modifications to a node.
+See e.g. `skroad--merge-node-into-current'."
   :use 'skroad--text-atomic
   :face 'skroad--atomic-comment-face
   :match-number 1
