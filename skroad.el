@@ -2910,6 +2910,8 @@ Warning: undo info is lost in all affected buffers!"
       (when (and choice (not (string-empty-p choice)))
         choice))))
 
+;; Top-level key bindings. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun skroad--cmd-top-find-node ()
   "Find and open a Skroad node using the minibuffer."
   (interactive)
@@ -2918,8 +2920,6 @@ Warning: undo info is lost in all affected buffers!"
          (node (skroad--autocomplete-minibuffer-prompt "Find node: ")))
     (when (and node (skroad--cache-peek node))
       (skroad--action-open-node node))))
-
-;; Top-level key bindings. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--cmd-top-jump-to-next-link ()
   "Jump to the next link after the point; try to cycle to first if none."
