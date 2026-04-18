@@ -1686,8 +1686,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
     (when (and node (skroad--cache-peek node))
       (cond ((skroad--node-stub-p node) (format "Stub node: '%s'" node))
             ((skroad--node-special-p node) (format "Special node: '%s'" node))
-            (t (skroad--with-node node t
-                 (skroad--node-extract-body)))))))
+            (t (skroad--with-node node t (skroad--node-extract-body)))))))
 
 (defun skroad--link-escaper (payload)
   "Escape PAYLOAD for links."
