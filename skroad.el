@@ -2911,7 +2911,7 @@ Warning: undo info is lost in all affected buffers!"
         choice))))
 
 (defun skroad--cmd-top-find-node ()
-  "Prompt for and open a Skroad node."
+  "Find and open a Skroad node using the minibuffer."
   (interactive)
   (let* ((display-buffer-overriding-action
           skroad--disp-mode-this-window-or-existing)
