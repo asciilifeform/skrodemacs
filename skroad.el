@@ -1684,10 +1684,10 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   "User is mousing over a link in WINDOW, BUF, at POSITION.  Preview body."
   (let ((node (with-current-buffer buf (skroad--data-at position))))
     (when (and node (skroad--cache-peek node))
-      (if (skroad--node-stub-p node)
-          "Stub node."
-        (skroad--with-node node t
-          (skroad--node-extract-body))))))
+      (cond ((skroad--node-stub-p node) "Stub node.")
+            ((skroad--node-special-p node) "Special node.")
+            (t (skroad--with-node node t
+                 (skroad--node-extract-body)))))))
 
 (defun skroad--link-escaper (payload)
   "Escape PAYLOAD for links."
