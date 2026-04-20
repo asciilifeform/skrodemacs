@@ -1112,9 +1112,6 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
-(defvar-local skroad--buf-indices-scan-enable t "Toggle index scanning.")
-
-;; TODO: unescape payloads?
 (skroad--deftype skroad--text-mixin-indexed
   :doc "Mixin for indexed text types."
   :mixin t
@@ -1129,29 +1126,27 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
         #'(lambda ()
             (let* ((raw-match (funcall get-match))
                    (payload (funcall get-unescaped-payload))
-                   (escaped-payload (funcall escape payload))
-                   )
+                   (escaped-payload (funcall escape payload)))
               ;; If there's an index filter, apply it to the indexed payload:
               (when (or (null index-filter) (funcall index-filter payload))
                 (skroad--index-delta pending-index payload delta))
               ;; Always rectify, if not already canonical:
               (when (and (= delta 1) (not undo-in-progress)
                          (not (string-equal raw-match escaped-payload)))
-                (let ((skroad--buf-indices-scan-enable nil) ;; Don't recurse
-                      (inhibit-read-only t)) ;; Force writability
+                (let ((inhibit-read-only t)) ;; Force writability
                   (funcall swap-match escaped-payload t))))))))
   :register 'skroad--text-types-indexed)
 
 (defun skroad--index-scan-region (start end delta)
   "Apply DELTA (must be 1 or -1) to each indexed item found in START ... END
 to the pending changes in the buffer;  `skroad--buf-indices-sync' must be
-called to finalize all pending changes when no further ones are expected.
-If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
-  (when skroad--buf-indices-scan-enable
-    (skroad--with-whole-lines start end
-      (dolist (text-type skroad--text-types-indexed)
-        (funcall (get text-type 'scan-region)
-                 start-expanded end-expanded delta)))))
+called to finalize all pending changes when no further ones are expected."
+  (save-match-data
+    (save-mark-and-excursion
+      (skroad--with-whole-lines start end
+        (dolist (text-type skroad--text-types-indexed)
+          (funcall (get text-type 'scan-region)
+                   start-expanded end-expanded delta))))))
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in the buffer in region START...END."
@@ -1161,7 +1156,7 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
   "Triggers following a change in the buffer in region START...END."
   (skroad--index-scan-region start end 1))
 
-(defun skroad--buf-indices-install-tracker ()
+(defun skroad--buf-indices-install-change-tracker ()
   "Install the skroad change hooks in the current buffer."
   (add-hook 'before-change-functions 'skroad--before-change-function nil t)
   (add-hook 'after-change-functions 'skroad--after-change-function nil t))
@@ -1215,6 +1210,7 @@ If `skroad--buf-indices-scan-enable' is nil, index scanning is disabled."
       (set-match-data match)
       (match-beginning 0))))
 
+;; TODO: replace with jump to any link, including URLs
 (defun skroad--link-jump-from (pos &optional backwards wrap)
   "Jump to the next (or previous, if BACKWARDS) live or dead link from POS.
 If WRAP is t, wrap if there are no further links in the current direction.
@@ -1399,7 +1395,7 @@ Return the new position if the jump actually happened; otherwise nil."
               (skroad--deactivate-mark)
               (skroad--snapshot-prepare)
               (setq-local
-               skroad--buf-indices-scan-enable nil
+               inhibit-modification-hooks t
                cursor-type t
                skroad--buf-renamer-original current-name)
               (skroad--hide-text start end)
@@ -1422,7 +1418,7 @@ Return the new position if the jump actually happened; otherwise nil."
     (skroad--unhide-text)
     (skroad--resume-font-lock)
     (skroad--refontify-current-line)
-    (setq-local skroad--buf-indices-scan-enable t
+    (setq-local inhibit-modification-hooks nil
                 skroad--buf-renamer-original nil)
     (skroad--set-writability)))
 
@@ -2415,7 +2411,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--motion skroad--buf-pre-command-point-state)
   (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
   (skroad--buf-indices-sync) ;; TODO: do it in save hook?
-  (when (buffer-modified-p)
+  (when (buffer-modified-p) ;; TODO: also if undo in progress?
     (skroad--renamer-validate)
     ;; TODO: do it in the change hook?
     (unless (skroad--renamer-active-p)
@@ -2508,7 +2504,7 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 (defun skroad--open-node ()
   "Open a skroad node."
-  (face-remap-set-base 'header-line 'skroad--title-face)
+  (face-remap-add-relative 'header-line 'skroad--title-face)
   (skroad--deactivate-mark) ;; Zap spurious mark from opening links via mouse
   (skroad--init-font-lock)
   (skroad--set-writability) ;; If special node, open it as read-only
@@ -2612,7 +2608,7 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
      (skroad--buf-indices-sync)
      ,(if body
           `(progn
-             (skroad--buf-indices-install-tracker)
+             (skroad--buf-indices-install-change-tracker)
              (unwind-protect ,@body
                (when (buffer-modified-p)
                  (skroad--buf-indices-sync ,no-actions)
@@ -3000,7 +2996,7 @@ Warning: undo info is lost in all affected buffers!"
               '(("\\`help:" . skroad--emacs-help-url-handler)))
   
   ;; Buffer-local hooks:
-  (skroad--buf-indices-install-tracker)
+  (skroad--buf-indices-install-change-tracker)
   (add-hook 'pre-command-hook 'skroad--pre-command-hook nil t)
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
   (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
