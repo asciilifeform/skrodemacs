@@ -2488,7 +2488,6 @@ If the tail did not previously exist in the current node, it is emplaced."
                         raw)))
             (format "help://%s:%s" type val))))))
 
-;; TODO: escape bare URLs when they appear in the yank
 (defun skroad--yank-transformer (str)
   "Recover Eww and Help links in STR; strip all text properties."
   (let ((pos 0) (len (length str)) out)
