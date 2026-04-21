@@ -1956,6 +1956,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
   "Ensure that NODE exists, and yank into it.  YANK-ARGS are passed to yank."
   (unless (skroad--node-special-p node) ;; Don't teleyank into special nodes
     (skroad--with-node node nil ;; Yank could contain links, so actions must run
+      (skroad--install-yank-transformer) ;; Ensure that transformer is present
       (skroad--tail-do-before
        (apply #'yank yank-args)))))
 
@@ -2507,6 +2508,10 @@ If the tail did not previously exist in the current node, it is emplaced."
         (setq pos nxt)))
     (apply #'concat (nreverse out))))
 
+(defun skroad--install-yank-transformer ()
+  "Install the yank transformer in the current buffer."
+  (add-hook 'yank-transform-functions #'skroad--yank-transformer nil t))
+
 (defun skroad--emacs-help-url-handler (url &rest _args)
   "URL handler for Emacs help links."
   (with-temp-buffer (help-mode))
@@ -3019,10 +3024,10 @@ Warning: undo info is lost in all affected buffers!"
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
   (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
   (add-hook 'kill-buffer-hook 'skroad--before-kill-buffer-hook nil t)
-  (add-hook 'yank-transform-functions #'skroad--yank-transformer nil t) ;; TODO: check
   (add-hook 'window-scroll-functions #'skroad--update-window-state nil t)
   (add-hook 'window-state-change-functions #'skroad--update-window-state nil t)
   (add-hook 'window-buffer-change-functions #'skroad--update-window-state nil t)
+  (skroad--install-yank-transformer)
   ;; (add-hook 'auto-save-hook #'skroad--autosave-hook nil t)
   
   ;; Overlay for when an atomic is under the point. Initially inactive:
