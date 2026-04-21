@@ -1092,13 +1092,15 @@ Secondary type actions (always run, except for special nodes) :
   "If the current node has not been indexed yet, create its text type indices.
 Otherwise, apply any pending changes.  Then write the indices back to the cache.
 Runs text type actions, unless NO-ACTIONS is t or the current node is special."
+  (skroad--buf-indices-ensure-change-tracker) ;; Init tracker if not done yet
   (let* ((indices (skroad--buf-indices))
          (init (eq indices 'index-me))
          (have-changes (skroad--buf-indices-have-pending-p)))
     (when init
       (when have-changes
-        (error "Tried to apply changes to unindexed node: '%s'"
-               (skroad--current-node))) ;; TODO: warn and rescan?
+        (message "Tried to apply changes to unindexed node: '%s', rescanning!"
+                 (skroad--current-node))
+        (setq-local skroad--buf-indices-pending nil))
       (skroad--index-scan-region (point-min) (point-max) 1)
       (setq have-changes t)
       (setq indices nil)
@@ -1155,7 +1157,7 @@ These may occur if ill-behaved minor modes are in use.")
 (defun skroad--verify-change-hook-pairing (expected)
   "Alarm if `skroad--expecting-after-change-hook' is not equal to EXPECTED."
   (unless (eq skroad--expecting-after-change-hook expected)
-    (message "Missed %s-change hook in '%s' ! (Are you using longlines.el?)"
+    (message "Missed %s-change hook in '%s' ! (Check for buggy minor modes.)"
              (if expected "before" "after") (skroad--current-node)))
   (setq-local skroad--expecting-after-change-hook (not expected)))
 
@@ -1169,10 +1171,15 @@ These may occur if ill-behaved minor modes are in use.")
   (skroad--verify-change-hook-pairing t)
   (skroad--index-scan-region start end 1))
 
-(defun skroad--buf-indices-install-change-tracker ()
+(defvar-local skroad--buf-indices-change-tracker-installed nil
+  "Indicates that the change tracker has been installed in this buffer.")
+
+(defun skroad--buf-indices-ensure-change-tracker ()
   "Install the skroad change hooks in the current buffer."
-  (add-hook 'before-change-functions 'skroad--before-change-function nil t)
-  (add-hook 'after-change-functions 'skroad--after-change-function nil t))
+  (unless skroad--buf-indices-change-tracker-installed
+    (add-hook 'before-change-functions 'skroad--before-change-function nil t)
+    (add-hook 'after-change-functions 'skroad--after-change-function nil t)
+    (setq-local skroad--buf-indices-change-tracker-installed t)))
 
 (defun skroad--indices-has-p (text-type payload indices)
   "Test whether a PAYLOAD of TEXT-TYPE exists in INDICES."
@@ -1413,7 +1420,8 @@ Return the new position if the jump actually happened; otherwise nil."
                skroad--buf-renamer-original current-name)
               (skroad--hide-text start end)
               (goto-char end)
-              (insert (concat " " skroad--buf-renamer-original " "))
+              (let ((inhibit-read-only t))
+                (insert (concat " " skroad--buf-renamer-original " ")))
               (setq-local skroad--buf-renamer
                           (make-overlay end (point) (current-buffer)))
               (overlay-put skroad--buf-renamer 'category renamer-type)
@@ -2620,12 +2628,10 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
   `(skroad--with-file (skroad--node-ensure ,node)
      (skroad--buf-indices-sync)
      ,(if body
-          `(progn
-             (skroad--buf-indices-install-change-tracker)
-             (unwind-protect ,@body
-               (when (buffer-modified-p)
-                 (skroad--buf-indices-sync ,no-actions)
-                 (skroad--save-current-node))))
+          `(unwind-protect ,@body
+             (when (buffer-modified-p)
+               (skroad--buf-indices-sync ,no-actions)
+               (skroad--save-current-node)))
         t)))
 
 ;; TODO: override readonly only here, rather than in with-file ?
@@ -3008,8 +3014,7 @@ Warning: undo info is lost in all affected buffers!"
   (setq-local browse-url-handlers
               '(("\\`help:" . skroad--emacs-help-url-handler)))
   
-  ;; Buffer-local hooks:
-  (skroad--buf-indices-install-change-tracker)
+  ;; Buffer-local hooks (other than change tracker: installed on first sync)
   (add-hook 'pre-command-hook 'skroad--pre-command-hook nil t)
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
   (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
