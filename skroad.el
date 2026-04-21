@@ -1098,7 +1098,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
     (when init
       (when have-changes
         (error "Tried to apply changes to unindexed node: '%s'"
-               (skroad--current-node)))
+               (skroad--current-node))) ;; TODO: warn and rescan?
       (skroad--index-scan-region (point-min) (point-max) 1)
       (setq have-changes t)
       (setq indices nil)
@@ -1148,12 +1148,25 @@ called to finalize all pending changes when no further ones are expected."
           (funcall (get text-type 'scan-region)
                    start-expanded end-expanded delta))))))
 
+(defvar-local skroad--expecting-after-change-hook nil
+  "Detect mismatched change hook activations.
+These may occur if ill-behaved minor modes are in use.")
+
+(defun skroad--verify-change-hook-pairing (expected)
+  "Alarm if `skroad--expecting-after-change-hook' is not equal to EXPECTED."
+  (unless (eq skroad--expecting-after-change-hook expected)
+    (message "Missed %s-change hook in '%s' ! (Are you using longlines.el?)"
+             (if expected "before" "after") (skroad--current-node)))
+  (setq-local skroad--expecting-after-change-hook (not expected)))
+
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in the buffer in region START...END."
+  (skroad--verify-change-hook-pairing nil)
   (skroad--index-scan-region start end -1))
 
 (defun skroad--after-change-function (start end _length)
   "Triggers following a change in the buffer in region START...END."
+  (skroad--verify-change-hook-pairing t)
   (skroad--index-scan-region start end 1))
 
 (defun skroad--buf-indices-install-change-tracker ()
@@ -3001,7 +3014,7 @@ Warning: undo info is lost in all affected buffers!"
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
   (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
   (add-hook 'kill-buffer-hook 'skroad--before-kill-buffer-hook nil t)
-  (add-hook 'yank-transform-functions #'skroad--yank-transformer nil t)
+  (add-hook 'yank-transform-functions #'skroad--yank-transformer nil t) ;; TODO: check
   (add-hook 'window-scroll-functions #'skroad--update-window-state nil t)
   (add-hook 'window-state-change-functions #'skroad--update-window-state nil t)
   (add-hook 'window-buffer-change-functions #'skroad--update-window-state nil t)
