@@ -1271,8 +1271,6 @@ Return the new position if the jump actually happened; otherwise nil."
 (skroad--define-atomics-region-cmd kill-region)
 (skroad--define-atomics-region-cmd kill-ring-save)
 
-;; TODO: make sure selector is NEVER visible if point is not in this buffer!
-
 (defvar-local skroad--buf-selector nil
   "Selector overlay active when an atomic is under the point.")
 
@@ -1409,7 +1407,7 @@ Return the new position if the jump actually happened; otherwise nil."
 (defun skroad--cmd-renamer-activate-here ()
   "Rename"
   (interactive)
-  (unless (skroad--renamer-active-p)
+  (unless (skroad--renamer-active-p) ;; TODO
     (let ((renamer-type (skroad--prop-at 'renamer-overlay-type)))
       (when renamer-type
         (skroad--with-current-zone
@@ -2433,19 +2431,22 @@ If the tail did not previously exist in the current node, it is emplaced."
   (setq-local mouse-highlight nil
               skroad--buf-pre-command-point-state (skroad--get-point-state)))
 
-;; TODO: some of these should be done only if buffer modified?
+(defvar-local skroad--buf-modification-ticks 0
+  "Character modification count for the current buffer.")
+
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
-  (skroad--refontify-current-line)
+  (let ((tick (buffer-chars-modified-tick))) ;; Detect changes, including undo
+    (unless (= tick skroad--buf-modification-ticks)
+      (setq-local skroad--buf-modification-ticks tick)
+      (skroad--refontify-current-line)
+      (skroad--buf-indices-sync)
+      (skroad--renamer-validate)
+      (unless (skroad--renamer-active-p)
+        (skroad--update-stub-status))
+      ))
   (skroad--motion skroad--buf-pre-command-point-state)
-  (skroad--adjust-mark-if-present) ;; swap mark and alt-mark if needed
-  (skroad--buf-indices-sync) ;; TODO: do it in save hook?
-  (when (buffer-modified-p) ;; TODO: also if undo in progress?
-    (skroad--renamer-validate)
-    ;; TODO: do it in the change hook?
-    (unless (skroad--renamer-active-p)
-      (skroad--update-stub-status))
-    )
+  (skroad--adjust-mark-if-present)
   (unless mark-active (setq-local mouse-highlight t))
   (skroad--save-cache-point))
 
