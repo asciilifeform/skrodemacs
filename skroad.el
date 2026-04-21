@@ -2988,9 +2988,9 @@ Warning: undo info is lost in all affected buffers!"
 ;; Mode init. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--global-init-done nil
-  "Set to t when the Skroad mode global init was completed in this session.")
+  "Indicates that the Skroad mode global init was completed in this session.")
 
-(defun skroad--global-init ()
+(defun skroad--ensure-global-init ()
   "Perform the mode global init if it has not been done in this session."
   (unless skroad--global-init-done
     ;; Prohibit change hooks firing when only text properties have changed:
@@ -3007,7 +3007,7 @@ Warning: undo info is lost in all affected buffers!"
 ;; TODO: proper mode exit cleanup
 ;; TODO: do NOT set the mode if file is not in the data dir
 (define-derived-mode skroad-mode text-mode "Skroad"
-  (skroad--global-init)
+  (skroad--ensure-global-init)
   
   ;; Disable default auto-save:
   (add-hook 'auto-save-mode-hook
