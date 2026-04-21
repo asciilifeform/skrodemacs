@@ -1280,6 +1280,13 @@ Return the new position if the jump actually happened; otherwise nil."
   `((face skroad--selector-face) (evaporate t))
   "Text properties of the selector.")
 
+(defun skroad--selector-init ()
+  "Initialize the selector overlay in the current buffer."
+  (setq-local skroad--buf-selector (make-overlay (point-min) (point-min)))
+  (skroad--selector-deactivate)
+  (dolist (p skroad--selector-properties)
+    (overlay-put skroad--buf-selector (car p) (cadr p))))
+
 (defun skroad--selector-unhide ()
   "Reveal the selector overlay when it may have been hidden."
   (when (skroad--overlay-active-p skroad--buf-selector)
@@ -3029,13 +3036,8 @@ Warning: undo info is lost in all affected buffers!"
   (skroad--install-yank-transformer)
   ;; (add-hook 'auto-save-hook #'skroad--autosave-hook nil t)
   
-  ;; Overlay for when an atomic is under the point. Initially inactive:
-  (setq-local skroad--buf-selector (make-overlay (point-min) (point-min)))
-  (skroad--selector-deactivate)
-
-  ;; Properties for selector overlay
-  (dolist (p skroad--selector-properties)
-    (overlay-put skroad--buf-selector (car p) (cadr p)))
+  ;; Selector for atomics:
+  (skroad--selector-init)
 
   ;; Keymap:
   (use-local-map skroad--mode-map)
