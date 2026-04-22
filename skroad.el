@@ -13,6 +13,8 @@
 (unless skroad--debug
   (setq byte-compile-warnings nil))
 
+(defconst skroad--lint-on-boot t "If t, Skroad will lint when Emacs loads.")
+
 ;;; User data and Special Nodes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defconst skroad--data-directory "~/skrode" "All user data is found here.")
@@ -2996,8 +2998,8 @@ Warning: undo info is lost in all affected buffers!"
     (skroad--silence-modifications 'remove-list-of-text-properties)
     (skroad--silence-modifications 'set-text-properties)
     (skroad--silence-modifications 'add-face-text-property)
-    ;; Perform a lint on boot:
-    (run-with-idle-timer 0 nil #'skroad--lint)
+    (when skroad--lint-on-boot ;; Perform a lint on boot?
+      (run-with-idle-timer 0 nil #'skroad--lint))
     (setq skroad--global-init-done t)))
 
 ;; TODO: proper mode exit cleanup
