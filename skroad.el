@@ -1565,7 +1565,7 @@ Return the new position if the jump actually happened; otherwise nil."
     (if (eq (skroad--prop-at 'category) 'skroad-text-md-url-link)
         (skroad--with-current-zone
           (skroad--visible-buffer-substring start end))
-      "")))
+      "ChangeMe!")))
 
 (defun skroad--url-renamer-validate (_current proposed)
   "Determine whether a URL may be recaptioned to PROPOSED."
