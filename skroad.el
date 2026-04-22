@@ -1131,12 +1131,12 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
                    (escaped-payload (funcall escape payload)))
               ;; If there's an index filter, apply it:
               (when (or (null index-filter) (funcall index-filter payload))
-                (skroad--index-delta pending-index payload delta)
-                ;; Rectify, if not already canonical:
-                (when (and (= delta 1) (not undo-in-progress)
-                           (not (string-equal raw-match escaped-payload)))
-                  (let ((inhibit-read-only t)) ;; Force writability
-                    (funcall swap-match escaped-payload t)))))))))
+                (skroad--index-delta pending-index payload delta))
+              ;; Always rectify, if not already canonical:
+              (when (and (= delta 1) (not undo-in-progress)
+                         (not (string-equal raw-match escaped-payload)))
+                (let ((inhibit-read-only t)) ;; Force writability
+                  (funcall swap-match escaped-payload t))))))))
   :register 'skroad--text-types-indexed)
 
 (defun skroad--index-scan-region (start end delta)
