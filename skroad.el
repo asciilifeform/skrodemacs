@@ -1761,6 +1761,8 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
         (skroad--save-current-node)
         (kill-buffer)))))
 
+;; TODO: log entry
+;; TODO: check if we have an unreachable that can be renamed and will correspond
 (defun skroad--action-connected-on-init (origin node)
   "A live link to NODE was found for the first time in ORIGIN during indexing."
   (unless (and (skroad--cache-peek node) ;; Node doesn't exist?
@@ -2949,7 +2951,7 @@ Warning: undo info is lost in all affected buffers!"
   (interactive)
   (let* ((display-buffer-overriding-action
           skroad--disp-mode-this-window-or-existing)
-         (node (skroad--autocomplete-minibuffer-prompt "Find node: ")))
+         (node (skroad--autocomplete-minibuffer-prompt "Find Skroad node: ")))
     (when (and node (skroad--cache-peek node))
       (skroad--action-open-node node))))
 
@@ -2975,7 +2977,7 @@ Warning: undo info is lost in all affected buffers!"
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
     "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
     "C-<tab>" #'skroad--cmd-top-jump-to-prev-link
-    "M-o" #'skroad--cmd-top-find-node
+    "M-o" #'skroad--cmd-top-find-node ;; TODO: maybe we want a global binding!
     )
   "Top-level keymap for the skroad major mode.")
 
