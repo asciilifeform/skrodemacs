@@ -1692,17 +1692,6 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
             "<return>" #'skroad--cmd-link-activate
             "M-<return>" #'skroad--cmd-link-activate-new-win))
 
-;; Transform the link under the point to plain text by removing delimiters.
-(defun skroad--cmd-link-comment ()
-  "Textify"
-  (interactive)
-  (skroad--with-current-zone
-    (let ((text (skroad--data-at)))
-      (save-mark-and-excursion
-        (goto-char start)
-        (delete-region start end)
-        (insert text)))))
-
 (defun skroad--mouseover-node-preview (_window buf position)
   "User is mousing over a link in WINDOW, BUF, at POSITION.  Preview body."
   (let ((node (with-current-buffer buf (skroad--data-at position))))
