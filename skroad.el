@@ -768,9 +768,10 @@ call the action with ARGS."
      (let* ((start (match-beginning 0))
             (end (match-end 0))
             (payload (funcall get-unescaped-payload))
+            (zone (gensym))
             (props
              (list 'category type-name
-                   'zone (gensym)
+                   'zone zone
                    'data payload))
             (add-face
              (if (functionp face-function)
@@ -2436,7 +2437,6 @@ If the tail did not previously exist in the current node, it is emplaced."
   (let ((tick (buffer-chars-modified-tick))) ;; Detect changes, including undo
     (unless (= tick skroad--buf-modification-ticks)
       (setq-local skroad--buf-modification-ticks tick)
-      (skroad--refontify-current-line)
       (skroad--buf-indices-sync)
       (skroad--renamer-validate)
       (unless (skroad--renamer-active-p)
