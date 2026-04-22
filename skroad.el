@@ -162,7 +162,6 @@
   "Determine whether skroad mode is currently active."
   (derived-mode-p 'skroad-mode))
 
-;; TODO: skroad--clear-buf-undo-info ?
 (defmacro skroad--with-file (file &rest body)
   "Evaluate BODY, operating on FILE (must exist).  Use existing buffer, if any."
   (declare (indent defun))
@@ -478,6 +477,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
            (equal (skroad--file-path-to-node-title encoded-title) title)))))
 
 ;; TODO: alarm unreachables to log
+;; TODO: try to rename unreachables
 ;; TODO: unreachables should not open in skroad mode
 (defun skroad--storage-list-nodes ()
   "Return a list of all nodes currently stored on disk.  Verify reachability."
@@ -1129,14 +1129,14 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
             (let* ((raw-match (funcall get-match))
                    (payload (funcall get-unescaped-payload))
                    (escaped-payload (funcall escape payload)))
-              ;; If there's an index filter, apply it to the indexed payload:
+              ;; If there's an index filter, apply it:
               (when (or (null index-filter) (funcall index-filter payload))
-                (skroad--index-delta pending-index payload delta))
-              ;; Always rectify, if not already canonical:
-              (when (and (= delta 1) (not undo-in-progress)
-                         (not (string-equal raw-match escaped-payload)))
-                (let ((inhibit-read-only t)) ;; Force writability
-                  (funcall swap-match escaped-payload t))))))))
+                (skroad--index-delta pending-index payload delta)
+                ;; Rectify, if not already canonical:
+                (when (and (= delta 1) (not undo-in-progress)
+                           (not (string-equal raw-match escaped-payload)))
+                  (let ((inhibit-read-only t)) ;; Force writability
+                    (funcall swap-match escaped-payload t)))))))))
   :register 'skroad--text-types-indexed)
 
 (defun skroad--index-scan-region (start end delta)
