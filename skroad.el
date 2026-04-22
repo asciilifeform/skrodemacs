@@ -134,6 +134,10 @@
       (when (current-message)
         (message nil)))))
 
+(defun skroad--last-ev-was-mouse-p ()
+  "Return t when the last input event was a mouse event."
+  (listp last-input-event))
+
 (defun skroad--visible-buffer-substring (from to)
   "Return buffer text between FROM and TO, excluding invisible characters."
   (let (parts (pos from))
@@ -1323,9 +1327,8 @@ Return the new position if the jump actually happened; otherwise nil."
 
 (defun skroad--show-key-help ()
   "Display the keymap help of the current point."
-  (unless (listp last-input-event) ;; Don't trigger during mouse scrolling
-    (let ((km (skroad--prop-at 'keymap))) ;; Display keymap help
-      (skroad--info (skroad--make-keymap-help km)))))
+  (let ((km (skroad--prop-at 'keymap))) ;; Display keymap help
+    (when km (skroad--info (skroad--make-keymap-help km)))))
 
 ;; TODO: require zone?
 ;; TODO: allow mouse click point motion by default
@@ -1336,7 +1339,8 @@ Return the new position if the jump actually happened; otherwise nil."
   :on-enter '(lambda (pos-from auto)
                (skroad--selector-activate-here)
                (goto-char (skroad--zone-start)) ;; point can only sit on start
-               (skroad--show-key-help)) ;; Show keymap help
+               (unless (skroad--last-ev-was-mouse-p) ;; Unless we mouse-scrolled
+                 (skroad--show-key-help))) ;; Show keymap help
   :on-leave '(lambda (pos-from auto)
                (skroad--selector-deactivate)
                (skroad--info)) ;; Clear the echo bar
@@ -1695,7 +1699,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 (defun skroad--mouseover-node-preview (_window buf position)
   "User is mousing over a link in WINDOW, BUF, at POSITION.  Preview body."
   (let ((node (with-current-buffer buf (skroad--data-at position))))
-    (when (and node (skroad--cache-peek node))
+    (when (and (stringp node) (skroad--cache-peek node))
       (cond ((skroad--node-stub-p node) (format "Stub node '%s'" node))
             ((skroad--node-special-p node) (format "Special node '%s'" node))
             ((skroad--node-self-p node) "Current node.")
