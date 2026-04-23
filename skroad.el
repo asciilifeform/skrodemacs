@@ -238,8 +238,8 @@
   "Determine value of PROP, if any, including overlays, at POS (or point)."
   (get-char-property (or pos (point)) prop))
 
-(defun skroad--overlay-active-p (overlay)
-  "Determine whether OVERLAY is currently active."
+(defun skroad--buf-overlay-active-p (overlay)
+  "Determine whether OVERLAY is active in the current buffer."
   (and (overlayp overlay) (eq (current-buffer) (overlay-buffer overlay))))
 
 (defun skroad--re-search (finder regexp &optional limit filter)
@@ -723,7 +723,7 @@ call the action with ARGS."
 (defvar-local skroad--font-lock-unfontify-region nil)
 
 (defun skroad--suspend-font-lock ()
-  "Suspend font lock rendering in a skroad buffer, but don't depropertize text."
+  "Suspend font lock rendering in current buffer, but don't depropertize text."
   (setq-local
    skroad--font-lock-unfontify-region font-lock-unfontify-region-function
    font-lock-unfontify-region-function #'(lambda (&rest _args) ())
@@ -731,7 +731,7 @@ call the action with ARGS."
   (font-lock-refresh-defaults))
 
 (defun skroad--resume-font-lock ()
-  "Resume font lock fontification in a skroad buffer."
+  "Resume font lock fontification in the current buffer."
   (setq-local
    font-lock-defaults '(skroad--font-lock-keywords t)
    font-lock-unfontify-region-function skroad--font-lock-unfontify-region)
@@ -1293,12 +1293,12 @@ Return the new position if the jump actually happened; otherwise nil."
 
 (defun skroad--selector-unhide ()
   "Reveal the selector overlay when it may have been hidden."
-  (when (skroad--overlay-active-p skroad--buf-selector)
+  (when (skroad--buf-overlay-active-p skroad--buf-selector)
     (overlay-put skroad--buf-selector 'face 'skroad--selector-face)))
 
 (defun skroad--selector-hide ()
   "Hide (but not destroy) the selector overlay."
-  (when (skroad--overlay-active-p skroad--buf-selector)
+  (when (skroad--buf-overlay-active-p skroad--buf-selector)
     (overlay-put skroad--buf-selector 'face nil)))
 
 (defun skroad--selector-activate-here ()
@@ -1309,7 +1309,7 @@ Return the new position if the jump actually happened; otherwise nil."
 
 (defun skroad--selector-deactivate ()
   "Deactivate the selector; it can be reactivated again."
-  (when (skroad--overlay-active-p skroad--buf-selector)
+  (when (skroad--buf-overlay-active-p skroad--buf-selector)
     (delete-overlay skroad--buf-selector))
   (setq-local cursor-type t show-paren-mode t))
 
@@ -1401,58 +1401,60 @@ Return the new position if the jump actually happened; otherwise nil."
 
 ;; Interactive node renamer. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: should be global, rather than per-buffer, and go away when we leave it
-(defvar-local skroad--renamer nil "Node renamer overlay.")
-(defvar-local skroad--renamer-old-name nil "Original name.")
+(defvar skroad--renamer nil "Node renamer overlay.")
+(defvar skroad--renamer-old-name nil "Original name.")
 
 (defun skroad--renamer-active-p ()
   "Return t when the renamer is active."
-  (skroad--overlay-active-p skroad--renamer))
+  (overlayp skroad--renamer))
 
 ;; Try to activate the renamer in the current zone.
 (defun skroad--cmd-renamer-activate-here ()
   "Rename"
   (interactive)
-  (unless (skroad--renamer-active-p) ;; TODO
-    (let ((renamer-type (skroad--prop-at 'renamer-overlay-type)))
-      (when renamer-type
-        (skroad--with-current-zone
-          (let ((current-name
-                 (funcall (get renamer-type 'name-rename) start)))
-            (when (skroad--fn-or-t
-                   (get renamer-type 'permit-rename) current-name)
-              (setq buffer-read-only nil)
-              (skroad--suspend-font-lock)
-              (skroad--deactivate-mark)
-              (skroad--snapshot-prepare)
-              (setq-local
-               inhibit-modification-hooks t
-               cursor-type t
-               skroad--renamer-old-name current-name)
-              (skroad--hide-text start end)
-              (goto-char end)
-              (let ((inhibit-read-only t))
-                (insert (concat " " skroad--renamer-old-name " ")))
-              (setq-local skroad--renamer
-                          (make-overlay end (point) (current-buffer)))
-              (overlay-put skroad--renamer 'category renamer-type)
-              (set-buffer-modified-p nil)
-              (goto-char end)
-              (skroad--renamer-validate))))))))
+  (skroad--renamer-deactivate) ;; Deactivate when already active somewhere
+  (let ((renamer-type (skroad--prop-at 'renamer-overlay-type)))
+    (when renamer-type
+      (skroad--with-current-zone
+        (let ((current-name
+               (funcall (get renamer-type 'name-rename) start)))
+          (when (skroad--fn-or-t
+                 (get renamer-type 'permit-rename) current-name)
+            (setq buffer-read-only nil)
+            (skroad--suspend-font-lock)
+            (skroad--deactivate-mark)
+            (skroad--snapshot-prepare)
+            (setq-local
+             inhibit-modification-hooks t
+             cursor-type t)
+            (setq skroad--renamer-old-name current-name)
+            (skroad--hide-text start end)
+            (goto-char end)
+            (let ((inhibit-read-only t))
+              (insert (concat " " skroad--renamer-old-name " ")))
+            (setq skroad--renamer (make-overlay end (point) (current-buffer)))
+            (overlay-put skroad--renamer 'category renamer-type)
+            (set-buffer-modified-p nil)
+            (goto-char end)
+            (skroad--renamer-validate)))))))
 
 (defun skroad--renamer-deactivate ()
   "Deactivate the renamer if it is currently active."
   (when (skroad--renamer-active-p)
-    (delete-overlay skroad--renamer)
-    (skroad--deactivate-mark)
-    (skroad--snapshot-rollback)
-    (goto-char (overlay-start skroad--buf-hider))
-    (skroad--unhide-text)
-    (skroad--resume-font-lock)
-    (skroad--refontify-current-line)
-    (setq-local inhibit-modification-hooks nil
-                skroad--renamer-old-name nil)
-    (skroad--set-writability)))
+    (let ((renamer-buffer (overlay-buffer skroad--renamer)))
+      (when (buffer-live-p renamer-buffer)
+        (with-current-buffer renamer-buffer
+          (delete-overlay skroad--renamer)
+          (skroad--deactivate-mark)
+          (skroad--snapshot-rollback)
+          (goto-char (overlay-start skroad--buf-hider))
+          (skroad--unhide-text)
+          (skroad--resume-font-lock)
+          (skroad--refontify-current-line)
+          (setq-local inhibit-modification-hooks nil)
+          (setq skroad--renamer-old-name nil
+                skroad--renamer nil)
+          (skroad--set-writability))))))
 
 (defun skroad--get-renamer-text ()
   "Get the proposed text in the current renamer."
@@ -1463,9 +1465,17 @@ Return the new position if the jump actually happened; otherwise nil."
   "Get the default face of the current renamer."
   (get (overlay-get skroad--renamer 'category) 'face))
 
+(defun skroad--renamer-monitor ()
+  "Deactivate the renamer if we have left its buffer."
+  (when (skroad--renamer-active-p)
+    (cond ((not (eq (current-buffer) (overlay-buffer skroad--renamer)))
+           (skroad--renamer-deactivate)
+           nil)
+          (t t))))
+
 (defun skroad--renamer-validate ()
   "If a renamer is active, validate the proposed text.  Return t when valid."
-  (when (skroad--renamer-active-p)
+  (when (skroad--renamer-monitor)
     (let ((valid
            (skroad--fn-or-t
             (overlay-get skroad--renamer 'validate-rename)
@@ -2425,6 +2435,7 @@ If the tail did not previously exist in the current node, it is emplaced."
 ;; TODO: make on-leave fire when leaving a buffer, and on-enter when entering
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
+  (skroad--renamer-monitor)
   (setq-local mouse-highlight nil
               skroad--buf-pre-command-point-state (skroad--get-point-state)))
 
@@ -2600,6 +2611,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 
 (defun skroad--before-kill-buffer-hook ()
   "Triggers prior to a skroad buffer being killed."
+  (skroad--renamer-deactivate)
   (skroad--save-cache-point))
 
 (defun skroad--maybe-restore-cached-point ()
@@ -2814,7 +2826,7 @@ After all of this, the VICTIM is permanently deleted."
         ;; Nodes that linked to the victim will now link to this node instead:
         (dolist (affected-node victim-linked-from)
           (skroad--defer
-           (skroad--with-node affected-node nil ;; Perform actions
+           (skroad--with-node affected-node nil ;; Run index actions
              (skroad--link-merge victim this-node)
              (skroad--clear-buf-undo-info)))))
       (skroad--defer (skroad--refontify-open-nodes))
@@ -2976,7 +2988,7 @@ Warning: undo info is lost in all affected buffers!"
 (defun skroad--cmd-top-goto-tail ()
   "Top-level jump-to-tail."
   (interactive)
-  (skroad--tail-jump-before))
+  (skroad--tail-jump-after))
 
 (defvar skroad--mode-map
   (define-keymap
