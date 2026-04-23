@@ -2973,12 +2973,18 @@ Warning: undo info is lost in all affected buffers!"
       (completion-at-point) ;; ... trigger the autocomplete.
     (skroad--cmd-top-jump-to-next-link))) ;; ... if not, regular tab binding.
 
+(defun skroad--cmd-top-goto-tail ()
+  "Top-level jump-to-tail."
+  (interactive)
+  (skroad--tail-jump-before))
+
 (defvar skroad--mode-map
   (define-keymap
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
     "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
     "C-<tab>" #'skroad--cmd-top-jump-to-prev-link
     "M-o" #'skroad--cmd-top-find-node ;; TODO: maybe we want a global binding!
+    "M-t" #'skroad--cmd-top-goto-tail
     )
   "Top-level keymap for the skroad major mode.")
 
