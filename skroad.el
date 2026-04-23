@@ -1407,7 +1407,6 @@ Return the new position if the jump actually happened; otherwise nil."
 ;; Interactive node renamer. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--renamer nil "Node renamer overlay.")
-(defvar skroad--renamer-old-name nil "Original name.")
 
 (defun skroad--renamer-active-p ()
   "Return t when the renamer is active."
@@ -1423,10 +1422,8 @@ Return the new position if the jump actually happened; otherwise nil."
       (if (skroad--idle-have-work-p)
           (skroad--info "Please wait until queued work completes!")
         (skroad--with-current-zone
-          (let ((current-name
-                 (funcall (get renamer-type 'name-rename) start)))
-            (when (skroad--fn-or-t
-                   (get renamer-type 'permit-rename) current-name)
+          (let ((old-name (funcall (get renamer-type 'name-rename) start)))
+            (when (skroad--fn-or-t (get renamer-type 'permit-rename) old-name)
               (setq buffer-read-only nil)
               (skroad--suspend-font-lock)
               (skroad--deactivate-mark)
@@ -1434,14 +1431,14 @@ Return the new position if the jump actually happened; otherwise nil."
               (setq-local
                inhibit-modification-hooks t
                cursor-type t)
-              (setq skroad--renamer-old-name current-name)
               (skroad--hide-text start end)
               (goto-char end)
               (let ((inhibit-read-only t))
-                (insert (concat " " skroad--renamer-old-name " ")))
+                (insert (concat " " old-name " ")))
               (setq skroad--renamer
                     (make-overlay end (point) (current-buffer)))
               (overlay-put skroad--renamer 'category renamer-type)
+              (overlay-put skroad--renamer 'old-name old-name)
               (set-buffer-modified-p nil)
               (goto-char end)
               (skroad--renamer-validate))))))))
@@ -1460,8 +1457,7 @@ Return the new position if the jump actually happened; otherwise nil."
           (skroad--resume-font-lock)
           (skroad--refontify-current-line)
           (setq-local inhibit-modification-hooks nil)
-          (setq skroad--renamer-old-name nil
-                skroad--renamer nil)
+          (setq skroad--renamer nil)
           (skroad--set-writability))))))
 
 (defun skroad--get-renamer-text ()
@@ -1487,7 +1483,8 @@ Return the new position if the jump actually happened; otherwise nil."
     (let ((valid
            (skroad--fn-or-t
             (overlay-get skroad--renamer 'validate-rename)
-            skroad--renamer-old-name (skroad--get-renamer-text))))
+            (overlay-get skroad--renamer 'old-name)
+            (skroad--get-renamer-text))))
       (overlay-put
        skroad--renamer 'face
        (if valid
@@ -1500,7 +1497,7 @@ Return the new position if the jump actually happened; otherwise nil."
   "Accept the proposed renaming, if the renamer is currently active and valid."
   (interactive)
   (when (skroad--renamer-validate)
-    (let ((old skroad--renamer-old-name)
+    (let ((old (overlay-get skroad--renamer 'old-name))
           (new (skroad--get-renamer-text))
           (do-rename (overlay-get skroad--renamer 'do-rename)))
       (skroad--renamer-deactivate)
