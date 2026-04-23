@@ -909,6 +909,29 @@ call the action with ARGS."
   :render-next #'skroad--render-next-text-block
   :use 'skroad--text-mixin-rendered)
 
+;; Quotes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; TODO: add to any existing block depth?
+;; TODO: newline should keep the current level?
+;; TODO: yank into a quote should preserve the current level?
+(skroad--deftype skroad--text-quoted-line
+  :doc "Text type for quoted lines rendered by font lock."
+  :order 2
+  :regex-any
+  (rx line-start
+      (group (one-or-more (seq ">" (zero-or-more blank))))
+      (zero-or-more not-newline)
+      (optional "\n"))
+  :render
+  '(lambda ()
+     (add-text-properties
+      (match-beginning 0) (match-end 0)
+      (skroad--block-level-props
+       (length (replace-regexp-in-string "[^>]" "" (match-string 1))))))
+  :use 'skroad--text-mixin-findable
+  :use 'skroad--text-mixin-regexp-rendered
+  :use 'skroad--text-mixin-rendered)
+
 ;; Decorative text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (skroad--deftype skroad--text-mixin-render-delimited-decorative
@@ -2438,7 +2461,7 @@ If the tail did not previously exist in the current node, it is emplaced."
     (skroad--selector-unhide)
     (setq-local skroad--buf-alt-mark nil))))
 
-;; TODO: make on-leave fire when leaving a buffer, and on-enter when entering
+;; TODO: do this before moving the point after opening a node?
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
   (skroad--renamer-monitor)
@@ -2454,6 +2477,7 @@ If the tail did not previously exist in the current node, it is emplaced."
     (unless (= tick skroad--buf-modification-ticks)
       (setq-local skroad--buf-modification-ticks tick)
       (skroad--buf-indices-sync)
+      (skroad--refontify-current-line)
       (skroad--renamer-validate)
       (unless (skroad--renamer-active-p)
         (skroad--update-stub-status))
