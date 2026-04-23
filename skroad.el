@@ -388,7 +388,12 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
 
 (defun skroad--complete-all-deferred ()
   "Ensure that the work queue is empty by running all pending work immediately."
-  (skroad--idle-work-run-slice t))
+  (when skroad--idle-work-queue
+    (skroad--idle-work-run-slice t)))
+
+(defun skroad--idle-have-work-p ()
+  "Return t when the idle queue is not empty."
+  (not (null skroad--idle-work-queue)))
 
 ;; File and directory ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1415,28 +1420,31 @@ Return the new position if the jump actually happened; otherwise nil."
   (skroad--renamer-deactivate) ;; Deactivate when already active somewhere
   (let ((renamer-type (skroad--prop-at 'renamer-overlay-type)))
     (when renamer-type
-      (skroad--with-current-zone
-        (let ((current-name
-               (funcall (get renamer-type 'name-rename) start)))
-          (when (skroad--fn-or-t
-                 (get renamer-type 'permit-rename) current-name)
-            (setq buffer-read-only nil)
-            (skroad--suspend-font-lock)
-            (skroad--deactivate-mark)
-            (skroad--snapshot-prepare)
-            (setq-local
-             inhibit-modification-hooks t
-             cursor-type t)
-            (setq skroad--renamer-old-name current-name)
-            (skroad--hide-text start end)
-            (goto-char end)
-            (let ((inhibit-read-only t))
-              (insert (concat " " skroad--renamer-old-name " ")))
-            (setq skroad--renamer (make-overlay end (point) (current-buffer)))
-            (overlay-put skroad--renamer 'category renamer-type)
-            (set-buffer-modified-p nil)
-            (goto-char end)
-            (skroad--renamer-validate)))))))
+      (if (skroad--idle-have-work-p)
+          (skroad--info "Please wait until queued work completes!")
+        (skroad--with-current-zone
+          (let ((current-name
+                 (funcall (get renamer-type 'name-rename) start)))
+            (when (skroad--fn-or-t
+                   (get renamer-type 'permit-rename) current-name)
+              (setq buffer-read-only nil)
+              (skroad--suspend-font-lock)
+              (skroad--deactivate-mark)
+              (skroad--snapshot-prepare)
+              (setq-local
+               inhibit-modification-hooks t
+               cursor-type t)
+              (setq skroad--renamer-old-name current-name)
+              (skroad--hide-text start end)
+              (goto-char end)
+              (let ((inhibit-read-only t))
+                (insert (concat " " skroad--renamer-old-name " ")))
+              (setq skroad--renamer
+                    (make-overlay end (point) (current-buffer)))
+              (overlay-put skroad--renamer 'category renamer-type)
+              (set-buffer-modified-p nil)
+              (goto-char end)
+              (skroad--renamer-validate))))))))
 
 (defun skroad--renamer-deactivate ()
   "Deactivate the renamer if it is currently active."
@@ -1466,12 +1474,12 @@ Return the new position if the jump actually happened; otherwise nil."
   (get (overlay-get skroad--renamer 'category) 'face))
 
 (defun skroad--renamer-monitor ()
-  "Deactivate the renamer if we have left its buffer."
+  "Deactivate the renamer if we have left its buffer.  Return t when active."
   (when (skroad--renamer-active-p)
-    (cond ((not (eq (current-buffer) (overlay-buffer skroad--renamer)))
-           (skroad--renamer-deactivate)
-           nil)
-          (t t))))
+    (if (eq (current-buffer) (overlay-buffer skroad--renamer))
+        t
+      (skroad--renamer-deactivate)
+      nil)))
 
 (defun skroad--renamer-validate ()
   "If a renamer is active, validate the proposed text.  Return t when valid."
