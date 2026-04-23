@@ -1151,11 +1151,10 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
 to the pending changes in the buffer;  `skroad--buf-indices-sync' must be
 called to finalize all pending changes when no further ones are expected."
   (save-match-data
-    (save-mark-and-excursion
-      (skroad--with-whole-lines start end
-        (dolist (text-type skroad--text-types-indexed)
-          (funcall (get text-type 'scan-region)
-                   start-expanded end-expanded delta))))))
+    (skroad--with-whole-lines start end
+      (dolist (text-type skroad--text-types-indexed)
+        (funcall (get text-type 'scan-region)
+                 start-expanded end-expanded delta)))))
 
 (defvar-local skroad--expecting-after-change-hook nil
   "Detect mismatched change hook activations.
