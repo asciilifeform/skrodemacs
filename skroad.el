@@ -1751,6 +1751,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 
 (defun skroad--action-open-node (node)
   "Navigate to NODE.  If visible, go there; else open in the current window."
+  (skroad--renamer-deactivate) ;; Deactivate the renamer if it is active
   (unless (skroad--cache-peek node) ;; Possibly node creation is still pending?
     (skroad--complete-all-deferred)) ;; ... if so, let all deferred work finish.
   (let* ((orig-node (skroad--current-node)) ;; Node we triggered the action in
