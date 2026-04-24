@@ -909,7 +909,7 @@ call the action with ARGS."
   :render-next #'skroad--render-next-text-block
   :use 'skroad--text-mixin-rendered)
 
-;; Quotes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Line Quotes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; TODO: add to any existing block depth?
 ;; TODO: newline should keep the current level?
@@ -919,7 +919,7 @@ call the action with ARGS."
   :order 2
   :regex-any
   (rx line-start
-      (group (one-or-more (seq ">" (zero-or-more blank))))
+      (group (one-or-more (seq (zero-or-more blank) ">" (zero-or-more blank))))
       (zero-or-more not-newline)
       (optional "\n"))
   :render
@@ -931,6 +931,25 @@ call the action with ARGS."
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-regexp-rendered
   :use 'skroad--text-mixin-rendered)
+
+(defun skroad--quote-region (beg end)
+  "Increase the quote level of the region BEG...END."
+  (save-mark-and-excursion
+    (let ((end-marker (copy-marker end t)))
+      (replace-regexp-in-region (rx line-start) ">" beg end-marker)
+      (replace-regexp-in-region
+       (rx line-start ">" line-end) "" beg end-marker))))
+
+(defun skroad--unquote-region (beg end)
+  "Reduce the quote level of the region BEG...END."
+  (save-mark-and-excursion
+    (let ((end-marker (copy-marker end)))
+      (goto-char beg)
+      (beginning-of-line)
+      (while (< (point) end-marker)
+        (when (looking-at (rx (group (zero-or-more blank) ">")))
+          (delete-region (match-beginning 1) (match-end 1)))
+        (forward-line 1)))))
 
 ;; Decorative text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1231,18 +1250,7 @@ These may occur if ill-behaved minor modes are in use.")
     (when index
       (maphash #'(lambda (key _val) (apply fn (cons key other-args))) index))))
 
-;; Top-level keymap for the major mode. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun skroad--cmd-top-backspace ()
-  "If prev point is in an atomic, delete it; otherwise, normal backspace."
-  (interactive)
-  (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
-        ((bobp) nil)
-        (t (let* ((p (point)) (left (1- p)))
-             (unless (skroad--in-node-title-p left) ;; Never bite into the title
-               (if (skroad--data-at left) ;; If in front of an atomic:
-                   (delete-region (skroad--zone-start left) p) ;; ... delete it;
-                 (delete-backward-char 1))))))) ;; ... if not: normal backspace.
+;; Jumps. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--match-any-from (type method pos)
   "Search for TYPE from POS via METHOD; return match data (nil if not found)."
@@ -2989,6 +2997,35 @@ Warning: undo info is lost in all affected buffers!"
 
 ;; Top-level key bindings. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun skroad--cmd-top-backspace ()
+  "If prev point is in an atomic, delete it; otherwise, normal backspace."
+  (interactive)
+  (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
+        ((bobp) nil)
+        (t (let* ((p (point)) (left (1- p)))
+             (unless (skroad--in-node-title-p left) ;; Never bite into the title
+               (if (skroad--data-at left) ;; If in front of an atomic:
+                   (delete-region (skroad--zone-start left) p) ;; ... delete it;
+                 (delete-backward-char 1))))))) ;; ... if not: normal backspace.
+
+(defun skroad--cmd-top-gt ()
+  "If there is a region, increase its quote level; otherwise insert `>'."
+  (interactive)
+  (if (use-region-p)
+      (progn
+        (skroad--quote-region (region-beginning) (region-end))
+        (skroad--refontify-current-buffer))
+    (insert ">")))
+
+(defun skroad--cmd-top-lt ()
+  "If there is a region, decrease its quote level; otherwise insert `<'."
+  (interactive)
+  (if (use-region-p)
+      (progn
+        (skroad--unquote-region (region-beginning) (region-end))
+        (skroad--refontify-current-buffer))
+    (insert "<")))
+
 (defun skroad--cmd-top-find-node ()
   "Find and open a Skroad node using the minibuffer."
   (interactive)
@@ -3022,6 +3059,8 @@ Warning: undo info is lost in all affected buffers!"
 
 (defvar skroad--mode-map
   (define-keymap
+    ">" #'skroad--cmd-top-gt
+    "<" #'skroad--cmd-top-lt
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
     "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
     "C-<tab>" #'skroad--cmd-top-jump-to-prev-link
