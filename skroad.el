@@ -120,6 +120,11 @@
   "Face used for skroad tails."
   :group 'skroad-faces)
 
+(defface skroad--quote-glyph-face
+  '((t :foreground "gray"))
+  "Foreground face for the `> ' glyph in quote-depth blocks."
+  :group 'skroad-faces)
+
 ;; (defface skroad--timestamp-face
 ;;   '((t :inherit skroad--text-face
 ;;        :foreground "black" :background "white"))
@@ -914,6 +919,36 @@ call the action with ARGS."
 ;; TODO: add to any existing block depth?
 ;; TODO: newline should keep the current level?
 ;; TODO: yank into a quote should preserve the current level?
+
+(defun skroad--quoted-line-render ()
+  (let* ((beg (match-beginning 1))
+         (end (match-end 1))
+         (eol (match-end 0))
+         (line-end (if (eq (char-before eol) ?\n) (1- eol) eol))
+         (depth 0)
+         (seg-start beg)
+         (prefix "")
+         last-face)
+    (goto-char beg)
+    (while (< (point) end)
+      (skip-syntax-forward " " end)
+      (when (eq (char-after) ?>)
+        (forward-char 1)
+        (setq depth (1+ depth))
+        (let* ((face
+                `(:background ,(skroad--block-bg-for-level depth) :extend t))
+               (replacement (copy-sequence " > ")))
+          (put-text-property 1 2 'cursor (- (point) seg-start 1) replacement)
+          (setq last-face face)
+          (add-face-text-property seg-start (point) face)
+          (add-face-text-property seg-start (point) 'skroad--quote-glyph-face)
+          (put-text-property seg-start (point) 'display replacement)
+          (setq prefix (concat prefix (propertize "   " 'face face))))
+        (setq seg-start (point))))
+    (when last-face
+      (add-face-text-property seg-start eol last-face)
+      (put-text-property end line-end 'wrap-prefix prefix))))
+
 (skroad--deftype skroad--text-quoted-line
   :doc "Text type for quoted lines rendered by font lock."
   :order 2
@@ -922,26 +957,22 @@ call the action with ARGS."
       (group (one-or-more (seq (zero-or-more blank) ">" (zero-or-more blank))))
       (zero-or-more not-newline)
       (optional "\n"))
-  :render
-  '(lambda ()
-     (add-text-properties
-      (match-beginning 0) (match-end 0)
-      (skroad--block-level-props
-       (length (replace-regexp-in-string "[^>]" "" (match-string 1))))))
+  :render #'skroad--quoted-line-render
+  :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-regexp-rendered
   :use 'skroad--text-mixin-rendered)
 
 (defun skroad--quote-region (beg end)
-  "Increase the quote level of the region BEG...END."
+  "Increment the quote level of the region BEG...END."
   (save-mark-and-excursion
     (let ((end-marker (copy-marker end t)))
       (replace-regexp-in-region (rx line-start) ">" beg end-marker)
       (replace-regexp-in-region
-       (rx line-start ">" line-end) "" beg end-marker))))
+       (rx line-start ">" (zero-or-more blank) line-end) "" beg end-marker))))
 
 (defun skroad--unquote-region (beg end)
-  "Reduce the quote level of the region BEG...END."
+  "Decrement the quote level of the region BEG...END."
   (save-mark-and-excursion
     (let ((end-marker (copy-marker end)))
       (goto-char beg)
@@ -3012,18 +3043,14 @@ Warning: undo info is lost in all affected buffers!"
   "If there is a region, increase its quote level; otherwise insert `>'."
   (interactive)
   (if (use-region-p)
-      (progn
-        (skroad--quote-region (region-beginning) (region-end))
-        (skroad--refontify-current-buffer))
+      (skroad--quote-region (region-beginning) (region-end))
     (insert ">")))
 
 (defun skroad--cmd-top-lt ()
   "If there is a region, decrease its quote level; otherwise insert `<'."
   (interactive)
   (if (use-region-p)
-      (progn
-        (skroad--unquote-region (region-beginning) (region-end))
-        (skroad--refontify-current-buffer))
+      (skroad--unquote-region (region-beginning) (region-end))
     (insert "<")))
 
 (defun skroad--cmd-top-find-node ()
