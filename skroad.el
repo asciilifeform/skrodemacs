@@ -1544,13 +1544,15 @@ Return the new position if the jump actually happened; otherwise nil."
               (skroad--hide-text start end)
               (goto-char end)
               (let ((inhibit-read-only t))
-                (insert (concat " " old-name " ")))
+                (insert (concat "  " old-name "  ")))
               (setq skroad--renamer
                     (make-overlay end (point) (current-buffer)))
               (overlay-put skroad--renamer 'category renamer-type)
               (overlay-put skroad--renamer 'old-name old-name)
               (set-buffer-modified-p nil)
               (goto-char end)
+              (unless (string-empty-p old-name)
+                (skip-syntax-forward " "))
               (skroad--renamer-validate))))))))
 
 (defun skroad--renamer-deactivate ()
@@ -1680,14 +1682,13 @@ Return the new position if the jump actually happened; otherwise nil."
   :use 'skroad--text-mixin-renamer-overlay
   :use 'skroad--text-mixin-node-renamer
   :face 'skroad--direct-renamer-face
-  :before-string "" :after-string " \n")
+  :after-string " \n")
 
 (skroad--deftype skroad--text-node-renamer-indirect
   :doc "Renamer for editing a node's title while standing on a link to the node."
   :use 'skroad--text-mixin-renamer-overlay
   :use 'skroad--text-mixin-node-renamer
-  :face 'skroad--indirect-renamer-face
-  :before-string " " :after-string " ")
+  :face 'skroad--indirect-renamer-face)
 
 (defun skroad--url-renamer-name (pos)
   "Obtain the current caption (if any) of the URL at POS."
