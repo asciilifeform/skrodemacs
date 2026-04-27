@@ -973,7 +973,7 @@ call the action with ARGS."
     (setq skroad--quote-target nil)))
 
 (defun skroad--quote-after-change (beg end length)
-  "Change hook for rectifying deletions and line insertions in quotes."
+  "Change hook for rectifying line deletions and insertions in quoted text."
   (unless undo-in-progress
     (cond
      ((zerop length)
