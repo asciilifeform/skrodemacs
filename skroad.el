@@ -710,7 +710,8 @@ call the action with ARGS."
   :register 'skroad--text-types-rendered)
 
 (defconst skroad--font-lock-properties
-  '(category face mouse-face zone data display line-prefix wrap-prefix invisible)
+  '(category face mouse-face zone data
+             display line-prefix wrap-prefix invisible quote-depth)
   "Let font lock know what props we use in renderers, so it will clean them.")
 
 (defvar skroad--font-lock-keywords nil "Font lock keywords for skroad mode.")
@@ -916,11 +917,8 @@ call the action with ARGS."
 
 ;; Line Quotes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: add to any existing block depth?
-;; TODO: newline should keep the current level?
-;; TODO: yank into a quote should preserve the current level?
-
 (defun skroad--quoted-line-render ()
+  "Render a line quote."
   (let* ((beg (match-beginning 1))
          (end (match-end 1))
          (eol (match-end 0))
@@ -947,7 +945,8 @@ call the action with ARGS."
         (setq seg-start (point))))
     (when last-face
       (add-face-text-property seg-start eol last-face)
-      (put-text-property end line-end 'wrap-prefix prefix))))
+      (put-text-property end line-end 'wrap-prefix prefix)
+      (put-text-property end eol 'quote-depth depth))))
 
 (skroad--deftype skroad--text-quoted-line
   :doc "Text type for quoted lines rendered by font lock."
@@ -962,6 +961,55 @@ call the action with ARGS."
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-regexp-rendered
   :use 'skroad--text-mixin-rendered)
+
+(defvar-local skroad--quote-target nil
+  "Where to move the point after an insertion into a quoted block.")
+
+(defun skroad--quote-fix-point-once ()
+  "Correct for the default behaviour of newline after inserting into a quote."
+  (remove-hook 'post-self-insert-hook #'skroad--quote-fix-point-once t)
+  (when skroad--quote-target
+    (goto-char skroad--quote-target)
+    (setq skroad--quote-target nil)))
+
+(defun skroad--quote-after-change (beg end length)
+  "Change hook for rectifying deletions and multi-line insertions in quotes."
+  (unless undo-in-progress
+    (cond
+     ((zerop length)
+      (let ((depth (or (get-text-property end 'quote-depth)
+                       (and (= end (point-max))
+                            (> beg (point-min))
+                            (get-text-property (1- beg) 'quote-depth)))))
+        (when (and depth (> depth 0))
+          (let ((inhibit-modification-hooks t)
+                (prefix (make-string depth ?>)))
+            (if (and (= end (1+ beg)) (eq (char-after beg) ?\n))
+                (progn
+                  (insert prefix)
+                  (setq skroad--quote-target (point))
+                  (add-hook 'post-self-insert-hook
+                            #'skroad--quote-fix-point-once t t))
+              (let* ((parts (split-string
+                             (buffer-substring-no-properties beg end)
+                             "\n+" t))
+                     (joined (mapconcat #'identity parts
+                                        (concat "\n" prefix))))
+                (delete-region beg end)
+                (insert joined)))))))
+     ((and (= beg end)
+           (eq (char-after beg) ?>)
+           (> beg (point-min))
+           (not (eq (char-before beg) ?\n)))
+      (let ((inhibit-modification-hooks t))
+        (delete-region beg
+                       (save-excursion
+                         (goto-char beg)
+                         (skip-chars-forward "> \t")
+                         (point)))
+        (unless (or (= (point) (point-max))
+                    (eq (char-after) ?\n))
+          (insert " ")))))))
 
 (defun skroad--quote-region (beg end)
   "Increment the quote level of the region BEG...END."
@@ -3144,6 +3192,7 @@ Warning: undo info is lost in all affected buffers!"
   (add-hook 'window-scroll-functions #'skroad--update-window-state nil t)
   (add-hook 'window-state-change-functions #'skroad--update-window-state nil t)
   (add-hook 'window-buffer-change-functions #'skroad--update-window-state nil t)
+  (add-hook 'after-change-functions 'skroad--quote-after-change nil t)
   (skroad--install-yank-transformer)
   ;; (add-hook 'auto-save-hook #'skroad--autosave-hook nil t)
   
