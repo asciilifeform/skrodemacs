@@ -1623,8 +1623,10 @@ Return the new position if the jump actually happened; otherwise nil."
   :zone 'type-name
   :field 'zone
   :keymap (define-keymap
-            "<remap> <end-of-line>" ;; END jumps to the end of the renamer
-            #'(lambda () (interactive) (goto-char (1- (field-end))))
+            "<remap> <end-of-line>" ;; END jumps to the end of the text
+            #'(lambda () (interactive)
+                (goto-char (1- (field-end)))
+                (skip-syntax-backward " " (field-beginning)))
             "<backspace>" ;; backspace must not change preceding text
             #'(lambda () (interactive)
                 (cond ((use-region-p)
