@@ -990,13 +990,13 @@ call the action with ARGS."
                   (setq skroad--quote-target (point))
                   (add-hook 'post-self-insert-hook
                             #'skroad--quote-fix-point-once t t))
-              (let* ((parts (split-string
-                             (buffer-substring-no-properties beg end)
-                             "\n+" t))
-                     (joined (mapconcat #'identity parts
-                                        (concat "\n" prefix))))
+              (let ((text (replace-regexp-in-string
+                           "\n" (concat "\n" prefix)
+                           (string-trim
+                            (buffer-substring-no-properties beg end)
+                            "\n+" "\n+"))))
                 (delete-region beg end)
-                (insert joined)))))))
+                (insert text)))))))
      ((and (= beg end)
            (eq (char-after beg) ?>)
            (> beg (point-min))
