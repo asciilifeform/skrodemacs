@@ -972,7 +972,7 @@ call the action with ARGS."
     (goto-char skroad--quote-target)
     (setq skroad--quote-target nil)))
 
-(defun skroad--quote-after-change (beg end length)
+(defun skroad--quote-after-change-hook (beg end length)
   "Change hook for rectifying line deletions and insertions in quoted text."
   (unless undo-in-progress
     (cond
@@ -3199,7 +3199,7 @@ Warning: undo info is lost in all affected buffers!"
   (add-hook 'window-scroll-functions #'skroad--update-window-state nil t)
   (add-hook 'window-state-change-functions #'skroad--update-window-state nil t)
   (add-hook 'window-buffer-change-functions #'skroad--update-window-state nil t)
-  (add-hook 'after-change-functions 'skroad--quote-after-change nil t)
+  (add-hook 'after-change-functions 'skroad--quote-after-change-hook nil t)
   (skroad--install-yank-transformer)
   ;; (add-hook 'auto-save-hook #'skroad--autosave-hook nil t)
   
