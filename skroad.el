@@ -1623,6 +1623,10 @@ Return the new position if the jump actually happened; otherwise nil."
   :zone 'type-name
   :field 'zone
   :keymap (define-keymap
+            "<remap> <beginning-of-line>" ;; HOME jumps to the start of the text
+            #'(lambda () (interactive)
+                (goto-char (field-beginning))
+                (skip-syntax-forward " " (field-end)))
             "<remap> <end-of-line>" ;; END jumps to the end of the text
             #'(lambda () (interactive)
                 (goto-char (1- (field-end)))
