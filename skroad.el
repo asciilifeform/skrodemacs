@@ -1490,7 +1490,7 @@ Return the new position if the jump actually happened; otherwise nil."
 
 (defun skroad--hide-text (start end)
   "Temporarily hide text in current buffer from START to END positions."
-  (setq-local skroad--buf-hider (make-overlay start end (current-buffer)))
+  (setq-local skroad--buf-hider (make-overlay start end (current-buffer) t nil))
   (overlay-put skroad--buf-hider 'invisible t))
 
 (defun skroad--unhide-text ()
@@ -1503,13 +1503,11 @@ Return the new position if the jump actually happened; otherwise nil."
 
 (defun skroad--snapshot-prepare ()
   "Start a temporary change set."
-  ;; (assert (null skroad--buf-unrollable-changes))
   (setq-local skroad--buf-unrollable-changes (prepare-change-group))
   (activate-change-group skroad--buf-unrollable-changes))
 
 (defun skroad--snapshot-rollback ()
   "End a temporary change set."
-  ;; (assert skroad--buf-unrollable-changes)
   (undo-amalgamate-change-group skroad--buf-unrollable-changes)
   (cancel-change-group skroad--buf-unrollable-changes)
   (setq-local skroad--buf-unrollable-changes nil))
@@ -1546,15 +1544,15 @@ Return the new position if the jump actually happened; otherwise nil."
                inhibit-modification-hooks t
                cursor-type t)
               (skroad--hide-text start end)
-              (goto-char end)
+              (goto-char start)
               (let ((inhibit-read-only t))
                 (insert (concat "  " old-name "  ")))
               (setq skroad--renamer
-                    (make-overlay end (point) (current-buffer)))
+                    (make-overlay start (point) (current-buffer)))
               (overlay-put skroad--renamer 'category renamer-type)
               (overlay-put skroad--renamer 'old-name old-name)
               (set-buffer-modified-p nil)
-              (goto-char end)
+              (goto-char start)
               (unless (string-empty-p (skroad--get-renamer-text))
                 (skip-syntax-forward " "))
               (add-hook 'post-command-hook #'skroad--renamer-validate))))))))
@@ -1568,11 +1566,6 @@ Return the new position if the jump actually happened; otherwise nil."
           (skroad--deactivate-mark)
           (delete-overlay skroad--renamer)
           (skroad--snapshot-rollback)
-          (let ((final-pos (overlay-start skroad--buf-hider))
-                (renamer-window (get-buffer-window renamer-buffer t)))
-            (goto-char final-pos)
-            (when renamer-window
-              (set-window-point renamer-window final-pos)))
           (remove-hook 'post-command-hook #'skroad--renamer-validate)
           (skroad--unhide-text)
           (skroad--resume-font-lock)
