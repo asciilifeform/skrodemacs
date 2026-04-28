@@ -1522,6 +1522,10 @@ Return the new position if the jump actually happened; otherwise nil."
   "Return t when the renamer is active."
   (overlayp skroad--renamer))
 
+(defun skroad--point-in-renamer-p ()
+  "Return t when the point is in the renamer (presumed to be active.)"
+  (memq skroad--renamer (overlays-at (point))))
+
 ;; Try to activate the renamer in the current zone.
 (defun skroad--cmd-renamer-activate-here ()
   "Rename"
@@ -1551,9 +1555,9 @@ Return the new position if the jump actually happened; otherwise nil."
               (overlay-put skroad--renamer 'old-name old-name)
               (set-buffer-modified-p nil)
               (goto-char end)
-              (unless (string-empty-p old-name)
+              (unless (string-empty-p (skroad--get-renamer-text))
                 (skip-syntax-forward " "))
-              (skroad--renamer-validate))))))))
+              (add-hook 'post-command-hook #'skroad--renamer-validate))))))))
 
 (defun skroad--renamer-deactivate ()
   "Deactivate the renamer if it is currently active."
@@ -1561,13 +1565,17 @@ Return the new position if the jump actually happened; otherwise nil."
     (let ((renamer-buffer (overlay-buffer skroad--renamer)))
       (when (buffer-live-p renamer-buffer)
         (with-current-buffer renamer-buffer
-          (delete-overlay skroad--renamer)
           (skroad--deactivate-mark)
+          (delete-overlay skroad--renamer)
           (skroad--snapshot-rollback)
-          (goto-char (overlay-start skroad--buf-hider))
+          (let ((final-pos (overlay-start skroad--buf-hider))
+                (renamer-window (get-buffer-window renamer-buffer t)))
+            (goto-char final-pos)
+            (when renamer-window
+              (set-window-point renamer-window final-pos)))
+          (remove-hook 'post-command-hook #'skroad--renamer-validate)
           (skroad--unhide-text)
           (skroad--resume-font-lock)
-          (skroad--refontify-current-line)
           (setq-local inhibit-modification-hooks nil)
           (setq skroad--renamer nil)
           (skroad--set-writability))))))
@@ -1581,29 +1589,27 @@ Return the new position if the jump actually happened; otherwise nil."
   "Get the default face of the current renamer."
   (get (overlay-get skroad--renamer 'category) 'face))
 
-(defun skroad--renamer-monitor ()
-  "Deactivate the renamer if we have left its buffer.  Return t when active."
+(defun skroad--renamer-validate ()
+  "If the cursor is inside the renamer, validate it and return the result.
+If the cursor has left the renamer or the buffer in which it was active,
+disable the renamer and return nil."
   (when (skroad--renamer-active-p)
-    (if (eq (current-buffer) (overlay-buffer skroad--renamer))
-        t
+    (if (and (eq (current-buffer) (overlay-buffer skroad--renamer))
+             (skroad--point-in-renamer-p))
+        (let ((valid
+               (skroad--fn-or-t
+                (overlay-get skroad--renamer 'validate-rename)
+                (overlay-get skroad--renamer 'old-name)
+                (skroad--get-renamer-text))))
+          (overlay-put
+           skroad--renamer 'face
+           (if valid
+               (skroad--renamer-get-default-face)
+             `(:inherit ,(skroad--renamer-get-default-face)
+                        :background ,skroad--renamer-faces-invalid-background)))
+          valid)
       (skroad--renamer-deactivate)
       nil)))
-
-(defun skroad--renamer-validate ()
-  "If a renamer is active, validate the proposed text.  Return t when valid."
-  (when (skroad--renamer-monitor)
-    (let ((valid
-           (skroad--fn-or-t
-            (overlay-get skroad--renamer 'validate-rename)
-            (overlay-get skroad--renamer 'old-name)
-            (skroad--get-renamer-text))))
-      (overlay-put
-       skroad--renamer 'face
-       (if valid
-           (skroad--renamer-get-default-face)
-         `(:inherit ,(skroad--renamer-get-default-face)
-                    :background ,skroad--renamer-faces-invalid-background)))
-      valid)))
 
 (defun skroad--cmd-renamer-accept-changes ()
   "Accept the proposed renaming, if the renamer is currently active and valid."
@@ -1639,8 +1645,7 @@ Return the new position if the jump actually happened; otherwise nil."
                        (delete-char -1))))
             "<return>" #'skroad--cmd-renamer-accept-changes
             "<remap> <keyboard-quit>"
-            #'(lambda () (interactive) (skroad--renamer-deactivate)))
-  :on-leave '(lambda (pos-from auto) (skroad--renamer-deactivate)))
+            #'(lambda () (interactive) (skroad--renamer-deactivate))))
 
 (skroad--deftype skroad--text-mixin-renameable
   :doc "Mixin for allowing the use of the rename command with an atomic type."
@@ -1832,15 +1837,16 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 
 (defun skroad--mouseover-node-preview (_window buf position)
   "User is mousing over a link in WINDOW, BUF, at POSITION.  Preview body."
-  (let ((node (with-current-buffer buf (skroad--data-at position))))
-    (when (and (stringp node) (skroad--cache-peek node))
-      (cond ((skroad--node-stub-p node) (format "Stub node '%s'" node))
-            ((skroad--node-special-p node) (format "Special node '%s'" node))
-            ((skroad--node-self-p node) "Current node.")
-            (t (propertize
-                (skroad--with-node node t
-                  (skroad--node-extract-body))
-                'help-echo-inhibit-substitution t)))))) ;; Emacs 29+
+  (with-current-buffer buf
+    (let ((node (skroad--data-at position)))
+      (when (and (stringp node) (skroad--cache-peek node))
+        (cond ((skroad--node-stub-p node) (format "Stub node '%s'" node))
+              ((skroad--node-special-p node) (format "Special node '%s'" node))
+              ((skroad--node-self-p node) "Current node.")
+              (t (propertize
+                  (skroad--with-node node t
+                    (skroad--node-extract-body))
+                  'help-echo-inhibit-substitution t))))))) ;; Emacs 29+
 
 (defun skroad--link-escaper (payload)
   "Escape PAYLOAD for links."
@@ -1865,7 +1871,6 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 
 (defun skroad--action-open-node (node)
   "Navigate to NODE.  If visible, go there; else open in the current window."
-  (skroad--renamer-deactivate) ;; Deactivate the renamer if it is active
   (unless (skroad--cache-peek node) ;; Possibly node creation is still pending?
     (skroad--complete-all-deferred)) ;; ... if so, let all deferred work finish.
   (let* ((orig-node (skroad--current-node)) ;; Node we triggered the action in
@@ -2059,8 +2064,7 @@ If START/END are given, constrain the replacement to that range."
   "Emplace a live link to NODE below the tail."
   (skroad--tail-jump-after)
   (newline)
-  (skroad--link-insert-live node)
-  (skroad--update-stub-status))
+  (skroad--link-insert-live node))
 
 (defun skroad--link-merge (victim target)
   "Merge live links to VICTIM in the current node into links to TARGET."
@@ -2558,7 +2562,6 @@ If the tail did not previously exist in the current node, it is emplaced."
 ;; TODO: do this before moving the point after opening a node?
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
-  (skroad--renamer-monitor)
   (setq-local mouse-highlight nil
               skroad--buf-pre-command-point-state (skroad--get-point-state)))
 
@@ -2572,9 +2575,8 @@ If the tail did not previously exist in the current node, it is emplaced."
       (setq-local skroad--buf-modification-ticks tick)
       (skroad--buf-indices-sync)
       (skroad--refontify-current-line)
-      (skroad--renamer-validate)
       (unless (skroad--renamer-active-p)
-        (skroad--update-stub-status))
+        (skroad--update-stub-status)) ;; TODO: move to save hook?
       ))
   (skroad--motion skroad--buf-pre-command-point-state)
   (skroad--adjust-mark-if-present)
