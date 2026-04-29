@@ -1705,7 +1705,7 @@ disable the renamer and return nil."
     (if (eq (skroad--prop-at 'category) 'skroad-text-md-url-link)
         (skroad--with-current-zone
           (skroad--visible-buffer-substring start end))
-      "")))
+      " ")))
 
 (defun skroad--url-renamer-validate (_current proposed)
   "Determine whether a URL may be recaptioned to PROPOSED."
@@ -1729,8 +1729,7 @@ disable the renamer and return nil."
   :name-rename #'skroad--url-renamer-name
   :validate-rename #'skroad--url-renamer-validate
   :do-rename #'skroad--url-recaption
-  :face 'skroad--indirect-renamer-face
-  :prefix " " :suffix " ")
+  :face 'skroad--indirect-renamer-face)
 
 ;; Link types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
