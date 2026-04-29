@@ -1545,8 +1545,10 @@ Return the new position if the jump actually happened; otherwise nil."
                cursor-type t)
               (skroad--hide-text start end)
               (goto-char start)
-              (let ((inhibit-read-only t))
-                (insert (concat "  " old-name "  ")))
+              (let ((inhibit-read-only t)
+                    (prefix (or (get renamer-type 'prefix) ""))
+                    (suffix (or (get renamer-type 'suffix) "")))
+                (insert (concat prefix old-name suffix)))
               (setq skroad--renamer
                     (make-overlay start (point) (current-buffer)))
               (overlay-put skroad--renamer 'category renamer-type)
@@ -1589,7 +1591,6 @@ disable the renamer and return nil."
   (when (skroad--renamer-active-p)
     (if (and (eq (current-buffer) (overlay-buffer skroad--renamer))
              (skroad--point-in-renamer-p))
-        (set-buffer-modified-p nil)
         (let ((valid
                (skroad--fn-or-t
                 (overlay-get skroad--renamer 'validate-rename)
@@ -1601,6 +1602,7 @@ disable the renamer and return nil."
                (skroad--renamer-get-default-face)
              `(:inherit ,(skroad--renamer-get-default-face)
                         :background ,skroad--renamer-faces-invalid-background)))
+          (set-buffer-modified-p nil)
           valid)
       (skroad--renamer-deactivate)
       nil)))
@@ -1687,13 +1689,14 @@ disable the renamer and return nil."
   :use 'skroad--text-mixin-renamer-overlay
   :use 'skroad--text-mixin-node-renamer
   :face 'skroad--direct-renamer-face
-  :after-string " \n")
+  :suffix " \n")
 
 (skroad--deftype skroad--text-node-renamer-indirect
   :doc "Renamer for editing a node's title while standing on a link to the node."
   :use 'skroad--text-mixin-renamer-overlay
   :use 'skroad--text-mixin-node-renamer
-  :face 'skroad--indirect-renamer-face)
+  :face 'skroad--indirect-renamer-face
+  :prefix "  " :suffix "  ")
 
 (defun skroad--url-renamer-name (pos)
   "Obtain the current caption (if any) of the URL at POS."
@@ -1726,7 +1729,8 @@ disable the renamer and return nil."
   :name-rename #'skroad--url-renamer-name
   :validate-rename #'skroad--url-renamer-validate
   :do-rename #'skroad--url-recaption
-  :face 'skroad--indirect-renamer-face)
+  :face 'skroad--indirect-renamer-face
+  :prefix " " :suffix " ")
 
 ;; Link types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
