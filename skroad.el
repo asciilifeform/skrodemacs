@@ -1729,7 +1729,8 @@ disable the renamer and return nil."
   :name-rename #'skroad--url-renamer-name
   :validate-rename #'skroad--url-renamer-validate
   :do-rename #'skroad--url-recaption
-  :face 'skroad--indirect-renamer-face)
+  :face 'skroad--indirect-renamer-face
+  :suffix " ")
 
 ;; Link types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
