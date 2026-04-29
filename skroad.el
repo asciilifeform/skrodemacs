@@ -1626,9 +1626,7 @@ disable the renamer and return nil."
   :field 'zone
   :keymap (define-keymap
             "<remap> <beginning-of-line>" ;; HOME jumps to the start of the text
-            #'(lambda () (interactive)
-                (goto-char (field-beginning))
-                (skip-syntax-forward " " (field-end)))
+            #'(lambda () (interactive) (goto-char (field-beginning)))
             "<remap> <end-of-line>" ;; END jumps to the end of the text
             #'(lambda () (interactive)
                 (goto-char (1- (field-end)))
