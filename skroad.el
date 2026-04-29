@@ -1524,6 +1524,12 @@ Return the new position if the jump actually happened; otherwise nil."
   "Return t when the point is in the renamer (presumed to be active.)"
   (memq skroad--renamer (overlays-at (point))))
 
+(defun skroad--renamer-go-to-text-start ()
+  "Jump to the start of the text in the renamer (presumed to be active)."
+  (goto-char (overlay-start skroad--renamer))
+  (unless (string-empty-p (skroad--get-renamer-text))
+    (skip-syntax-forward " ")))
+
 ;; Try to activate the renamer in the current zone.
 (defun skroad--cmd-renamer-activate-here ()
   "Rename"
@@ -1554,9 +1560,7 @@ Return the new position if the jump actually happened; otherwise nil."
               (overlay-put skroad--renamer 'category renamer-type)
               (overlay-put skroad--renamer 'old-name old-name)
               (set-buffer-modified-p nil)
-              (goto-char start)
-              (unless (string-empty-p (skroad--get-renamer-text))
-                (skip-syntax-forward " "))
+              (skroad--renamer-go-to-text-start)
               (add-hook 'post-command-hook #'skroad--renamer-validate))))))))
 
 (defun skroad--renamer-deactivate ()
@@ -1626,7 +1630,8 @@ disable the renamer and return nil."
   :field 'zone
   :keymap (define-keymap
             "<remap> <beginning-of-line>" ;; HOME jumps to the start of the text
-            #'(lambda () (interactive) (goto-char (field-beginning)))
+            #'(lambda () (interactive)
+                (skroad--renamer-go-to-text-start))
             "<remap> <end-of-line>" ;; END jumps to the end of the text
             #'(lambda () (interactive)
                 (goto-char (1- (field-end)))
