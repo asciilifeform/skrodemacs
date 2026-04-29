@@ -1589,6 +1589,7 @@ disable the renamer and return nil."
   (when (skroad--renamer-active-p)
     (if (and (eq (current-buffer) (overlay-buffer skroad--renamer))
              (skroad--point-in-renamer-p))
+        (set-buffer-modified-p nil)
         (let ((valid
                (skroad--fn-or-t
                 (overlay-get skroad--renamer 'validate-rename)
