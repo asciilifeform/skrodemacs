@@ -1689,7 +1689,7 @@ disable the renamer and return nil."
   :use 'skroad--text-mixin-renamer-overlay
   :use 'skroad--text-mixin-node-renamer
   :face 'skroad--direct-renamer-face
-  :suffix " \n")
+  :suffix "\n")
 
 (skroad--deftype skroad--text-node-renamer-indirect
   :doc "Renamer for editing a node's title while standing on a link to the node."
