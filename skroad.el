@@ -732,21 +732,28 @@ call the action with ARGS."
   (font-lock-refresh-defaults))
 
 (defvar-local skroad--font-lock-unfontify-region nil)
+(defvar-local skroad--font-lock-fontify-region nil)
+(defvar-local skroad--font-lock-suspended nil)
 
 (defun skroad--suspend-font-lock ()
-  "Suspend font lock rendering in current buffer, but don't depropertize text."
-  (setq-local
-   skroad--font-lock-unfontify-region font-lock-unfontify-region-function
-   font-lock-unfontify-region-function #'(lambda (&rest _args) ())
-   font-lock-defaults '(nil t))
-  (font-lock-refresh-defaults))
+  "Suspend all font-lock fontification and defontification in current buffer.
+Existing text properties are preserved.  No visual change occurs."
+  (unless skroad--font-lock-suspended
+    (setq-local
+     skroad--font-lock-suspended t
+     skroad--font-lock-unfontify-region font-lock-unfontify-region-function
+     skroad--font-lock-fontify-region font-lock-fontify-region-function
+     font-lock-unfontify-region-function (lambda (&rest _args) nil)
+     font-lock-fontify-region-function (lambda (&rest _args) nil))))
 
 (defun skroad--resume-font-lock ()
-  "Resume font lock fontification in the current buffer."
-  (setq-local
-   font-lock-defaults '(skroad--font-lock-keywords t)
-   font-lock-unfontify-region-function skroad--font-lock-unfontify-region)
-  (font-lock-refresh-defaults))
+  "Resume font-lock in current buffer.
+No refontification is triggered; existing properties are untouched."
+  (when skroad--font-lock-suspended
+    (setq-local
+     font-lock-unfontify-region-function skroad--font-lock-unfontify-region
+     font-lock-fontify-region-function skroad--font-lock-fontify-region
+     skroad--font-lock-suspended nil)))
 
 (defun skroad--refontify-current-line ()
   "Refresh fontification of the current line in a skroad buffer."
@@ -1521,7 +1528,7 @@ Return the new position if the jump actually happened; otherwise nil."
   (overlayp skroad--renamer))
 
 (defun skroad--point-in-renamer-p ()
-  "Return t when the point is in the renamer (presumed to be active.)"
+  "Return t when the point is in the renamer (presumed to be active)."
   (memq skroad--renamer (overlays-at (point))))
 
 (defun skroad--renamer-go-to-text-start ()
@@ -1719,11 +1726,12 @@ disable the renamer and return nil."
 
 (defun skroad--url-recaption (_old new)
   "Recaption the URL at point from OLD to NEW."
-  (skroad--with-current-zone
-    (let ((url (skroad--data-at start)))
-      (delete-region start end)
-      (insert (skroad--md-make-url url new))
-      (goto-char start))))
+  (let ((url (skroad--data-at)))
+    (when url
+      (skroad--with-current-zone
+        (delete-region start end)
+        (insert (skroad--md-make-url url new))
+        (goto-char start)))))
 
 (skroad--deftype skroad--text-url-renamer
   :doc "Renamer for recaptioning a URL link."
