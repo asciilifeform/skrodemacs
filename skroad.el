@@ -1491,24 +1491,9 @@ Return the new position if the jump actually happened; otherwise nil."
     )
   )
 
-;; Temporary change mechanism. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defvar-local skroad--buf-unrollable-changes nil "Temporary change group.")
-
-(defun skroad--snapshot-prepare ()
-  "Start a temporary change set."
-  (setq-local skroad--buf-unrollable-changes (prepare-change-group))
-  (activate-change-group skroad--buf-unrollable-changes))
-
-(defun skroad--snapshot-rollback ()
-  "End a temporary change set."
-  (undo-amalgamate-change-group skroad--buf-unrollable-changes)
-  (cancel-change-group skroad--buf-unrollable-changes)
-  (setq-local skroad--buf-unrollable-changes nil))
-
 ;; Interactive node renamer. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar skroad--renamer nil "Node renamer overlay.")
+(defvar skroad--renamer nil "Node renamer overlay.  There can be only one.")
 
 (defun skroad--renamer-active-p ()
   "Return t when the renamer is active."
@@ -1539,11 +1524,12 @@ Return the new position if the jump actually happened; otherwise nil."
               (setq buffer-read-only nil)
               (skroad--suspend-font-lock)
               (skroad--deactivate-mark)
-              (skroad--snapshot-prepare)
               (setq-local
                inhibit-modification-hooks t
                cursor-type t)
-              (let ((hider (make-overlay start end (current-buffer) t nil)))
+              (let ((hider (make-overlay start end (current-buffer) t nil))
+                    (snapshot (prepare-change-group)))
+                (activate-change-group snapshot)
                 (overlay-put hider 'invisible t)
                 (goto-char start)
                 (let ((inhibit-read-only t)
@@ -1554,7 +1540,8 @@ Return the new position if the jump actually happened; otherwise nil."
                       (make-overlay start (point) (current-buffer)))
                 (overlay-put skroad--renamer 'category renamer-type)
                 (overlay-put skroad--renamer 'old-name old-name)
-                (overlay-put skroad--renamer 'hider hider))
+                (overlay-put skroad--renamer 'hider hider)
+                (overlay-put skroad--renamer 'snapshot snapshot))
               (set-buffer-modified-p nil)
               (skroad--renamer-go-to-text-start)
               (add-hook 'post-command-hook #'skroad--renamer-validate))))))))
@@ -1566,14 +1553,16 @@ Return the new position if the jump actually happened; otherwise nil."
       (when (buffer-live-p renamer-buffer)
         (with-current-buffer renamer-buffer
           (skroad--deactivate-mark)
-          (skroad--snapshot-rollback)
-          (remove-hook 'post-command-hook #'skroad--renamer-validate)
+          (when-let* ((snapshot (overlay-get skroad--renamer 'snapshot)))
+            (undo-amalgamate-change-group snapshot)
+            (cancel-change-group snapshot))
           (delete-overlay (overlay-get skroad--renamer 'hider))
           (delete-overlay skroad--renamer)
           (skroad--resume-font-lock)
           (setq-local inhibit-modification-hooks nil)
-          (setq skroad--renamer nil)
-          (skroad--set-writability))))))
+          (skroad--set-writability))))
+    (remove-hook 'post-command-hook #'skroad--renamer-validate)
+    (setq skroad--renamer nil)))
 
 (defun skroad--get-renamer-text ()
   "Get the proposed text in the current renamer."
