@@ -1491,19 +1491,6 @@ Return the new position if the jump actually happened; otherwise nil."
     )
   )
 
-;; Text hider. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defvar-local skroad--buf-hider nil "Text hider overlay.")
-
-(defun skroad--hide-text (start end)
-  "Temporarily hide text in current buffer from START to END positions."
-  (setq-local skroad--buf-hider (make-overlay start end (current-buffer) t nil))
-  (overlay-put skroad--buf-hider 'invisible t))
-
-(defun skroad--unhide-text ()
-  "Unhide all text that has been hidden with `skroad--hide-text'."
-  (delete-overlay skroad--buf-hider))
-
 ;; Temporary change mechanism. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar-local skroad--buf-unrollable-changes nil "Temporary change group.")
@@ -1556,16 +1543,18 @@ Return the new position if the jump actually happened; otherwise nil."
               (setq-local
                inhibit-modification-hooks t
                cursor-type t)
-              (skroad--hide-text start end)
-              (goto-char start)
-              (let ((inhibit-read-only t)
-                    (prefix (or (get renamer-type 'prefix) ""))
-                    (suffix (or (get renamer-type 'suffix) "")))
-                (insert (concat prefix old-name suffix)))
-              (setq skroad--renamer
-                    (make-overlay start (point) (current-buffer)))
-              (overlay-put skroad--renamer 'category renamer-type)
-              (overlay-put skroad--renamer 'old-name old-name)
+              (let ((hider (make-overlay start end (current-buffer) t nil)))
+                (overlay-put hider 'invisible t)
+                (goto-char start)
+                (let ((inhibit-read-only t)
+                      (prefix (or (get renamer-type 'prefix) ""))
+                      (suffix (or (get renamer-type 'suffix) "")))
+                  (insert (concat prefix old-name suffix)))
+                (setq skroad--renamer
+                      (make-overlay start (point) (current-buffer)))
+                (overlay-put skroad--renamer 'category renamer-type)
+                (overlay-put skroad--renamer 'old-name old-name)
+                (overlay-put skroad--renamer 'hider hider))
               (set-buffer-modified-p nil)
               (skroad--renamer-go-to-text-start)
               (add-hook 'post-command-hook #'skroad--renamer-validate))))))))
@@ -1580,7 +1569,7 @@ Return the new position if the jump actually happened; otherwise nil."
           (delete-overlay skroad--renamer)
           (skroad--snapshot-rollback)
           (remove-hook 'post-command-hook #'skroad--renamer-validate)
-          (skroad--unhide-text)
+          (delete-overlay (overlay-get skroad--renamer 'hider))
           (skroad--resume-font-lock)
           (setq-local inhibit-modification-hooks nil)
           (setq skroad--renamer nil)
@@ -1635,23 +1624,23 @@ disable the renamer and return nil."
   :rear-advance t
   :zone 'type-name
   :field 'zone
-  :keymap (define-keymap
-            "<remap> <beginning-of-line>" ;; HOME jumps to the start of the text
-            #'(lambda () (interactive)
-                (skroad--renamer-go-to-text-start))
-            "<remap> <end-of-line>" ;; END jumps to the end of the text
-            #'(lambda () (interactive)
-                (goto-char (1- (field-end)))
-                (skip-syntax-backward " " (field-beginning)))
-            "<backspace>" ;; backspace must not change preceding text
-            #'(lambda () (interactive)
-                (cond ((use-region-p)
-                       (delete-region (region-beginning) (region-end)))
-                      ((> (point) (field-beginning))
-                       (delete-char -1))))
-            "<return>" #'skroad--cmd-renamer-accept-changes
-            "<remap> <keyboard-quit>"
-            #'(lambda () (interactive) (skroad--renamer-deactivate))))
+  :keymap
+  (define-keymap
+    "<remap> <beginning-of-line>" ;; HOME jumps to the start of the text
+    #'(lambda () (interactive) (skroad--renamer-go-to-text-start))
+    "<remap> <end-of-line>" ;; END jumps to the end of the text
+    #'(lambda () (interactive)
+        (goto-char (1- (field-end)))
+        (skip-syntax-backward " " (field-beginning)))
+    "<backspace>" ;; backspace must not change preceding text
+    #'(lambda () (interactive)
+        (cond ((use-region-p)
+               (delete-region (region-beginning) (region-end)))
+              ((> (point) (field-beginning))
+               (delete-char -1))))
+    "<return>" #'skroad--cmd-renamer-accept-changes
+    "<remap> <keyboard-quit>"
+    #'(lambda () (interactive) (skroad--renamer-deactivate))))
 
 (skroad--deftype skroad--text-mixin-renameable
   :doc "Mixin for allowing the use of the rename command with an atomic type."
