@@ -1566,10 +1566,10 @@ Return the new position if the jump actually happened; otherwise nil."
       (when (buffer-live-p renamer-buffer)
         (with-current-buffer renamer-buffer
           (skroad--deactivate-mark)
-          (delete-overlay skroad--renamer)
           (skroad--snapshot-rollback)
           (remove-hook 'post-command-hook #'skroad--renamer-validate)
           (delete-overlay (overlay-get skroad--renamer 'hider))
+          (delete-overlay skroad--renamer)
           (skroad--resume-font-lock)
           (setq-local inhibit-modification-hooks nil)
           (setq skroad--renamer nil)
