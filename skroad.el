@@ -2526,9 +2526,8 @@ If the tail did not previously exist in the current node, it is emplaced."
                         (> p old-p)) ;; ... and point moved forward?
                    (skroad--zone-end) ;; ... jump forward out of this zone.
                  (skroad--zone-start)))) ;; Moved backwards or came from outside
-            (when
-                (and mark-active skroad--buf-alt-mark
-                     (eq p (point)) (eq p (mark)))
+            (when (and mark-active skroad--buf-alt-mark
+                       (eq p (point)) (eq p (mark)))
               (if (< skroad--buf-alt-mark p) (forward-char) (backward-char)))
             (setq prev current)))))))
 
