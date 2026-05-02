@@ -243,10 +243,6 @@
   "Determine value of PROP, if any, including overlays, at POS (or point)."
   (get-char-property (or pos (point)) prop))
 
-(defun skroad--buf-overlay-active-p (overlay)
-  "Determine whether OVERLAY is active in the current buffer."
-  (and (overlayp overlay) (eq (current-buffer) (overlay-buffer overlay))))
-
 (defun skroad--re-search (finder regexp &optional limit filter)
   "Find REGEXP using FINDER, to LIMIT; filter by FILTER, if given."
   (if (functionp filter)
@@ -1142,7 +1138,7 @@ or the node's indices, if it has been indexed; or `empty' (indices are null).")
 (defun skroad--index-delta (index payload delta &optional final create destroy)
   "Update the count of PAYLOAD in INDEX by DELTA.
 Return `create' if introduced PAYLOAD; `destroy' if removed last copy; else nil.
-If FINAL is t, the count sum going negative will signal an error."
+If FINAL is t, the count sum done negative will signal an error."
   (let* ((had-prev (gethash payload index 0))
          (had-none (zerop had-prev))
          (sum (+ delta had-prev)))
@@ -1406,6 +1402,14 @@ Return the new position if the jump actually happened; otherwise nil."
   `((face skroad--selector-face) (evaporate t))
   "Text properties of the selector.")
 
+(defun skroad--buf-overlay-active-p (overlay)
+  "Determine whether OVERLAY is active in the current buffer."
+  (and (overlayp overlay) (eq (current-buffer) (overlay-buffer overlay))))
+
+(defun skroad--selector-active-p ()
+  "Return t if the selector is active in this buffer."
+  (skroad--buf-overlay-active-p skroad--buf-selector))
+
 (defun skroad--selector-init ()
   "Initialize the selector overlay in the current buffer."
   (setq-local skroad--buf-selector (make-overlay (point-min) (point-min)))
@@ -1415,25 +1419,34 @@ Return the new position if the jump actually happened; otherwise nil."
 
 (defun skroad--selector-unhide ()
   "Reveal the selector overlay when it may have been hidden."
-  (when (skroad--buf-overlay-active-p skroad--buf-selector)
+  (when (skroad--selector-active-p)
     (overlay-put skroad--buf-selector 'face 'skroad--selector-face)))
 
 (defun skroad--selector-hide ()
   "Hide (but not destroy) the selector overlay."
-  (when (skroad--buf-overlay-active-p skroad--buf-selector)
+  (when (skroad--selector-active-p)
     (overlay-put skroad--buf-selector 'face nil)))
 
-(defun skroad--selector-activate-here ()
+(defun skroad--selector-activate-in-current-zone ()
   "Activate (if inactive) or move the selector to the current zone."
   (skroad--with-current-zone
-    (move-overlay skroad--buf-selector start end (current-buffer)))
+    (move-overlay skroad--buf-selector start end (current-buffer))
+    (unless (skroad--last-ev-was-mouse-p)
+      (skroad--show-key-help)))
   (setq-local cursor-type nil show-paren-mode nil))
 
 (defun skroad--selector-deactivate ()
   "Deactivate the selector; it can be reactivated again."
-  (when (skroad--buf-overlay-active-p skroad--buf-selector)
-    (delete-overlay skroad--buf-selector))
+  (when (skroad--selector-active-p)
+    (delete-overlay skroad--buf-selector)
+    (skroad--info))
   (setq-local cursor-type t show-paren-mode t))
+
+(defun skroad--selector-update ()
+  "Enable the selector if point is on an atomic zone; otherwise disable it."
+  (if (skroad--prop-at 'zone)
+      (skroad--selector-activate-in-current-zone)
+    (skroad--selector-deactivate)))
 
 (defun skroad--cmd-atomic-set-mark ()
   "Set the mark inside an atomic."
@@ -1454,24 +1467,10 @@ Return the new position if the jump actually happened; otherwise nil."
   (let ((km (skroad--prop-at 'keymap))) ;; Display keymap help
     (when km (skroad--info (skroad--make-keymap-help km)))))
 
-;; TODO: require zone?
-;; TODO: allow mouse click point motion by default
-;; TODO: process enter/leave between buffers?
+;; TODO: mixin?
 (skroad--deftype skroad--text-atomic
   :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
   :atomic t ;; TODO: check
-  :on-enter '(lambda (pos-from auto)
-               (skroad--selector-activate-here)
-               (goto-char (skroad--zone-start)) ;; point can only sit on start
-               (unless (skroad--last-ev-was-mouse-p) ;; Unless we mouse-scrolled
-                 (skroad--show-key-help))) ;; Show keymap help
-  :on-leave '(lambda (pos-from auto)
-               (skroad--selector-deactivate)
-               (skroad--info)) ;; Clear the echo bar
-  :on-move '(lambda (pos-from auto)
-              (goto-char ;; if went forward, jump to the end; else, to the start.
-               (if (> (point) pos-from)
-                   (skroad--zone-end) (skroad--zone-start))))
   :keymap
   (define-keymap
     "<remap> <skroad--cmd-top-tab>"
@@ -1560,7 +1559,8 @@ Return the new position if the jump actually happened; otherwise nil."
           (delete-overlay skroad--renamer)
           (skroad--resume-font-lock)
           (setq-local inhibit-modification-hooks nil)
-          (skroad--set-writability))))
+          (skroad--set-writability)
+          (skroad--selector-update))))
     (remove-hook 'post-command-hook #'skroad--renamer-validate)
     (setq skroad--renamer nil)))
 
@@ -1611,7 +1611,7 @@ disable the renamer and return nil."
   :doc "Base mixin for renamer overlays."
   :mixin t
   :rear-advance t
-  :zone 'type-name
+  ;; :zone 'type-name
   :field 'zone
   :keymap
   (define-keymap
@@ -2504,34 +2504,32 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 ;; Cursor motion, mark, and floating title handling. ;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar-local skroad--buf-pre-command-point-state (list (point-min) nil nil)
+(defvar-local skroad--buf-pre-command-point-state (list (point-min) nil)
   "Point, zone at point, and type at point prior to a command.")
 
 (defun skroad--get-point-state ()
-  "Return a snapshot of the current point, zone, and type."
-  (list (point) (skroad--prop-at 'zone) (skroad--prop-at 'category)))
+  "Return a snapshot of the current point and zone."
+  (list (point) (skroad--prop-at 'zone)))
 
-(defun skroad--motion (prev &optional auto)
-  "To be called whenever the zone under the point may have changed."
-  (let ((current (skroad--get-point-state)))
-    (seq-let (old-p old-zone old-type p zone type) (append prev current)
-      (when
-          (cond ;; text type actions `on-leave` and `on-enter` may both fire
-           ((not (eq old-zone zone)) ;; point moved or text changed under it
-            (when old-zone ;; point was in a zone, but has left it
-              (skroad--type-action old-type 'on-leave old-p auto))
-            (when zone ;; point has entered a different zone
-              (skroad--type-action type 'on-enter old-p auto))
-            t)
-           ((and (not (eq old-p p)) old-zone) ;; moved but remained in zone
-            (skroad--type-action old-type 'on-move old-p auto)
-            t))
-        ;; If done moving point, and we went over alt-mark to mark, jump it:
-        (when
-            (and mark-active skroad--buf-alt-mark (eq p (point)) (eq p (mark)))
-          (if (< skroad--buf-alt-mark p) (forward-char) (backward-char)))
-        (skroad--motion current t))) ;; Handle possible auto zone change
-    t))
+(defun skroad--point-zone-handler (prev)
+  "To be called when the point may have moved.  PREV has old point and zone."
+  (let ((done nil))
+    (while (not done)
+      (let ((current (skroad--get-point-state)))
+        (seq-let (old-p old-zone p zone) (append prev current)
+          (setq done (= old-p p))
+          (unless done
+            (when zone
+              (goto-char ;; Point may still need to move:
+               (if (and (eq zone old-zone) ;; Point moved inside a zone?
+                        (> p old-p)) ;; ... and point moved forward?
+                   (skroad--zone-end) ;; ... jump forward out of this zone.
+                 (skroad--zone-start)))) ;; Moved backwards or came from outside
+            (when
+                (and mark-active skroad--buf-alt-mark
+                     (eq p (point)) (eq p (mark)))
+              (if (< skroad--buf-alt-mark p) (forward-char) (backward-char)))
+            (setq prev current)))))))
 
 (defun skroad--adjust-mark-if-present ()
   "Put mark and alt-mark in the right order, and show/hide selector."
@@ -2546,7 +2544,6 @@ If the tail did not previously exist in the current node, it is emplaced."
     (skroad--selector-unhide)
     (setq-local skroad--buf-alt-mark nil))))
 
-;; TODO: do this before moving the point after opening a node?
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
   (setq-local mouse-highlight nil
@@ -2565,7 +2562,8 @@ If the tail did not previously exist in the current node, it is emplaced."
       (unless (skroad--renamer-active-p)
         (skroad--update-stub-status)) ;; TODO: move to save hook?
       ))
-  (skroad--motion skroad--buf-pre-command-point-state)
+  (skroad--point-zone-handler skroad--buf-pre-command-point-state)
+  (skroad--selector-update)
   (skroad--adjust-mark-if-present)
   (unless mark-active (setq-local mouse-highlight t))
   (skroad--save-cache-point))
