@@ -765,7 +765,8 @@ No refontification is triggered; existing properties are untouched."
       (let ((start (apply #'min (mapcar #'window-start windows)))
             (end (apply #'max
                         (mapcar #'(lambda (w) (window-end w t)) windows))))
-        (font-lock-ensure start end)))))
+        (font-lock-ensure start end)
+        (skroad--selector-update)))))
 
 (defun skroad--refontify-open-nodes ()
   "Refresh fontification in all currently-open nodes."
