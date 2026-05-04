@@ -2325,11 +2325,6 @@ Any dead links found below the computed tail are deleted."
        (newline 2))
      (skroad--update-stub-status)))
 
-(defun skroad--in-tail-p ()
-  "Return t if the tail marker exists and the current point is in the tail."
-  (and skroad--buf-tail-marker
-       (>= (point) skroad--buf-tail-marker)))
-
 (defun skroad--update-stub-status ()
   "Determine whether the current node is a stub, and update Stubs if necessary.
 A stub is a node where only whitespace is found between the title and the tail.
@@ -2347,14 +2342,13 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 (defun skroad--render-next-tail-lines (limit)
   "Find and render the next tail lines between current point and LIMIT."
-  (when (and (markerp skroad--buf-tail-marker)
-             (> limit skroad--buf-tail-marker)
-             (< (point) limit))
-    (let ((start (max (point) skroad--buf-tail-marker)))
+  (when-let* ((tail skroad--buf-tail-marker)
+              (start (max (point) tail)))
+    (when (and (< start limit) (> limit tail))
       (with-silent-modifications
-        (add-face-text-property start limit 'skroad--tail-lines-face t)))
-    (goto-char limit))
-  nil)
+        (add-face-text-property start limit 'skroad--tail-lines-face t))
+      (goto-char limit))
+    nil))
 
 (skroad--deftype skroad--text-tail-line
   :doc "Text type for lines in tail rendered by font lock."
