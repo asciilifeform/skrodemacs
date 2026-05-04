@@ -766,14 +766,15 @@ No refontification is triggered; existing properties are untouched."
 
 (defun skroad--refontify-current-buffer ()
   "Refresh fontification in the visible portion of the current buffer."
-  (font-lock-flush) ;; Flush all fontification, will get refontified on demand
-  (let ((windows (get-buffer-window-list (current-buffer) nil t)))
-    (when windows
-      (let ((start (apply #'min (mapcar #'window-start windows)))
-            (end (apply #'max
-                        (mapcar #'(lambda (w) (window-end w t)) windows))))
-        (font-lock-ensure start end)
-        (skroad--selector-update)))))
+  (when (skroad--mode-p)
+    (font-lock-flush) ;; Flush all fontification, will get refontified on demand
+    (let ((windows (get-buffer-window-list (current-buffer) nil t)))
+      (when windows
+        (let ((start (apply #'min (mapcar #'window-start windows)))
+              (end (apply #'max
+                          (mapcar #'(lambda (w) (window-end w t)) windows))))
+          (font-lock-ensure start end)
+          (skroad--selector-update))))))
 
 (defun skroad--refontify-open-nodes ()
   "Refresh fontification in all currently-open nodes."
@@ -2294,7 +2295,9 @@ Any dead links found below the computed tail are deleted."
       (insert skroad--node-tail)
       (ensure-empty-lines 1))
     (goto-char (line-end-position)))
-  (setq-local skroad--buf-tail-marker (copy-marker (point))))
+  (unless (eq skroad--buf-tail-marker (point))
+    (setq-local skroad--buf-tail-marker (copy-marker (point)))
+    (skroad--refontify-current-buffer)))
 
 ;; TODO: update stub status every time we obtain the tail, when it is cheap
 (defun skroad--tail-jump-after ()
