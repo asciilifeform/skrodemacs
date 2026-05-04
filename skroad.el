@@ -2249,7 +2249,6 @@ See e.g. `skroad--merge-node-into-current'."
 
 (defconst skroad--node-tail "@@@" "Node tail indicator.")
 
-;; TODO: readonly tail, bg colour, etc
 (skroad--deftype skroad--text-node-tail
   :doc "Node tail."
   :use 'skroad--text-atomic
@@ -2259,8 +2258,7 @@ See e.g. `skroad--merge-node-into-current'."
   :regex-any (rx line-start (literal skroad--node-tail) line-end)
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-findable
-  :use 'skroad--text-mixin-rendered-zoned
-  )
+  :use 'skroad--text-mixin-rendered-zoned)
 
 (defvar-local skroad--buf-tail-marker nil
   "Marker which points after the current node's tail, if known.")
@@ -2341,10 +2339,10 @@ If the tail did not previously exist in the current node, it is emplaced."
                                (skip-syntax-forward " ")
                                (eq (point) before-tail))))))
 
-;; Tail lines highlighting. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Tail text highlighting. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--render-next-tail-lines (limit)
-  "Find and render the next tail lines between current point and LIMIT."
+(defun skroad--render-tail-text (limit)
+  "Find and render all tail text between current point and LIMIT."
   (when-let* ((tail skroad--buf-tail-marker)
               (start (max (point) tail)))
     (when (and (< start limit) (> limit tail))
@@ -2353,9 +2351,9 @@ If the tail did not previously exist in the current node, it is emplaced."
       (goto-char limit))
     nil))
 
-(skroad--deftype skroad--text-tail-line
-  :doc "Text type for lines in tail rendered by font lock."
-  :render-next #'skroad--render-next-tail-lines
+(skroad--deftype skroad--text-tail-text
+  :doc "Text type for tail text rendered by font lock."
+  :render-next #'skroad--render-tail-text
   :use 'skroad--text-mixin-rendered)
 
 ;; Node title and body. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
