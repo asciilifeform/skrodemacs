@@ -2933,12 +2933,11 @@ Warning: undo info is lost in all affected buffers!"
 (defun skroad--autocomplete-affixation (candidates)
   "Propertize filtered completion CANDIDATES before they are displayed."
   (mapcar (lambda (c)
-            (list (propertize c 'face
-                              (cond ((skroad--node-stub-p c)
-                                     'skroad--stub-link-face)
-                                    ((skroad--node-special-p c)
-                                     'skroad--special-link-face)
-                                    (t 'skroad--live-link-face)))
+            (list (propertize
+                   c 'face
+                   (cond ((skroad--node-stub-p c) 'skroad--stub-link-face)
+                         ((skroad--node-special-p c) 'skroad--special-link-face)
+                         (t 'skroad--live-link-face)))
                   ""
                   (if (skroad--node-orphan-p c) " (Orphan)" "")))
           candidates))
