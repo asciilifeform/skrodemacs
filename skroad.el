@@ -840,24 +840,6 @@ No refontification is triggered; existing properties are untouched."
   "Return the first atomic data between START and END; or nil, if none."
   (text-property-not-all start end 'data nil))
 
-;; Tail highlighting. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun skroad--render-next-tail-lines (limit)
-  "Find and render the next tail lines between current point and LIMIT."
-  (when (and (markerp skroad--buf-tail-marker)
-             (> limit skroad--buf-tail-marker)
-             (< (point) limit))
-    (let ((start (max (point) skroad--buf-tail-marker)))
-      (with-silent-modifications
-        (add-face-text-property start limit 'skroad--tail-lines-face t)))
-    (goto-char limit))
-  nil)
-
-(skroad--deftype skroad--text-tail-line
-  :doc "Text type for lines in tail rendered by font lock."
-  :render-next #'skroad--render-next-tail-lines
-  :use 'skroad--text-mixin-rendered)
-
 ;; Line Quotes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--quote-bg-for-level (level)
@@ -2360,6 +2342,24 @@ If the tail did not previously exist in the current node, it is emplaced."
                                (skroad--goto-node-body-start)
                                (skip-syntax-forward " ")
                                (eq (point) before-tail))))))
+
+;; Tail lines highlighting. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun skroad--render-next-tail-lines (limit)
+  "Find and render the next tail lines between current point and LIMIT."
+  (when (and (markerp skroad--buf-tail-marker)
+             (> limit skroad--buf-tail-marker)
+             (< (point) limit))
+    (let ((start (max (point) skroad--buf-tail-marker)))
+      (with-silent-modifications
+        (add-face-text-property start limit 'skroad--tail-lines-face t)))
+    (goto-char limit))
+  nil)
+
+(skroad--deftype skroad--text-tail-line
+  :doc "Text type for lines in tail rendered by font lock."
+  :render-next #'skroad--render-next-tail-lines
+  :use 'skroad--text-mixin-rendered)
 
 ;; Node title and body. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
