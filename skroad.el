@@ -847,10 +847,10 @@ No refontification is triggered; existing properties are untouched."
   (when (and (markerp skroad--buf-tail-marker)
              (> limit skroad--buf-tail-marker)
              (< (point) limit))
-    (with-silent-modifications
-      (goto-char (max (point) skroad--buf-tail-marker))
-      (add-face-text-property (point) limit 'skroad--tail-lines-face t)
-      (goto-char limit)))
+    (let ((start (max (point) skroad--buf-tail-marker)))
+      (with-silent-modifications
+        (add-face-text-property start limit 'skroad--tail-lines-face t)))
+    (goto-char limit))
   nil)
 
 (skroad--deftype skroad--text-tail-line
