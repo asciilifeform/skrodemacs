@@ -1825,7 +1825,8 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
     (unless (or (skroad--maybe-restore-cached-point) ;; If no cached point...
                 (skroad--node-special-p orig-node)) ;; ... and not from special
       (skroad--link-maybe-jump-to-live orig-node))
-    (skroad--mouse-warp) ;; Move the mouse cursor to the point (or backlink)
+    (when (skroad--last-ev-was-mouse-p)
+      (skroad--mouse-warp)) ;; Move the mouse cursor to the point (or backlink)
     ;; TODO: this should be configurable
     (unless (get-buffer-window orig-buf t) ;; Kill orig if we had buried it
       (with-current-buffer orig-buf
