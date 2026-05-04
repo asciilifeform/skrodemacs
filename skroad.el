@@ -67,9 +67,9 @@
 (defconst skroad--renamer-faces-invalid-background "red"
   "Background colour during invalid renamer state.")
 
-(defconst skroad--block-backgrounds
+(defconst skroad--quote-backgrounds
   ["#202050" "#204020" "#5c2020" "#4a2050" "#205050"]
-  "Pool of block backgrounds.")
+  "Pool of quote backgrounds.")
 
 (defface skroad--highlight-link-face
   '((t :inherit highlight))
@@ -118,6 +118,13 @@
        :foreground "white" :background "purple"
        :weight bold))
   "Face used for skroad tails."
+  :group 'skroad-faces)
+
+(defface skroad--tail-lines-face
+  '((t :inherit skroad--text-face
+       :background "#002050"
+       :extend t))
+  "Face used to give tail lines a background colour."
   :group 'skroad-faces)
 
 (defface skroad--quote-glyph-face
@@ -833,93 +840,30 @@ No refontification is triggered; existing properties are untouched."
   "Return the first atomic data between START and END; or nil, if none."
   (text-property-not-all start end 'data nil))
 
-;; Block highlighter text type. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Tail highlighting. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar skroad--block-indent-columns 3
-  "Padding width per nesting level in columns.")
-
-(defvar skroad--block-level-cache (make-hash-table :test 'eql)
-  "Cache of level -> (prefix . face).")
-
-(defun skroad--block-invalidate-cache ()
-  "Invalidate the block level cache.  Do it when changing colours or indent."
-  (clrhash skroad--block-level-cache))
-
-(defun skroad--block-bg-for-level (level)
-  "Obtain the background colour used for blocks of LEVEL."
-  (aref skroad--block-backgrounds
-        (mod (1- level) (length skroad--block-backgrounds))))
-
-(defun skroad--block-level-props (level)
-  "Obtain the properties that must be set for a block of LEVEL."
-  (or (gethash level skroad--block-level-cache)
-      (let* ((prefix "")
-             (i 1)
-             (face nil))
-        (while (<= i level)
-          (setq face `(:background ,(skroad--block-bg-for-level i) :extend t))
-          (setq prefix
-                (concat prefix
-                        (propertize
-                         (make-string skroad--block-indent-columns ?\s)
-                         'face face)))
-          (setq i (1+ i)))
-        (puthash level (list 'line-prefix prefix
-                             'wrap-prefix prefix
-                             'face face)
-                 skroad--block-level-cache))))
-
-(defvar-local skroad--buf-block-overlays nil
-  "List of block overlays active in the current buffer.")
-
-(defconst skroad--block-overlay-id 'skroad--block
-  "Identifies a skroad text block overlay.")
-
-(defun skroad--block-add-block (start end)
-  "Add a block overlay spanning START and END in the current buffer."
-  (let ((ov (make-overlay start end nil nil t)))
-    (overlay-put ov 'evaporate t)
-    (overlay-put ov skroad--block-overlay-id t)
-    (push ov skroad--buf-block-overlays)
-    ov))
-
-(defun skroad--block-remove-block (ov)
-  "Remove the block overlay OV from the current buffer."
-  (setq skroad--buf-block-overlays (delq ov skroad--buf-block-overlays))
-  (delete-overlay ov))
-
-(defun skroad--block-depth-at (pos)
-  "Return the block depth at POS in the current buffer."
-  (let ((depth 0))
-    (dolist (ov (overlays-at pos))
-      (when (overlay-get ov skroad--block-overlay-id)
-        (setq depth (1+ depth))))
-    depth))
-
-(defun skroad--render-next-text-block (limit)
-  "Find and render the next text block between current point and LIMIT."
-  (while (< (point) limit)
-    (let ((depth (skroad--block-depth-at (point)))
-          (next (min (next-overlay-change (point)) limit)))
-      (when (> depth 0)
-        (with-silent-modifications
-          (let ((start-expanded (skroad--get-start-of-line (point)))
-                (end-expanded
-                 (save-mark-and-excursion
-                   (goto-char next)
-                   (if (bolp) (point) (line-beginning-position 2)))))
-            (add-text-properties start-expanded end-expanded
-                                 (skroad--block-level-props depth)))))
-      (goto-char next)))
+(defun skroad--render-next-tail-lines (limit)
+  "Find and render the next tail lines between current point and LIMIT."
+  (when (and (markerp skroad--buf-tail-marker)
+             (> limit skroad--buf-tail-marker)
+             (< (point) limit))
+    (with-silent-modifications
+      (goto-char (max (point) skroad--buf-tail-marker))
+      (add-face-text-property (point) limit 'skroad--tail-lines-face t)
+      (goto-char limit)))
   nil)
 
-(skroad--deftype skroad--text-block
-  :doc "Text type for block highlighter rendered by font lock."
-  :order 1 ;; Must render before all others to avoid bg clobbering
-  :render-next #'skroad--render-next-text-block
+(skroad--deftype skroad--text-tail-line
+  :doc "Text type for lines in tail rendered by font lock."
+  :render-next #'skroad--render-next-tail-lines
   :use 'skroad--text-mixin-rendered)
 
 ;; Line Quotes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun skroad--quote-bg-for-level (level)
+  "Obtain the background colour used for quotes of LEVEL."
+  (aref skroad--quote-backgrounds
+        (mod (1- level) (length skroad--quote-backgrounds))))
 
 (defun skroad--quoted-line-render ()
   "Render a line quote."
@@ -938,7 +882,7 @@ No refontification is triggered; existing properties are untouched."
         (forward-char 1)
         (setq depth (1+ depth))
         (let* ((face
-                `(:background ,(skroad--block-bg-for-level depth) :extend t))
+                `(:background ,(skroad--quote-bg-for-level depth) :extend t))
                (replacement (copy-sequence " > ")))
           (put-text-property 1 2 'cursor (- (point) seg-start 1) replacement)
           (setq last-face face)
@@ -2328,7 +2272,6 @@ See e.g. `skroad--merge-node-into-current'."
   :face 'skroad--node-tail-face
   :help-echo "Node tail."
   :match-number 0
-  ;; :regex-any "^\\(@@@\\)$"
   :regex-any (rx line-start (literal skroad--node-tail) line-end)
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-findable
@@ -2399,14 +2342,10 @@ Any dead links found below the computed tail are deleted."
        (newline 2))
      (skroad--update-stub-status)))
 
-(defun skroad--below-tail-p ()
-  "Return t if the tail marker exists and the current point is below it."
+(defun skroad--in-tail-p ()
+  "Return t if the tail marker exists and the current point is in the tail."
   (and skroad--buf-tail-marker
-       (> (point) skroad--buf-tail-marker)))
-
-;; (defun skroad--pos-after-tail-p (pos)
-;;   "Return t if POS is after the tail (created if it did not exist)."
-;;   (>= pos (save-mark-and-excursion (skroad--tail-jump-after) (point))))
+       (>= (point) skroad--buf-tail-marker)))
 
 (defun skroad--update-stub-status ()
   "Determine whether the current node is a stub, and update Stubs if necessary.
@@ -2523,9 +2462,9 @@ If the tail did not previously exist in the current node, it is emplaced."
             (when zone
               (goto-char ;; Point may still need to move:
                (if (and (eq zone old-zone) ;; Point moved inside a zone?
-                        (> p old-p)) ;; ... and point moved forward?
+                        (> p old-p)) ;; ... forward?
                    (skroad--zone-end) ;; ... jump forward out of this zone.
-                 (skroad--zone-start)))) ;; Moved backwards or came from outside
+                 (skroad--zone-start)))) ;; Moved back or jumped from outside
             (when (and mark-active skroad--buf-alt-mark
                        (eq p (point)) (eq p (mark)))
               (if (< skroad--buf-alt-mark p) (forward-char) (backward-char)))
@@ -2663,13 +2602,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--update-stub-status) ;; TODO: do we want this here?
   (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
   (skroad--goto-node-body-start)
-  (skip-syntax-forward " ")
-  
-  ;; tail block test
-  (save-mark-and-excursion
-    (skroad--tail-jump-before)
-    (skroad--block-add-block (point) (point-max)))
-  )
+  (skip-syntax-forward " "))
 
 ;; Floating header line. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2857,6 +2790,7 @@ unless the node stops being an orphan stub and then later becomes one again."
          status (skroad--node-stub-p node))
     (skroad--defer (skroad--delete-node node))))
 
+;; TODO: deaden (or textify?) links to deleted node in the log ?
 (defun skroad--delete-node (node &optional force)
   "Request deletion of NODE.  No-op if NODE does not exist.
 If NODE is open in a buffer, prompt to ask permission (unless FORCE is t)."
