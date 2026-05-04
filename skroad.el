@@ -86,6 +86,11 @@
   "Face used for live stub links."
   :group 'skroad-faces)
 
+(defface skroad--special-link-face
+  '((t :inherit link :inverse-video t))
+  "Face used for live special links."
+  :group 'skroad-faces)
+
 (defface skroad--self-link-face
   '((t :inherit link :foreground "white" :background "purple"))
   "Face used for live self links."
@@ -1884,6 +1889,8 @@ If NODE does not exist, this is a no-op."
             'skroad--self-link-face)
            ((skroad--node-stub-p payload)
             'skroad--stub-link-face)
+           ((skroad--node-special-p payload)
+            'skroad--special-link-face)
            (t 'skroad--live-link-face)))
   :help-echo 'skroad--mouseover-node-preview
   :begins skroad--link-node-live-start-delim
@@ -2927,11 +2934,13 @@ Warning: undo info is lost in all affected buffers!"
   "Propertize filtered completion CANDIDATES before they are displayed."
   (mapcar (lambda (c)
             (list (propertize c 'face
-                              (if (skroad--node-stub-p c)
-                                  'skroad--stub-link-face
-                                'skroad--live-link-face))
+                              (cond ((skroad--node-stub-p c)
+                                     'skroad--stub-link-face)
+                                    ((skroad--node-special-p c)
+                                     'skroad--special-link-face)
+                                    (t 'skroad--live-link-face)))
                   ""
-                  "bar"))
+                  (if (skroad--node-orphan-p c) " (Orphan)" "")))
           candidates))
 
 (defun skroad--autocomplete-collection (string pred action)
