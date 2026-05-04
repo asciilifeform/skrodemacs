@@ -120,11 +120,11 @@
   "Face used for skroad tails."
   :group 'skroad-faces)
 
-(defface skroad--tail-lines-face
+(defface skroad--tail-text-face
   '((t :inherit skroad--text-face
        :background "#002050"
        :extend t))
-  "Face used to give tail lines a background colour."
+  "Face used for skroad tail text."
   :group 'skroad-faces)
 
 (defface skroad--quote-glyph-face
@@ -2347,7 +2347,7 @@ If the tail did not previously exist in the current node, it is emplaced."
               (start (max (point) tail)))
     (when (and (< start limit) (> limit tail))
       (with-silent-modifications
-        (add-face-text-property start limit 'skroad--tail-lines-face t))
+        (add-face-text-property start limit 'skroad--tail-text-face t))
       (goto-char limit))
     nil))
 
