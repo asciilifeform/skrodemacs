@@ -2931,7 +2931,7 @@ Warning: undo info is lost in all affected buffers!"
                                   'skroad--stub-link-face
                                 'skroad--live-link-face))
                   ""
-                  ""))
+                  "bar"))
           candidates))
 
 (defun skroad--autocomplete-collection (string pred action)
