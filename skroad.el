@@ -3054,7 +3054,7 @@ Warning: undo info is lost in all affected buffers!"
 (defun skroad--cmd-top-goto-tail ()
   "Top-level jump-to-tail."
   (interactive)
-  (skroad--tail-jump-after))
+  (skroad--tail-jump-before))
 
 (defvar skroad--mode-map
   (define-keymap
