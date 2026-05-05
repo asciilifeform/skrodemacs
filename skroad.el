@@ -1770,6 +1770,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
      (not (or (skroad--node-self-p node)
               (skroad--node-special-p node)))))
 
+;; TODO: may be called outside of skroad mode!
 (defun skroad--action-open-node (node)
   "Navigate to NODE.  If visible, go there; else open in the current window."
   (unless (skroad--cache-peek node) ;; Possibly node creation is still pending?
@@ -3023,7 +3024,8 @@ Warning: undo info is lost in all affected buffers!"
           skroad--disp-mode-this-window-or-existing)
          (node (skroad--autocomplete-minibuffer-prompt "Find Skroad node: ")))
     (when (and node (skroad--cache-peek node))
-      (skroad--action-open-node node))))
+      (pop-to-buffer (find-file-noselect (skroad--node-path node)))
+      (skroad--maybe-restore-cached-point))))
 
 (defun skroad--cmd-top-jump-to-next-atomic ()
   "Jump to the next atomic after the point; try to cycle to first if none."
