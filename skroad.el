@@ -3026,8 +3026,10 @@ Warning: undo info is lost in all affected buffers!"
           skroad--disp-mode-this-window-or-existing)
          (node (skroad--autocomplete-minibuffer-prompt "Find Skroad node: ")))
     (when (and node (skroad--cache-peek node))
-      (skroad--display-node node)
-      (skroad--maybe-restore-cached-point))))
+      (if (skroad--mode-p) ;; If in mode, use the standard opener
+          (skroad--action-open-node node)
+        (skroad--display-node node) ;; ... otherwise, don't close any buffers
+        (skroad--maybe-restore-cached-point)))))
 
 (defun skroad--cmd-top-jump-to-next-atomic ()
   "Jump to the next atomic after the point; try to cycle to first if none."
