@@ -1526,7 +1526,6 @@ disable the renamer and return nil."
   :doc "Base mixin for renamer overlays."
   :mixin t
   :rear-advance t
-  ;; :zone 'type-name
   :field 'zone
   :keymap
   (define-keymap
