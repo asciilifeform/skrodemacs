@@ -1770,17 +1770,10 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
      (not (or (skroad--node-self-p node)
               (skroad--node-special-p node)))))
 
-;; TODO: may be called outside of skroad mode!
-(defun skroad--action-open-node (node)
-  "Navigate to NODE.  If visible, go there; else open in the current window."
-  (unless (skroad--cache-peek node) ;; Possibly node creation is still pending?
-    (skroad--complete-all-deferred)) ;; ... if so, let all deferred work finish.
-  (let* ((orig-node (skroad--current-node)) ;; Node we triggered the action in
-         (orig-buf (current-buffer)) ;; Buffer we triggered the action in
-         (node-path (skroad--node-path node)) ;; Target path
+(defun skroad--display-node (node) ;; NODE is presumed to exist!
+  "If NODE is visible anywhere, go there; otherwise open in the current window."
+  (let* ((node-path (skroad--node-path node)) ;; Target path
          (node-buf (find-buffer-visiting node-path))) ;; Target buf (maybe nil)
-    (unless (skroad--cache-peek node) ;; Suppose the node still doesn't exist?
-      (skroad--in-node node #'skroad--connect-to orig-node)) ;; ... create it.
     (if node-buf ;; If node is already open in a buffer, use that buffer:
         (let* ((node-win (get-buffer-window node-buf t))
                (node-frame (window-frame node-win)))
@@ -1791,7 +1784,17 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
                 (select-window node-win))
             (switch-to-buffer node-buf))) ;; ... else, unbury in current window
       ;; If node wasn't open, open it, burying the orig
-      (pop-to-buffer (find-file-noselect node-path)))
+      (pop-to-buffer (find-file-noselect node-path)))))
+
+(defun skroad--action-open-node (node)
+  "Navigate to NODE."
+  (unless (skroad--cache-peek node) ;; Possibly node creation is still pending?
+    (skroad--complete-all-deferred)) ;; ... if so, let all deferred work finish.
+  (let ((orig-node (skroad--current-node)) ;; Node we triggered the action in
+        (orig-buf (current-buffer))) ;; Buffer we triggered the action in
+    (unless (skroad--cache-peek node) ;; Suppose the node still doesn't exist?
+      (skroad--in-node node #'skroad--connect-to orig-node)) ;; ... create it.
+    (skroad--display-node node) ;; Display the node.
     ;; TODO: this should be configurable
     (unless (or (skroad--maybe-restore-cached-point) ;; If no cached point...
                 (skroad--node-special-p orig-node)) ;; ... and not from special
@@ -3024,7 +3027,7 @@ Warning: undo info is lost in all affected buffers!"
           skroad--disp-mode-this-window-or-existing)
          (node (skroad--autocomplete-minibuffer-prompt "Find Skroad node: ")))
     (when (and node (skroad--cache-peek node))
-      (pop-to-buffer (find-file-noselect (skroad--node-path node)))
+      (skroad--display-node node)
       (skroad--maybe-restore-cached-point))))
 
 (defun skroad--cmd-top-jump-to-next-atomic ()
