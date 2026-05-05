@@ -1783,8 +1783,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
                   (select-frame-set-input-focus node-frame)) ;; ... focus it.
                 (select-window node-win))
             (switch-to-buffer node-buf))) ;; ... else, unbury in current window
-      ;; If node wasn't open, open it, burying the orig
-      (pop-to-buffer (find-file-noselect node-path)))))
+      (pop-to-buffer (find-file-noselect node-path))))) ;; ... or open it anew.
 
 (defun skroad--action-open-node (node)
   "Navigate to NODE."
