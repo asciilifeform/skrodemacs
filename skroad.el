@@ -4,6 +4,7 @@
 ;;; (add-to-list 'auto-mode-alist '("\\.skroad\\'" . skroad-mode))
 ;;; After this is done, s/skroad/skrode.
 
+(require 'text-property-search)
 (require 'browse-url)
 
 ;;; Knobs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -838,6 +839,27 @@ No refontification is triggered; existing properties are untouched."
   `(let ((start (skroad--zone-start)) (end (skroad--zone-end)))
      ,@body))
 
+(defun skroad--zone-jump-from (pos &optional backwards wrap)
+  "Jump to the next (or previous, if BACKWARDS) distinct zone from POS.
+If WRAP is t, wrap if there are no further zones in the current direction.
+Return the new position if the jump actually happened; otherwise nil."
+  (let* ((current (get-text-property pos 'zone))
+         (pred #'(lambda (_ v) (and v (not (eq v current)))))
+         (search
+          (lambda (from)
+            (goto-char from)
+            (if backwards
+                (progn (font-lock-ensure (point-min) from)
+                       (text-property-search-backward 'zone nil pred))
+              (font-lock-ensure from (point-max))
+              (text-property-search-forward 'zone nil pred)))))
+    (let ((match (or (funcall search pos)
+                     (and wrap
+                          (funcall search
+                                   (if backwards (point-max) (point-min)))))))
+      (when match
+        (goto-char (prop-match-beginning match))))))
+
 (defun skroad--data-at (&optional pos)
   "If there is atomic data at POS (if given; otherwise, at point), return it."
   (get-text-property (or pos (point)) 'data))
@@ -1265,39 +1287,6 @@ These may occur if ill-behaved minor modes are in use.")
     (when index
       (maphash #'(lambda (key _val) (apply fn (cons key other-args))) index))))
 
-;; Jumps. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun skroad--match-any-from (type method pos)
-  "Search for TYPE from POS via METHOD; return match data (nil if not found)."
-  (save-mark-and-excursion
-    (goto-char pos)
-    (save-match-data (when (funcall (get type method)) (match-data t)))))
-
-(defun skroad--link-find-from (pos &optional backwards)
-  "Try to find the next (or previous, if BACKWARDS) live or dead link from POS."
-  (let* ((method (if backwards 'find-any-backward 'find-any-forward))
-         (live (skroad--match-any-from 'skroad--text-link-node-live method pos))
-         (dead (skroad--match-any-from 'skroad--text-link-node-dead method pos))
-         (match
-          (or
-           (and live dead ;; If both, get the nearest one in the given direction
-                (or (and (xor backwards (<= (car live) (car dead))) live) dead))
-           live dead))) ;; If only one, take that one; or nil if neither
-    (when match
-      (set-match-data match)
-      (match-beginning 0))))
-
-;; TODO: replace with jump to any link, including URLs
-(defun skroad--link-jump-from (pos &optional backwards wrap)
-  "Jump to the next (or previous, if BACKWARDS) live or dead link from POS.
-If WRAP is t, wrap if there are no further links in the current direction.
-Return the new position if the jump actually happened; otherwise nil."
-  (let ((found
-         (or (skroad--link-find-from pos backwards)
-             (and wrap (skroad--link-find-from
-                        (if backwards (point-max) (point-min)) backwards)))))
-    (when found (goto-char found))))
-
 ;;; Atomic Text Type. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Insert a space immediately behind the atomic currently under the point.
@@ -1390,11 +1379,6 @@ Return the new position if the jump actually happened; otherwise nil."
       (goto-char end)
       (call-interactively 'set-mark-command))))
 
-(defun skroad--cmd-atomic-jump-to-next-link ()
-  "Jump to the next link following this atomic; cycle to first after the last."
-  (interactive)
-  (skroad--link-jump-from (skroad--zone-end) nil t))
-
 (defun skroad--show-key-help ()
   "Display the keymap help of the current point."
   (let ((km (skroad--prop-at 'keymap))) ;; Display keymap help
@@ -1406,8 +1390,6 @@ Return the new position if the jump actually happened; otherwise nil."
   :atomic t ;; TODO: check
   :keymap
   (define-keymap
-    "<remap> <skroad--cmd-top-tab>"
-    #'skroad--cmd-atomic-jump-to-next-link
     "SPC" #'skroad--cmd-atomic-prepend-space
     "<remap> <set-mark-command>" #'skroad--cmd-atomic-set-mark
     "<remap> <self-insert-command>" #'ignore
@@ -3043,22 +3025,22 @@ Warning: undo info is lost in all affected buffers!"
     (when (and node (skroad--cache-peek node))
       (skroad--action-open-node node))))
 
-(defun skroad--cmd-top-jump-to-next-link ()
-  "Jump to the next link after the point; try to cycle to first if none."
+(defun skroad--cmd-top-jump-to-next-zone ()
+  "Jump to the next zone after the point; try to cycle to first if none."
   (interactive)
-  (skroad--link-jump-from (point) nil t))
+  (skroad--zone-jump-from (point) nil t))
 
-(defun skroad--cmd-top-jump-to-prev-link ()
-  "Jump to the previous link before the point; try to cycle to last if none."
+(defun skroad--cmd-top-jump-to-prev-zone ()
+  "Jump to the previous zone before the point; try to cycle to last if none."
   (interactive)
-  (skroad--link-jump-from (point) t t))
+  (skroad--zone-jump-from (point) t t))
 
 (defun skroad--cmd-top-tab ()
   "Top-level key binding for TAB."
   (interactive)
   (if (skroad--autocomplete-start-pos) ;; Are we sitting in a [[..... ?
       (completion-at-point) ;; ... trigger the autocomplete.
-    (skroad--cmd-top-jump-to-next-link))) ;; ... if not, regular tab binding.
+    (skroad--cmd-top-jump-to-next-zone))) ;; ... if not, regular tab binding.
 
 (defun skroad--cmd-top-goto-tail ()
   "Top-level jump-to-tail."
@@ -3071,7 +3053,7 @@ Warning: undo info is lost in all affected buffers!"
     "<" #'skroad--cmd-top-lt
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
     "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
-    "C-<tab>" #'skroad--cmd-top-jump-to-prev-link
+    "C-<tab>" #'skroad--cmd-top-jump-to-prev-zone
     "M-t" #'skroad--cmd-top-goto-tail
     )
   "Top-level keymap for the skroad major mode.")
