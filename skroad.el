@@ -2242,6 +2242,7 @@ See e.g. `skroad--merge-node-into-current'."
 
 (defconst skroad--node-tail "@@@" "Node tail indicator.")
 
+;; TODO: custom finder filter that allows for moving the tail.
 (skroad--deftype skroad--text-node-tail
   :doc "Node tail."
   :use 'skroad--text-atomic
@@ -2285,7 +2286,6 @@ Any dead links found below the computed tail are deleted."
              (point)))))
     (when pos
       (goto-char pos)
-      (goto-char (line-end-position))
       (setq-local skroad--buf-tail-marker (copy-marker (point))))))
 
 (defun skroad--tail-find-or-emplace ()
@@ -2749,7 +2749,7 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
 (skroad--define-special-node skroad--special-node-log "#Log"
   "Record of node creation, modification, renaming; and lint output.")
 
-(defun skroad--node-logged-p (&optional node)
+(defun skroad--node-logged-p (&optional node) ;; TODO: use?
   "Return t when NODE (if given; else the current node) is linked in the log."
   (skroad--connected-p skroad--special-node-log node))
 
