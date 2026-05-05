@@ -2276,10 +2276,21 @@ Any dead links found below the computed tail are deleted."
                            (funcall climb 'skroad--text-link-node-dead t))))
              (when prev (goto-char prev))))))
 
+(defun skroad--tail-search ()
+  "Search for the tail and jump to its position if found; otherwise nil."
+  (let ((pos
+         (save-mark-and-excursion
+           (goto-char (point-min))
+           (when (funcall (get 'skroad--text-node-tail 'find-any-forward))
+             (point)))))
+    (when pos
+      (goto-char pos)
+      (goto-char (line-end-position))
+      (setq-local skroad--buf-tail-marker (copy-marker (point))))))
+
 (defun skroad--tail-find-or-emplace ()
   "Find or emplace the tail in the current node, and store its location."
-  (goto-char (point-min))
-  (unless (funcall (get 'skroad--text-node-tail 'find-any-forward))
+  (unless (skroad--tail-search)
     (skroad--jump-to-computed-tail)
     (ensure-empty-lines 1)
     (save-mark-and-excursion
@@ -2336,7 +2347,7 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 (defun skroad--render-tail-text (limit)
   "Find and render all tail text between current point and LIMIT."
-  (when-let* ((tail skroad--buf-tail-marker)
+  (when-let* ((tail (or skroad--buf-tail-marker (skroad--tail-search)))
               (start (max (point) tail)))
     (when (and (< start limit) (> limit tail))
       (with-silent-modifications
