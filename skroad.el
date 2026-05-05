@@ -3025,13 +3025,13 @@ Warning: undo info is lost in all affected buffers!"
     (when (and node (skroad--cache-peek node))
       (skroad--action-open-node node))))
 
-(defun skroad--cmd-top-jump-to-next-zone ()
-  "Jump to the next zone after the point; try to cycle to first if none."
+(defun skroad--cmd-top-jump-to-next-atomic ()
+  "Jump to the next atomic after the point; try to cycle to first if none."
   (interactive)
   (skroad--zone-jump-from (point) nil t))
 
-(defun skroad--cmd-top-jump-to-prev-zone ()
-  "Jump to the previous zone before the point; try to cycle to last if none."
+(defun skroad--cmd-top-jump-to-prev-atomic ()
+  "Jump to the previous atomic before the point; try to cycle to last if none."
   (interactive)
   (skroad--zone-jump-from (point) t t))
 
@@ -3040,7 +3040,7 @@ Warning: undo info is lost in all affected buffers!"
   (interactive)
   (if (skroad--autocomplete-start-pos) ;; Are we sitting in a [[..... ?
       (completion-at-point) ;; ... trigger the autocomplete.
-    (skroad--cmd-top-jump-to-next-zone))) ;; ... if not, regular tab binding.
+    (skroad--cmd-top-jump-to-next-atomic))) ;; ... if not, regular tab binding.
 
 (defun skroad--cmd-top-goto-tail ()
   "Top-level jump-to-tail."
@@ -3053,7 +3053,7 @@ Warning: undo info is lost in all affected buffers!"
     "<" #'skroad--cmd-top-lt
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
     "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
-    "C-<tab>" #'skroad--cmd-top-jump-to-prev-zone
+    "C-<tab>" #'skroad--cmd-top-jump-to-prev-atomic
     "M-t" #'skroad--cmd-top-goto-tail
     )
   "Top-level keymap for the skroad major mode.")
