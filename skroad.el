@@ -3071,10 +3071,12 @@ Warning: undo info is lost in all affected buffers!"
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
     "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
     "C-<tab>" #'skroad--cmd-top-jump-to-prev-link
-    "M-o" #'skroad--cmd-top-find-node ;; TODO: maybe we want a global binding!
     "M-t" #'skroad--cmd-top-goto-tail
     )
   "Top-level keymap for the skroad major mode.")
+
+;; Global binding for find-node
+(keymap-global-set "M-o" #'skroad--cmd-top-find-node)
 
 ;; Mode init. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
