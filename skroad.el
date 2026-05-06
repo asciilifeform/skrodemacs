@@ -1384,7 +1384,6 @@ These may occur if ill-behaved minor modes are in use.")
   (let ((km (skroad--prop-at 'keymap))) ;; Display keymap help
     (when km (skroad--info (skroad--make-keymap-help km)))))
 
-;; TODO: mixin?
 (skroad--deftype skroad--text-atomic
   :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
   :atomic t ;; TODO: check
@@ -2854,14 +2853,14 @@ After all of this, the VICTIM is permanently deleted."
           (skroad--tail-do-before ;; Insert a demarcated copy of victim's body
            (let (import-start import-end)
              (skroad--atomic-comment-insert
-              (format "Start of merged node '%s'" victim))
+              (format " Start of merged node '%s' " victim))
              (newline)
              (setq import-start (point))
              (insert victim-body)
              (setq import-end (point))
              (newline)
              (skroad--atomic-comment-insert
-              (format "End of merged node '%s'" victim))
+              (format " End of merged node '%s' " victim))
              (newline)
              (goto-char import-start) ;; Jump to the start indicator
              ;; Fix self-links of the victim in the imported body:
