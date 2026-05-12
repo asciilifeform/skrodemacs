@@ -105,6 +105,11 @@
   "Face used for dead links."
   :group 'skroad-faces)
 
+(defface skroad--invalid-link-face
+  '((t :inherit link :foreground "red" :inverse-video t))
+  "Face used for invalid links."
+  :group 'skroad-faces)
+
 (defface skroad--url-link-face
   '((t :inherit link))
   "Face used for url links."
@@ -1862,14 +1867,21 @@ If NODE does not exist, this is a no-op."
 (defconst skroad--link-node-live-end-delim "]]"
   "Delimiter indicating the end of a live Skroad link.")
 
-;; TODO: log invalid node links during lint
+;; TODO: actually log during lint
 (defun skroad--node-link-filter ()
   "Filter for all node links."
-  (and (skroad--in-node-body-p)
-       (let ((payload (skroad--clean-whitespace
-                       (match-string-no-properties 1))))
-         (or (skroad--cache-peek payload) ;; Was validated if node exists;
-             (skroad--validate-node-title payload))))) ;; If not, validate.
+  (when (skroad--in-node-body-p)
+    (let* ((payload (skroad--clean-whitespace
+                     (match-string-no-properties 1)))
+           (valid (or (skroad--cache-peek payload)
+                      (skroad--validate-node-title payload))))
+      (unless valid
+        (add-face-text-property
+         (match-beginning 0) (match-end 0) 'skroad--invalid-link-face)
+        (when skroad--lint-in-progress
+          (message "Link '%s' in node '%s' is invalid!"
+                   payload (skroad--current-node))))
+      valid)))
 
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
