@@ -1867,7 +1867,7 @@ If NODE does not exist, this is a no-op."
   (and (skroad--in-node-body-p)
        (let ((payload (skroad--clean-whitespace
                        (match-string-no-properties 1))))
-         (or (skroad--cache-peek payload) ;; Already validated?
+         (or (skroad--cache-peek payload) ;; Was validated if node exists;
              (skroad--validate-node-title payload))))) ;; If not, validate.
 
 ;; TODO: validate links (and short-circuit if target is already interned)
