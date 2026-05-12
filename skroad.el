@@ -1877,8 +1877,9 @@ If NODE does not exist, this is a no-op."
                       (skroad--validate-node-title payload))))
       (unless valid
         (when (skroad--mode-p)
-          (add-face-text-property
-           (match-beginning 0) (match-end 0) 'skroad--invalid-link-face))
+          (with-silent-modifications
+            (add-face-text-property
+             (match-beginning 0) (match-end 0) 'skroad--invalid-link-face)))
         (when skroad--lint-in-progress
           (message "Link '%s' in %s is invalid!"
                    payload
