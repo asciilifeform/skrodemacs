@@ -1865,7 +1865,9 @@ If NODE does not exist, this is a no-op."
 (defun skroad--node-link-filter ()
   "Filter for all node links."
   (and (skroad--in-node-body-p)
-       (skroad--validate-node-title (match-string-no-properties 1))))
+       (let ((node (match-string-no-properties 1)))
+         (or (skroad--cache-peek node) ;; Already validated?
+             (skroad--validate-node-title node))))) ;; If not, validate.
 
 ;; TODO: validate links (and short-circuit if target is already interned)
 (skroad--deftype skroad--text-link-node-live
