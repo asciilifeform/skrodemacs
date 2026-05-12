@@ -1870,7 +1870,6 @@ If NODE does not exist, this is a no-op."
          (or (skroad--cache-peek payload) ;; Was validated if node exists;
              (skroad--validate-node-title payload))))) ;; If not, validate.
 
-;; TODO: validate links (and short-circuit if target is already interned)
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :use 'skroad--text-link-node
