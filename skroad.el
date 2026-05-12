@@ -1862,6 +1862,7 @@ If NODE does not exist, this is a no-op."
 (defconst skroad--link-node-live-end-delim "]]"
   "Delimiter indicating the end of a live Skroad link.")
 
+;; TODO: log invalid node links during lint
 (defun skroad--node-link-filter ()
   "Filter for all node links."
   (and (skroad--in-node-body-p)
