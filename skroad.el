@@ -1216,6 +1216,9 @@ Runs text type actions, unless NO-ACTIONS is t or the current payload is special
 
 (defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
+(defvar skroad--scan-in-progress nil
+  "Indicates that scan is currently in progress.")
+
 (skroad--deftype skroad--text-mixin-indexed
   :doc "Mixin for indexed text types."
   :mixin t
@@ -1224,7 +1227,8 @@ Runs text type actions, unless NO-ACTIONS is t or the current payload is special
   :scan-region
   '(lambda (start end delta)
      (let ((pending-index
-            (skroad--ensure-index skroad--buf-indices-pending type-name)))
+            (skroad--ensure-index skroad--buf-indices-pending type-name))
+           (skroad--scan-in-progress t))
        (funcall
         for-all-in-region-forward start end
         #'(lambda ()
@@ -1876,7 +1880,7 @@ If NODE does not exist, this is a no-op."
            (valid (or (skroad--cache-peek payload)
                       (skroad--validate-node-title payload))))
       (unless valid
-        (when (skroad--mode-p)
+        (unless skroad--scan-in-progress ;; Only colour during fontlock
           (with-silent-modifications
             (add-face-text-property
              (match-beginning 0) (match-end 0) 'skroad--invalid-link-face)))
