@@ -1879,8 +1879,9 @@ If NODE does not exist, this is a no-op."
         (add-face-text-property
          (match-beginning 0) (match-end 0) 'skroad--invalid-link-face)
         (when skroad--lint-in-progress
-          (message "Link '%s' in node '%s' is invalid!"
-                   payload (skroad--current-node))))
+          (message "Link '%s' in %s is invalid!"
+                   payload
+                   (skroad--link-generate-live (skroad--current-node)))))
       valid)))
 
 (skroad--deftype skroad--text-link-node-live
@@ -1929,12 +1930,16 @@ If NODE does not exist, this is a no-op."
   (when (funcall (get 'skroad--text-link-node-live 'search) payload)
     (goto-char (match-beginning 0))))
 
+(defun skroad--link-generate-live (payload)
+  "Generate a live link to PAYLOAD."
+  (funcall (get 'skroad--text-link-node-live 'generate) payload))
+
 (defun skroad--link-insert-live (payload)
-  "Insert a live link to NODE at the current point."
-  (insert (funcall (get 'skroad--text-link-node-live 'generate) payload)))
+  "Insert a live link to PAYLOAD at the current point."
+  (insert (skroad--link-generate-live payload)))
 
 (defun skroad--link-has-live-p (payload)
-  "Determine whether the current payload has at least one live link to NODE."
+  "Determine whether the current payload has at least one live link to PAYLOAD."
   (skroad--current-indices-have-p 'skroad--text-link-node-live payload))
 
 (defun skroad--link-get-all-live ()
