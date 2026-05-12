@@ -23,6 +23,9 @@
 (defconst skroad--file-extension "skroad"
   "File extension denoting a skroad node.")
 
+(defconst skroad--max-file-name-bytes 253
+  "Max bytes permitted in file name.  (Leaves room for lock file suffixes).")
+
 ;; TODO: [[test\[123\]] matches early if inserted manually
 (defconst skroad--regexp-text-in-brackets
   (rx (* blank)
@@ -452,7 +455,7 @@ If OVERWRITE is t, allow overwriting.  Return success."
   "Encode the NODE title into an appropriate filename (with our extension).
 Reserved characters are percent-encoded (%XX).  Leading/trailing spaces are
 stripped and interior whitespace runs collapsed.  Returns nil if NODE is nil,
-empty/whitespace-only, or if the result exceeds 255 UTF-8 bytes.
+empty/whitespace-only, or if the encoded result exceeds the max file name.
 The original NODE can be recovered using `skroad--file-path-to-node-title'."
   (when node
     (let ((node-nowhite (skroad--clean-whitespace node)))
@@ -466,7 +469,8 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
                      (mapconcat (lambda (ch) (format "%%%02X" ch)) m ""))
                  node-nowhite t t))
                (filename (skroad--append-extension encoded)))
-          (when (<= (length (encode-coding-string filename 'utf-8 t)) 255)
+          (when (<= (length (encode-coding-string filename 'utf-8 t))
+                    skroad--max-file-name-bytes)
             filename))))))
 
 (defun skroad--file-path-to-node-title (file)
@@ -494,12 +498,15 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   "Generate the canonical file path where NODE would be found if it exists."
   (skroad--file-path-in-data-directory (skroad--node-title-to-filename node)))
 
-(defun skroad--validate-title (title)
+(defun skroad--validate-node-title (title)
+  "Return t when TITLE is a validly-encodable node title."
+  (let ((encoded-title (skroad--node-title-to-filename title)))
+    (and encoded-title
+         (equal (skroad--file-path-to-node-title encoded-title) title))))
+
+(defun skroad--validate-node-title-for-rename (title)
   "Return t when TITLE represents a valid node title."
-  (when (skroad--link-valid-p title)
-    (let ((encoded-title (skroad--node-title-to-filename title)))
-      (and encoded-title
-           (equal (skroad--file-path-to-node-title encoded-title) title)))))
+  (and (skroad--link-valid-p title) (skroad--validate-node-title title)))
 
 ;; TODO: alarm unreachables to log
 ;; TODO: try to rename unreachables
@@ -1109,7 +1116,6 @@ If FINAL is t, the count sum done negative will signal an error."
   `(or (alist-get ,text-type ,indices)
        (setf (alist-get ,text-type ,indices) (make-hash-table :test 'equal))))
 
-;; TODO: `on-dupe` action?
 (defun skroad--indices-update (indices changes &optional no-actions init-scan)
   "Apply a set of pending CHANGES to INDICES.  Return the updated INDICES.
 The tables in CHANGES are emptied out after being applied to the INDICES.
@@ -1559,7 +1565,7 @@ disable the renamer and return nil."
 
 (defun skroad--node-renamer-validate (current proposed)
   "Determine whether a node titled CURRENT may be renamed to PROPOSED."
-  (cond ((not (skroad--validate-title proposed))
+  (cond ((not (skroad--validate-node-title-for-rename proposed))
          (skroad--info "'%s' is not a valid node title!" proposed)
          nil)
         ((string-equal proposed current)
@@ -1856,6 +1862,12 @@ If NODE does not exist, this is a no-op."
 (defconst skroad--link-node-live-end-delim "]]"
   "Delimiter indicating the end of a live Skroad link.")
 
+(defun skroad--node-link-filter ()
+  "Filter for all node links."
+  (and (skroad--in-node-body-p)
+       (skroad--validate-node-title (match-string-no-properties 1))))
+
+;; TODO: validate links (and short-circuit if target is already interned)
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :use 'skroad--text-link-node
@@ -1886,7 +1898,7 @@ If NODE does not exist, this is a no-op."
             "<remap> <yank>" #'skroad--cmd-teleyank-at ;; Regular yank also
             )
   :renamer-overlay-type 'skroad--text-node-renamer-indirect
-  :finder-filter #'skroad--in-node-body-p
+  :finder-filter #'skroad--node-link-filter
   :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-atomic-delimited
   :use 'skroad--text-mixin-renameable
@@ -1931,7 +1943,7 @@ If NODE does not exist, this is a no-op."
   :keymap (define-keymap
             "l" #'skroad--cmd-liven-at
             "<mouse-1>" #'skroad--cmd-link-mouse-activate) ;; Only move point
-  :finder-filter #'skroad--in-node-body-p
+  :finder-filter #'skroad--node-link-filter
   :use 'skroad--text-mixin-atomic-delimited
   :use 'skroad--text-mixin-indexed)
 
@@ -2240,22 +2252,60 @@ See e.g. `skroad--merge-node-into-current'."
 
 (defconst skroad--node-tail "@@@" "Node tail indicator.")
 
-;; TODO: custom finder filter that allows for moving the tail.
-(skroad--deftype skroad--text-node-tail
-  :doc "Node tail."
-  :use 'skroad--text-atomic
-  :face 'skroad--node-tail-face
-  :help-echo "Node tail."
-  :match-number 0
-  :regex-any (rx line-start (literal skroad--node-tail) line-end)
-  :finder-filter #'skroad--in-node-body-p
-  :use 'skroad--text-mixin-findable
-  :use 'skroad--text-mixin-rendered-zoned)
+(defconst skroad--node-tail-regexp
+  (rx line-start (literal skroad--node-tail) line-end)
+  "Regexp for the node tail indicator.")
 
 (defvar-local skroad--buf-tail-marker nil
   "Marker which points after the current node's tail, if known.")
 
-;; TODO: make sure this runs during lint even if node has a tail
+(defvar-local skroad--buf-tail-needs-refresh nil
+  "If true, the tail needs to be set in the current buffer.")
+
+(defun skroad--set-tail-marker (pos)
+  "Use POS (which may be nil) as a possibly-new position of the tail marker."
+  (unless (eq skroad--buf-tail-marker pos)
+    (setq-local skroad--buf-tail-marker (and pos (copy-marker pos)))
+    (setq-local skroad--buf-tail-needs-refresh t)))
+
+;; TODO: any insert of tail indicator should supercede the old
+(defun skroad--node-tail-filter ()
+  "Finder filter for the node tail."
+  (let ((p (point)))
+    (when (and (or (null skroad--buf-tail-marker)
+                   (<= p skroad--buf-tail-marker))
+               (skroad--in-node-body-p p))
+      (skroad--set-tail-marker p)
+      t)))
+
+(defun skroad--tail-indicator-breaking (&rest _args)
+  "Triggered when an active tail indicator may have been disturbed."
+  (skroad--set-tail-marker nil))
+
+(skroad--deftype skroad--text-node-tail
+  :doc "Node tail indicator."
+  :use 'skroad--text-atomic
+  :face 'skroad--node-tail-face
+  :help-echo "Node tail."
+  :match-number 0
+  :regex-any skroad--node-tail-regexp
+  :modification-hooks '(list 'skroad--tail-indicator-breaking)
+  :insert-in-front-hooks '(list 'skroad--tail-indicator-breaking)
+  :insert-behind-hooks '(list 'skroad--tail-indicator-breaking)
+  :finder-filter #'skroad--node-tail-filter
+  :use 'skroad--text-mixin-findable
+  :use 'skroad--text-mixin-rendered-zoned)
+
+(defun skroad--post-cmd-refresh-tail ()
+  "Called from post-command hook.  Set a new tail, if required."
+  (when skroad--buf-tail-needs-refresh
+    (save-mark-and-excursion
+      (skroad--tail-jump-after)
+      (let ((inhibit-modification-hooks t))
+        (replace-regexp-in-region skroad--node-tail-regexp ""))) ;; Zap any old
+    (skroad--refontify-current-buffer)
+    (setq-local skroad--buf-tail-needs-refresh nil)))
+
 (defun skroad--jump-to-computed-tail ()
   "Determine where the tail ought to be per the tail heuristic, and go there.
 Any dead links found below the computed tail are deleted."
@@ -2282,9 +2332,7 @@ Any dead links found below the computed tail are deleted."
            (goto-char (point-min))
            (when (funcall (get 'skroad--text-node-tail 'find-any-forward))
              (point)))))
-    (when pos
-      (goto-char pos)
-      (setq-local skroad--buf-tail-marker (copy-marker (point))))))
+    (when pos (goto-char pos))))
 
 (defun skroad--tail-find-or-emplace ()
   "Find or emplace the tail in the current node, and store its location."
@@ -2295,18 +2343,13 @@ Any dead links found below the computed tail are deleted."
       (insert skroad--node-tail)
       (ensure-empty-lines 1))
     (goto-char (line-end-position)))
-  (unless (eq skroad--buf-tail-marker (point))
-    (setq-local skroad--buf-tail-marker (copy-marker (point)))
-    (skroad--refontify-current-buffer)))
+  (skroad--set-tail-marker (point)))
 
 ;; TODO: update stub status every time we obtain the tail, when it is cheap
 (defun skroad--tail-jump-after ()
   "Find or create the tail in the current node; set point after it."
-  (or (and skroad--buf-tail-marker ;; Try using the tail marker, if we have it:
-           (goto-char (marker-position skroad--buf-tail-marker))
-           (string-equal ;; Verify that tail marker actually points to a tail
-            (buffer-substring-no-properties (line-beginning-position) (point))
-            skroad--node-tail))
+  (or (and skroad--buf-tail-marker
+           (goto-char (marker-position skroad--buf-tail-marker)))
       (skroad--tail-find-or-emplace)))
 
 (defun skroad--tail-jump-before ()
@@ -2345,7 +2388,7 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 (defun skroad--render-tail-text (limit)
   "Find and render all tail text between current point and LIMIT."
-  (when-let* ((tail (or skroad--buf-tail-marker (skroad--tail-search)))
+  (when-let* ((tail skroad--buf-tail-marker)
               (start (max (point) tail)))
     (when (and (< start limit) (> limit tail))
       (with-silent-modifications
@@ -2472,19 +2515,20 @@ If the tail did not previously exist in the current node, it is emplaced."
   "Put mark and alt-mark in the right order, and show/hide selector."
   (cond
    (mark-active
+    (setq-local mouse-highlight nil)
     (skroad--selector-hide)
     (let ((m (mark)) (am skroad--buf-alt-mark) (p (point)))
       (when (and am (> (abs (- p am)) (abs (- p m))))
         (set-mark am)
         (setq-local skroad--buf-alt-mark m))))
    (t
+    (setq-local mouse-highlight t)
     (skroad--selector-unhide)
     (setq-local skroad--buf-alt-mark nil))))
 
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
-  (setq-local mouse-highlight nil
-              skroad--buf-pre-command-point-state (skroad--get-point-state)))
+  (setq-local skroad--buf-pre-command-point-state (skroad--get-point-state)))
 
 (defvar-local skroad--buf-modification-ticks 0
   "Character modification count for the current buffer.")
@@ -2494,15 +2538,15 @@ If the tail did not previously exist in the current node, it is emplaced."
   (let ((tick (buffer-chars-modified-tick))) ;; Detect changes, including undo
     (unless (= tick skroad--buf-modification-ticks)
       (setq-local skroad--buf-modification-ticks tick)
-      (skroad--buf-indices-sync)
       (skroad--refontify-current-line)
-      (unless (skroad--renamer-active-p)
-        (skroad--update-stub-status)) ;; TODO: move to save hook?
+      (skroad--buf-indices-sync)
+      ;; (unless (skroad--renamer-active-p)
+      ;;   (skroad--update-stub-status)) ;; TODO: move to save hook?
       ))
+  (skroad--post-cmd-refresh-tail)
   (skroad--point-zone-handler skroad--buf-pre-command-point-state)
   (skroad--selector-update)
   (skroad--adjust-mark-if-present)
-  (unless mark-active (setq-local mouse-highlight t))
   (skroad--save-cache-point))
 
 (defun skroad--before-save-hook ()
@@ -2594,13 +2638,14 @@ If the tail did not previously exist in the current node, it is emplaced."
   "Open a skroad node."
   (face-remap-add-relative 'header-line 'skroad--title-face)
   (skroad--deactivate-mark) ;; Zap spurious mark from opening links via mouse
-  (skroad--init-font-lock)
   (skroad--set-writability) ;; If special node, open it as read-only
   (skroad--cache-intern (skroad--current-node)) ;; TODO?
   (skroad--update-stub-status) ;; TODO: do we want this here?
   (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
   (skroad--goto-node-body-start)
-  (skip-syntax-forward " "))
+  (skip-syntax-forward " ")
+  (skroad--init-font-lock)
+  )
 
 ;; Floating header line. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
