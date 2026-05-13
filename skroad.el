@@ -1882,7 +1882,7 @@ If NODE does not exist, this is a no-op."
 ;; TODO: actually log during lint
 (defun skroad--node-link-filter ()
   "Filter for all node links."
-  (when (skroad--in-node-body-p)
+  (when (skroad--in-node-body-p) ;; Entirely ignore (no alarm) when in title
     (let* ((node (skroad--clean-whitespace
                   (match-string-no-properties 1)))
            (valid (or (and (listp (skroad--buf-indices))
