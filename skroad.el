@@ -106,7 +106,7 @@
   :group 'skroad-faces)
 
 (defface skroad--invalid-link-face
-  '((t :inherit link :foreground "red" :inverse-video t))
+  '((t :inherit link :foreground "red" :strike-through t))
   "Face used for invalid links."
   :group 'skroad-faces)
 
