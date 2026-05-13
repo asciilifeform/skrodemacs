@@ -1879,11 +1879,13 @@ If NODE does not exist, this is a no-op."
 (defconst skroad--link-node-live-end-delim "]]"
   "Delimiter indicating the end of a live Skroad link.")
 
-(defun skroad--highlight-invalid (start end)
-  "If in font lock, highlight text from START to END with the `invalid' face."
+(defun skroad--highlight-invalid-match (number)
+  "If in font lock, highlight match NUMBER with the `invalid' face."
   (unless skroad--scan-in-progress ;; Only colour during fontlock
     (with-silent-modifications
-      (add-face-text-property start end 'skroad--invalid-text-face))))
+      (add-face-text-property
+       (match-beginning number) (match-end number)
+       'skroad--invalid-text-face))))
 
 ;; TODO: actually log during lint
 (defun skroad--lint-report (text)
@@ -1906,7 +1908,7 @@ If NODE does not exist, this is a no-op."
                       (skroad--cache-peek node) ;; If not, how about the cache?
                       (skroad--validate-node-title node)))) ;; If not, validate.
       (unless valid
-        (skroad--highlight-invalid (match-beginning 1) (match-end 1))
+        (skroad--highlight-invalid-match 1)
         (skroad--lint-report (format "Link '%s' is invalid!" node)))
       valid)))
 
@@ -2323,7 +2325,7 @@ See e.g. `skroad--merge-node-into-current'."
                  (<= p skroad--buf-tail-marker))
              (skroad--set-tail-marker p)
              t)
-            (t (skroad--highlight-invalid (match-beginning 0) (match-end 0))
+            (t (skroad--highlight-invalid-match 0)
                nil)))))
 
 (defun skroad--tail-indicator-breaking (&rest _args)
