@@ -3010,7 +3010,7 @@ Warning: undo info is lost in all affected buffers!"
     (dolist (node ;; Hollow out (don't delete) the nodes we regenerate :
              (list skroad--special-node-orphans skroad--special-node-stubs))
       (skroad--with-node node t
-        (skroad--rectify-node-title)
+        (skroad--change-internal-title node) ;; In case it got munged somehow
         (skroad--goto-node-body-start)
         (delete-region (point) (point-max))))
     (let ((count 0))
