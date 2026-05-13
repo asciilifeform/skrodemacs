@@ -1876,7 +1876,7 @@ If NODE does not exist, this is a no-op."
   "Filter for all node links."
   (when (skroad--in-node-body-p)
     (let* ((node (skroad--clean-whitespace
-                     (match-string-no-properties 1)))
+                  (match-string-no-properties 1)))
            (valid (or (skroad--cache-peek node)
                       (skroad--validate-node-title node))))
       (unless valid
