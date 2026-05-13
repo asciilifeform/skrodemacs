@@ -1887,17 +1887,6 @@ If NODE does not exist, this is a no-op."
        (match-beginning number) (match-end number)
        'skroad--invalid-text-face))))
 
-;; TODO: actually log during lint
-(defun skroad--lint-report (text)
-  "Log TEXT to the current lint report."
-  (when skroad--lint-in-progress
-    (let ((prefix
-           (if (skroad--mode-p)
-               (format "Node %s : "
-                       (skroad--link-generate-live (skroad--current-node)))
-             "")))
-      (message (concat prefix text)))))
-
 (defun skroad--node-link-filter ()
   "Filter for all node links.  Return t when link is valid; highlight invalids."
   (when (skroad--in-node-body-p) ;; Entirely ignore (do nothing!) when in title.
@@ -3001,6 +2990,17 @@ Warning: undo info is lost in all affected buffers!"
       ;; temporary:
       (skroad--change-internal-title external-title)
       )))
+
+;; TODO: actually log during lint
+(defun skroad--lint-report (text)
+  "Log TEXT to the current lint report."
+  (when skroad--lint-in-progress
+    (let ((prefix
+           (if (skroad--mode-p)
+               (format "Node %s : "
+                       (skroad--link-generate-live (skroad--current-node)))
+             "")))
+      (message (concat prefix text)))))
 
 (defun skroad--lint ()
   "Perform a full rescan of all known nodes."
