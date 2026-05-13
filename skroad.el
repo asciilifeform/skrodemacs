@@ -1885,6 +1885,16 @@ If NODE does not exist, this is a no-op."
     (with-silent-modifications
       (add-face-text-property start end 'skroad--invalid-text-face))))
 
+(defun skroad--lint-report (text)
+  "Log TEXT to the current lint report."
+  (when skroad--lint-in-progress
+    (let ((prefix
+           (if (skroad--mode-p)
+               (format "Node %s : "
+                       (skroad--link-generate-live (skroad--current-node)))
+             "")))
+      (message (concat prefix text)))))
+
 ;; TODO: actually log during lint
 (defun skroad--node-link-filter ()
   "Filter for all node links.  Return t when link is valid; highlight invalids."
@@ -1897,10 +1907,7 @@ If NODE does not exist, this is a no-op."
                       (skroad--validate-node-title node)))) ;; If not, validate.
       (unless valid
         (skroad--highlight-invalid (match-beginning 1) (match-end 1))
-        (when skroad--lint-in-progress
-          (message "Link '%s' in %s is invalid!"
-                   node
-                   (skroad--link-generate-live (skroad--current-node)))))
+        (skroad--lint-report (format "Link '%s' is invalid!" node)))
       valid)))
 
 (skroad--deftype skroad--text-link-node-live
