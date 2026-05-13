@@ -401,6 +401,7 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
   "Schedule BODY to run later."
   `(skroad--idle-enqueue (lambda () ,@body)))
 
+;;;; problem: will deadlock if >1 of these are enqueued
 ;; (defmacro skroad--defer-final (&rest body)
 ;;   "Schedule BODY to run later, but only when the work queue is otherwise empty."
 ;;   `(skroad--defer
@@ -1884,8 +1885,10 @@ If NODE does not exist, this is a no-op."
   (when (skroad--in-node-body-p)
     (let* ((node (skroad--clean-whitespace
                   (match-string-no-properties 1)))
-           (valid (or (skroad--cache-peek node)
-                      (skroad--validate-node-title node))))
+           (valid (or (and (listp (skroad--buf-indices))
+                           (skroad--link-has-live-p node)) ;; Already indexed?
+                      (skroad--cache-peek node) ;; If not, already interned?
+                      (skroad--validate-node-title node)))) ;; If not, validate.
       (unless valid
         (unless skroad--scan-in-progress ;; Only colour during fontlock
           (with-silent-modifications
