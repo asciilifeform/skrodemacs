@@ -2308,7 +2308,6 @@ See e.g. `skroad--merge-node-into-current'."
     (setq-local skroad--buf-tail-needs-refresh t)))
 
 ;; TODO: any insert of tail indicator should supercede the old
-;; TODO: in body only
 ;; TODO: skroad--highlight-invalid ?
 (defun skroad--node-tail-filter ()
   "Finder filter for the node tail."
