@@ -1881,13 +1881,13 @@ If NODE does not exist, this is a no-op."
 
 ;; TODO: actually log during lint
 (defun skroad--node-link-filter ()
-  "Filter for all node links."
-  (when (skroad--in-node-body-p) ;; Entirely ignore (no alarm) when in title
+  "Filter for all node links.  Return t when link is valid; highlight invalids."
+  (when (skroad--in-node-body-p) ;; Entirely ignore (do nothing!) when in title.
     (let* ((node (skroad--clean-whitespace
-                  (match-string-no-properties 1)))
-           (valid (or (and (listp (skroad--buf-indices))
-                           (skroad--link-has-live-p node)) ;; Already indexed?
-                      (skroad--cache-peek node) ;; If not, already interned?
+                  (match-string-no-properties 1))) ;; Rectify the link first.
+           (valid (or (and (listp (skroad--buf-indices)) ;; Buffer has indices?
+                           (skroad--link-has-live-p node)) ;; and they have it?
+                      (skroad--cache-peek node) ;; If not, how about the cache?
                       (skroad--validate-node-title node)))) ;; If not, validate.
       (unless valid
         (unless skroad--scan-in-progress ;; Only colour during fontlock
