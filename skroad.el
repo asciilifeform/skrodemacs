@@ -2843,7 +2843,6 @@ not currently open in any buffer; but if it is, the user is prompted first.")
   "Return t when NODE (if given; else the current node) is a known orphan."
   (skroad--connected-p skroad--special-node-orphans node))
 
-;; TODO: defer the stub check too? (see skroad--node-set-stub note)
 (defun skroad--node-set-orphan (node status)
   "Set the orphan STATUS of NODE.  If it became an orphan stub, try deleting it.
 If deletion is blocked, no new auto-deletion attempt will be made until and
