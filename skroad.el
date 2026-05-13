@@ -2307,16 +2307,17 @@ See e.g. `skroad--merge-node-into-current'."
     (setq-local skroad--buf-tail-marker (and pos (copy-marker pos)))
     (setq-local skroad--buf-tail-needs-refresh t)))
 
-;; TODO: any insert of tail indicator should supercede the old
-;; TODO: skroad--highlight-invalid ?
+;; TODO: any insert of tail indicator should supercede the old?
 (defun skroad--node-tail-filter ()
   "Finder filter for the node tail."
   (let ((p (point)))
-    (when (and (or (null skroad--buf-tail-marker)
-                   (<= p skroad--buf-tail-marker))
-               (skroad--in-node-body-p p))
-      (skroad--set-tail-marker p)
-      t)))
+    (when (skroad--in-node-body-p p)
+      (cond ((or (null skroad--buf-tail-marker)
+                 (<= p skroad--buf-tail-marker))
+             (skroad--set-tail-marker p)
+             t)
+            (t (skroad--highlight-invalid (match-beginning 0) (match-end 0))
+               nil)))))
 
 (defun skroad--tail-indicator-breaking (&rest _args)
   "Triggered when an active tail indicator may have been disturbed."
