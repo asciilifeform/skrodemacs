@@ -3018,13 +3018,12 @@ Warning: undo info is lost in all affected buffers!"
        #'(lambda (node)
            (unless (skroad--node-special-p node)
              (skroad--defer
-              (progn
-                (setq count (1+ count))
-                (skroad--cache-invalidate node)
-                (skroad--with-node node t
-                  (skroad--rectify-node-title)
-                  (skroad--update-stub-status)
-                  ))))))
+              (setq count (1+ count))
+              (skroad--cache-invalidate node)
+              (skroad--with-node node t
+                (skroad--rectify-node-title)
+                (skroad--update-stub-status)
+                )))))
       (skroad--defer
        (skroad--lint-report
         (message "Lint complete, linted %s nodes." count))))))
