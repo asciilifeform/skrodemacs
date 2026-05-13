@@ -1174,9 +1174,6 @@ Secondary type actions (always run, except for special nodes) :
                 (setq indices (assq-delete-all text-type indices)))))))))
   indices)
 
-(defvar skroad--lint-in-progress nil
-  "Indicates that lint is currently in progress.")
-
 (defvar-local skroad--buf-indices-pending nil
   "Pending changes to the text type indices for the current node.")
 
@@ -2991,6 +2988,9 @@ Warning: undo info is lost in all affected buffers!"
       (skroad--change-internal-title external-title)
       )))
 
+(defvar skroad--lint-in-progress nil
+  "Indicates that lint is currently in progress.")
+
 ;; TODO: actually log during lint
 (defun skroad--lint-report (text)
   "Log TEXT to the current lint report."
@@ -3004,27 +3004,30 @@ Warning: undo info is lost in all affected buffers!"
 
 (defun skroad--lint ()
   "Perform a full rescan of all known nodes."
-  (message "Lint starting...")
-  (skroad--complete-all-deferred) ;; Ensure no ops are pending
-  (dolist (node ;; Hollow out (don't delete) the nodes we regenerate :
-           (list skroad--special-node-orphans skroad--special-node-stubs))
-    (skroad--with-node node t
-      (skroad--rectify-node-title)
-      (skroad--goto-node-body-start)
-      (delete-region (point) (point-max))))
-  (let ((count 0))
-    (skroad--cache-foreach ;; Dispatch for each known non-special node:
-     #'(lambda (node)
-         (unless (skroad--node-special-p node)
-           (skroad--defer
-            (let ((skroad--lint-in-progress t))
-              (setq count (1+ count))
-              (skroad--cache-invalidate node)
-              (skroad--with-node node t
-                (skroad--rectify-node-title)
-                (skroad--update-stub-status)
-                ))))))
-    (skroad--defer (message "Lint complete, linted %s nodes." count))))
+  (let ((skroad--lint-in-progress t))
+    (skroad--lint-report "Lint starting...")
+    (skroad--complete-all-deferred) ;; Ensure no ops are pending
+    (dolist (node ;; Hollow out (don't delete) the nodes we regenerate :
+             (list skroad--special-node-orphans skroad--special-node-stubs))
+      (skroad--with-node node t
+        (skroad--rectify-node-title)
+        (skroad--goto-node-body-start)
+        (delete-region (point) (point-max))))
+    (let ((count 0))
+      (skroad--cache-foreach ;; Dispatch for each known non-special node:
+       #'(lambda (node)
+           (unless (skroad--node-special-p node)
+             (skroad--defer
+              (progn
+                (setq count (1+ count))
+                (skroad--cache-invalidate node)
+                (skroad--with-node node t
+                  (skroad--rectify-node-title)
+                  (skroad--update-stub-status)
+                  ))))))
+      (skroad--defer
+       (skroad--lint-report
+        (message "Lint complete, linted %s nodes." count))))))
 
 ;; Autocomplete for live node links. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
