@@ -105,9 +105,9 @@
   "Face used for dead links."
   :group 'skroad-faces)
 
-(defface skroad--invalid-link-face
+(defface skroad--invalid-text-face
   '((t :inherit link :foreground "red" :strike-through t))
-  "Face used for invalid links."
+  "Face used for invalid text."
   :group 'skroad-faces)
 
 (defface skroad--url-link-face
@@ -1879,6 +1879,12 @@ If NODE does not exist, this is a no-op."
 (defconst skroad--link-node-live-end-delim "]]"
   "Delimiter indicating the end of a live Skroad link.")
 
+(defun skroad--highlight-invalid (start end)
+  "If in font lock, highlight text from START to END with the `invalid' face."
+  (unless skroad--scan-in-progress ;; Only colour during fontlock
+    (with-silent-modifications
+      (add-face-text-property start end 'skroad--invalid-text-face))))
+
 ;; TODO: actually log during lint
 (defun skroad--node-link-filter ()
   "Filter for all node links.  Return t when link is valid; highlight invalids."
@@ -1890,10 +1896,7 @@ If NODE does not exist, this is a no-op."
                       (skroad--cache-peek node) ;; If not, how about the cache?
                       (skroad--validate-node-title node)))) ;; If not, validate.
       (unless valid
-        (unless skroad--scan-in-progress ;; Only colour during fontlock
-          (with-silent-modifications
-            (add-face-text-property
-             (match-beginning 1) (match-end 1) 'skroad--invalid-link-face)))
+        (skroad--highlight-invalid (match-beginning 1) (match-end 1))
         (when skroad--lint-in-progress
           (message "Link '%s' in %s is invalid!"
                    node
@@ -2305,6 +2308,8 @@ See e.g. `skroad--merge-node-into-current'."
     (setq-local skroad--buf-tail-needs-refresh t)))
 
 ;; TODO: any insert of tail indicator should supercede the old
+;; TODO: in body only
+;; TODO: skroad--highlight-invalid ?
 (defun skroad--node-tail-filter ()
   "Finder filter for the node tail."
   (let ((p (point)))
