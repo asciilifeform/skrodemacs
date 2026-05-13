@@ -1885,6 +1885,7 @@ If NODE does not exist, this is a no-op."
     (with-silent-modifications
       (add-face-text-property start end 'skroad--invalid-text-face))))
 
+;; TODO: actually log during lint
 (defun skroad--lint-report (text)
   "Log TEXT to the current lint report."
   (when skroad--lint-in-progress
@@ -1895,7 +1896,6 @@ If NODE does not exist, this is a no-op."
              "")))
       (message (concat prefix text)))))
 
-;; TODO: actually log during lint
 (defun skroad--node-link-filter ()
   "Filter for all node links.  Return t when link is valid; highlight invalids."
   (when (skroad--in-node-body-p) ;; Entirely ignore (do nothing!) when in title.
