@@ -2456,19 +2456,6 @@ If the tail did not previously exist in the current node, it is emplaced."
       (skroad--refontify-current-line)
       (delete-region (point) (progn (forward-line 1) (point))))))
 
-;; TODO: write log entry if changing
-(defun skroad--rectify-node-title ()
-  "Ensure that the current node's internal and external titles match."
-  (let ((external-title (skroad--current-node))
-        (internal-title (skroad--current-internal-title)))
-    (unless (string-equal internal-title external-title)
-      (message
-       "Node '%s' internal title '%s' does not match filename!"
-       external-title internal-title)
-      ;; temporary:
-      (skroad--change-internal-title external-title)
-      )))
-
 (defun skroad--node-extract-body ()
   "Return the body of the current node."
   (save-mark-and-excursion
@@ -2789,7 +2776,7 @@ or edited interactively.  Special nodes are not subject to auto-backlinking.")
   "Define a special NODE; store title in HANDLE."
   (declare (indent defun))
   `(progn
-     (defconst ,handle ,node ,@legend) ;; TODO: redundant?
+     (defconst ,handle ,node ,@legend)
      (add-to-list 'skroad--special-nodes ,node)))
 
 (defun skroad--node-special-p (&optional node)
@@ -2832,6 +2819,7 @@ will be queued for auto-deletion (see `skroad--node-set-orphan' below.)")
   "Return t when NODE (if given; else the current node) is a known stub."
   (skroad--connected-p skroad--special-node-stubs node))
 
+;; TODO: defer the orphan check too? (what if there's a pending unorphaning?)
 (defun skroad--node-set-stub (node status)
   "Set the stub STATUS of NODE.  See also `skroad--node-set-orphan'."
   (when (skroad--set-special-status node skroad--special-node-stubs status)
@@ -2850,6 +2838,7 @@ not currently open in any buffer; but if it is, the user is prompted first.")
   "Return t when NODE (if given; else the current node) is a known orphan."
   (skroad--connected-p skroad--special-node-orphans node))
 
+;; TODO: defer the stub check too? (see skroad--node-set-stub note)
 (defun skroad--node-set-orphan (node status)
   "Set the orphan STATUS of NODE.  If it became an orphan stub, try deleting it.
 If deletion is blocked, no new auto-deletion attempt will be made until and
@@ -2970,6 +2959,19 @@ Warning: undo info is lost in all affected buffers!"
           (skroad--defer (skroad--refontify-open-nodes))
           (skroad--clear-buf-undo-info)) ;; Zap undo info
       (error "Could not rename node '%s' to '%s'!" old new))))
+
+;; TODO: write log entry if changing
+(defun skroad--rectify-node-title ()
+  "Ensure that the current node's internal and external titles match."
+  (let ((external-title (skroad--current-node))
+        (internal-title (skroad--current-internal-title)))
+    (unless (string-equal internal-title external-title)
+      (message
+       "Node '%s' internal title '%s' does not match filename!"
+       external-title internal-title)
+      ;; temporary:
+      (skroad--change-internal-title external-title)
+      )))
 
 (defun skroad--lint ()
   "Perform a full rescan of all known nodes."
