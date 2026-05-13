@@ -401,12 +401,12 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
   "Schedule BODY to run later."
   `(skroad--idle-enqueue (lambda () ,@body)))
 
-(defmacro skroad--defer-final (&rest body)
-  "Schedule BODY to run later, but only when the work queue is otherwise empty."
-  `(skroad--defer
-    (if (skroad--idle-have-work-p)
-        (skroad--defer ,@body)
-      ,@body)))
+;; (defmacro skroad--defer-final (&rest body)
+;;   "Schedule BODY to run later, but only when the work queue is otherwise empty."
+;;   `(skroad--defer
+;;     (if (skroad--idle-have-work-p)
+;;         (skroad--defer ,@body)
+;;       ,@body)))
 
 (defmacro skroad--defer-in-current-buffer (&rest body)
   "Schedule BODY to run later in the current buffer, supposing it remains live."
@@ -2839,7 +2839,7 @@ not currently open in any buffer; but if it is, the user is prompted first.")
 
 (defun skroad--defer-orphan-stub-check (node)
   "Defer a check for orphan-stub status of NODE; propose deletion if true."
-  (skroad--defer-final ;; Do it when there are no more ops pending
+  (skroad--defer
    (when (and (skroad--node-orphan-p node) (skroad--node-stub-p node))
      (skroad--delete-node node))))
 
@@ -3007,7 +3007,7 @@ Warning: undo info is lost in all affected buffers!"
                 (skroad--rectify-node-title)
                 (skroad--update-stub-status)
                 ))))))
-    (skroad--defer-final (message "Lint complete, linted %s nodes." count))))
+    (skroad--defer (message "Lint complete, linted %s nodes." count))))
 
 ;; Autocomplete for live node links. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
