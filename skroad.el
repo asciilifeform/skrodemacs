@@ -2819,13 +2819,18 @@ will be queued for auto-deletion (see `skroad--node-set-orphan' below.)")
   "Return t when NODE (if given; else the current node) is a known stub."
   (skroad--connected-p skroad--special-node-stubs node))
 
-;; TODO: defer the orphan check too? (what if there's a pending unorphaning?)
+(defun skroad--defer-orphan-stub-check (node)
+  "Defer a check for orphan-stub status of NODE; propose deletion if true."
+  (skroad--defer
+   (when (and (skroad--node-orphan-p node) (skroad--node-stub-p node))
+     (skroad--delete-node node))))
+
 (defun skroad--node-set-stub (node status)
   "Set the stub STATUS of NODE.  See also `skroad--node-set-orphan'."
   (when (skroad--set-special-status node skroad--special-node-stubs status)
     (skroad--refontify-open-nodes) ;; Refontify links if stub status changed
-    (when (and status (skroad--node-orphan-p node)) ;; Became an orphan stub?
-      (skroad--defer (skroad--delete-node node))))) ;; ... try deleting.
+    (when status ;; May have become an orphan stub, so queue a check
+      (skroad--defer-orphan-stub-check node))))
 
 (skroad--define-special-node skroad--special-node-orphans "#Orphans"
   "A node with links to all known orphans (non-special nodes that have no live
@@ -2845,8 +2850,8 @@ If deletion is blocked, no new auto-deletion attempt will be made until and
 unless the node stops being an orphan stub and then later becomes one again."
   (when (and
          (skroad--set-special-status node skroad--special-node-orphans status)
-         status (skroad--node-stub-p node))
-    (skroad--defer (skroad--delete-node node))))
+         status)
+    (skroad--defer-orphan-stub-check node))) ;; May have become an orphan stub
 
 ;; TODO: deaden (or textify?) links to deleted node in the log ?
 (defun skroad--delete-node (node &optional force)
@@ -2935,6 +2940,7 @@ After all of this, the VICTIM is permanently deleted."
       (skroad--defer (skroad--refontify-open-nodes))
       (skroad--save-current-node) ;; Save immediately
       (skroad--clear-buf-undo-info) ;; Zap undo info
+      ;; TODO: defer deletion?
       (skroad--delete-node victim t)))) ;; Permanently delete the victim!
 
 (defun skroad--rename-node (old new) ;; TODO: log to actual log
