@@ -2815,9 +2815,20 @@ without any text between the title and the tail.  New nodes start out as stubs.
 Stubs which are disconnected do not retain dead links; when orphaned, a stub
 will be queued for auto-deletion (see `skroad--node-set-orphan' below.)")
 
+(skroad--define-special-node skroad--special-node-orphans "#Orphans"
+  "A node with links to all known orphans (non-special nodes that have no live
+links other than to special nodes and/or to themselves.)  A node found to be an
+orphan becomes a candidate for deletion (and the only nodes that may be deleted
+are orphan nodes.) A node found to be an orphan stub is auto-deleted if it is
+not currently open in any buffer; but if it is, the user is prompted first.")
+
 (defun skroad--node-stub-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known stub."
   (skroad--connected-p skroad--special-node-stubs node))
+
+(defun skroad--node-orphan-p (&optional node)
+  "Return t when NODE (if given; else the current node) is a known orphan."
+  (skroad--connected-p skroad--special-node-orphans node))
 
 (defun skroad--defer-orphan-stub-check (node)
   "Defer a check for orphan-stub status of NODE; propose deletion if true."
@@ -2831,17 +2842,6 @@ will be queued for auto-deletion (see `skroad--node-set-orphan' below.)")
     (skroad--refontify-open-nodes) ;; Refontify links if stub status changed
     (when status ;; May have become an orphan stub, so queue a check
       (skroad--defer-orphan-stub-check node))))
-
-(skroad--define-special-node skroad--special-node-orphans "#Orphans"
-  "A node with links to all known orphans (non-special nodes that have no live
-links other than to special nodes and/or to themselves.)  A node found to be an
-orphan becomes a candidate for deletion (and the only nodes that may be deleted
-are orphan nodes.) A node found to be an orphan stub is auto-deleted if it is
-not currently open in any buffer; but if it is, the user is prompted first.")
-
-(defun skroad--node-orphan-p (&optional node)
-  "Return t when NODE (if given; else the current node) is a known orphan."
-  (skroad--connected-p skroad--special-node-orphans node))
 
 (defun skroad--node-set-orphan (node status)
   "Set the orphan STATUS of NODE.  If it became an orphan stub, try deleting it.
