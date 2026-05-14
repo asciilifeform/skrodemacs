@@ -536,6 +536,12 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
                   nil))))
    (skroad--storage-list-files)))
 
+;; TODO: verify that the node is in the data directory?
+(defun skroad--current-buffer-node-p ()
+  "Return t when the current buffer contains a node."
+  (string-equal (file-name-extension (buffer-file-name))
+                skroad--file-extension))
+
 ;; Keymap utils. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--get-keymap-docs (keymap)
@@ -1186,6 +1192,9 @@ Secondary type actions (always run, except for special nodes) :
 
 (defvar-local skroad--buf-indices-table 'fetch-me
   "Cached text type indices for the current node.  Do not access directly.")
+
+(defvar skroad--lint-in-progress nil
+  "Indicates that lint is currently in progress.")
 
 (defun skroad--buf-indices ()
   "Obtain the current node's text type indices."
@@ -2988,17 +2997,15 @@ Warning: undo info is lost in all affected buffers!"
       (skroad--change-internal-title external-title)
       )))
 
-(defvar skroad--lint-in-progress nil
-  "Indicates that lint is currently in progress.")
-
 ;; TODO: actually log during lint
 (defun skroad--lint-report (text)
   "Log TEXT to the current lint report."
   (when skroad--lint-in-progress
     (let ((prefix
-           (if (skroad--mode-p)
+           (if (skroad--current-buffer-node-p)
                (format "Node %s : "
-                       (skroad--link-generate-live (skroad--current-node)))
+                       (skroad--link-generate-live
+                        (skroad--current-node)))
              "")))
       (message (concat prefix text)))))
 
@@ -3018,12 +3025,13 @@ Warning: undo info is lost in all affected buffers!"
        #'(lambda (node)
            (unless (skroad--node-special-p node)
              (skroad--defer
-              (setq count (1+ count))
-              (skroad--cache-invalidate node)
-              (skroad--with-node node t
-                (skroad--rectify-node-title)
-                (skroad--update-stub-status)
-                )))))
+              (let ((skroad--lint-in-progress t))
+                (setq count (1+ count))
+                (skroad--cache-invalidate node)
+                (skroad--with-node node t
+                  (skroad--rectify-node-title)
+                  (skroad--update-stub-status)
+                  ))))))
       (skroad--defer
        (skroad--lint-report
         (message "Lint complete, linted %s nodes." count))))))
