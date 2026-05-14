@@ -536,12 +536,6 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
                   nil))))
    (skroad--storage-list-files)))
 
-;; TODO: verify that the node is in the data directory?
-(defun skroad--current-buffer-node-p ()
-  "Return t when the current buffer contains a node."
-  (string-equal (file-name-extension (buffer-file-name))
-                skroad--file-extension))
-
 ;; Keymap utils. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--get-keymap-docs (keymap)
@@ -2462,6 +2456,14 @@ If the tail did not previously exist in the current node, it is emplaced."
   "Return t if NODE is the current node."
   (string-equal node (skroad--current-node)))
 
+(defun skroad--current-buffer-node-p ()
+  "Return t when the current buffer contains a known node."
+  (when-let* ((file (buffer-file-name))
+              (extension (file-name-extension file))
+              (node (skroad--file-path-to-node-title file)))
+    (and (string-equal extension skroad--file-extension)
+         (skroad--cache-peek node))))
+
 (defun skroad--current-internal-title ()
   "Get the current node's title from the buffer."
   (buffer-substring-no-properties (point-min) (skroad--get-end-of-line 1)))
@@ -3035,7 +3037,7 @@ Warning: undo info is lost in all affected buffers!"
                 )))))
       (skroad--defer
        (skroad--lint-report
-        (message "Lint complete, linted %s nodes." count))
+        (format "Lint complete, linted %s nodes." count))
        (setq skroad--lint-in-progress nil)
        (skroad--refontify-open-nodes)))))
 
