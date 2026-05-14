@@ -2460,7 +2460,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   "Return t when the current buffer contains a known node."
   (when-let* ((file (buffer-file-name))
               (extension (file-name-extension file))
-              (node (skroad--file-path-to-node-title file)))
+              (node (skroad--current-node)))
     (and (string-equal extension skroad--file-extension)
          (skroad--cache-peek node))))
 
