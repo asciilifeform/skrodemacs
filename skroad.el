@@ -2416,6 +2416,7 @@ Any dead links found below the computed tail are deleted."
        (newline 2))
      (skroad--update-stub-status)))
 
+;; TODO: find out why this ends up scanning extraneous nodes
 (defun skroad--update-stub-status ()
   "Determine whether the current node is a stub, and update Stubs if necessary.
 A stub is a node where only whitespace is found between the title and the tail.
@@ -2858,7 +2859,8 @@ not currently open in any buffer; but if it is, the user is prompted first.")
 (defun skroad--node-set-stub (node status)
   "Set the stub STATUS of NODE.  See also `skroad--node-set-orphan'."
   (when (skroad--set-special-status node skroad--special-node-stubs status)
-    (skroad--refontify-open-nodes) ;; Refontify links if stub status changed
+    (unless skroad--lint-in-progress
+      (skroad--refontify-open-nodes)) ;; Refontify links if stub status changed
     (when status ;; May have become an orphan stub, so queue a check
       (skroad--defer-orphan-stub-check node))))
 
@@ -3004,37 +3006,37 @@ Warning: undo info is lost in all affected buffers!"
     (let ((prefix
            (if (skroad--current-buffer-node-p)
                (format "Node %s : "
-                       (skroad--link-generate-live
-                        (skroad--current-node)))
+                       (skroad--link-generate-live (skroad--current-node)))
              "")))
       (message (concat prefix text)))))
 
 (defun skroad--lint ()
   "Perform a full rescan of all known nodes."
-  (let ((skroad--lint-in-progress t))
-    (skroad--lint-report "Lint starting...")
-    (skroad--complete-all-deferred) ;; Ensure no ops are pending
-    (dolist (node ;; Hollow out (don't delete) the nodes we regenerate :
-             (list skroad--special-node-orphans skroad--special-node-stubs))
-      (skroad--with-node node t
-        (skroad--change-internal-title node) ;; In case it got munged somehow
-        (skroad--goto-node-body-start)
-        (delete-region (point) (point-max))))
-    (let ((count 0))
-      (skroad--cache-foreach ;; Dispatch for each known non-special node:
-       #'(lambda (node)
-           (unless (skroad--node-special-p node)
-             (skroad--defer
-              (let ((skroad--lint-in-progress t))
-                (setq count (1+ count))
-                (skroad--cache-invalidate node)
-                (skroad--with-node node t
-                  (skroad--rectify-node-title)
-                  (skroad--update-stub-status)
-                  ))))))
-      (skroad--defer
-       (skroad--lint-report
-        (message "Lint complete, linted %s nodes." count))))))
+  (skroad--complete-all-deferred) ;; Ensure no ops are pending
+  (setq skroad--lint-in-progress t)
+  (skroad--lint-report "Lint starting...")
+  (dolist (node ;; Hollow out (don't delete) the nodes we regenerate :
+           (list skroad--special-node-orphans skroad--special-node-stubs))
+    (skroad--with-node node t
+      (skroad--change-internal-title node) ;; In case it got munged somehow
+      (skroad--goto-node-body-start)
+      (delete-region (point) (point-max))))
+  (let ((count 0))
+    (skroad--cache-foreach ;; Dispatch for each known non-special node:
+     #'(lambda (node)
+         (unless (skroad--node-special-p node)
+           (skroad--defer
+            (setq count (1+ count))
+            (skroad--cache-invalidate node)
+            (skroad--with-node node t
+              (skroad--rectify-node-title)
+              (skroad--update-stub-status)
+              )))))
+    (skroad--defer
+     (skroad--lint-report
+      (message "Lint complete, linted %s nodes." count))
+     (setq skroad--lint-in-progress nil)
+     (skroad--refontify-open-nodes))))
 
 ;; Autocomplete for live node links. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
