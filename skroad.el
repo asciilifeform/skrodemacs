@@ -2457,12 +2457,11 @@ If the tail did not previously exist in the current node, it is emplaced."
   (string-equal node (skroad--current-node)))
 
 (defun skroad--current-buffer-node-p ()
-  "Return t when the current buffer contains a known node."
-  (when-let* ((file (buffer-file-name))
-              (extension (file-name-extension file))
-              (node (skroad--current-node)))
-    (and (string-equal extension skroad--file-extension)
-         (skroad--cache-peek node))))
+  "Return t when the current buffer contains a Skroad node."
+  (or (skroad--mode-p)
+      (when-let* ((file (buffer-file-name))
+                  (extension (file-name-extension file)))
+        (string-equal extension skroad--file-extension))))
 
 (defun skroad--current-internal-title ()
   "Get the current node's title from the buffer."
