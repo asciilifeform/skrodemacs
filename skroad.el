@@ -1903,18 +1903,18 @@ If NODE does not exist, this is a no-op."
 (defun skroad--node-link-filter ()
   "Filter for all node links.  Return t when link is valid; highlight invalids."
   (when (skroad--in-node-body-p) ;; Entirely ignore (do nothing!) when in title.
-    (let* ((node (skroad--clean-whitespace
-                  (match-string-no-properties 1))) ;; Rectify the link first.
-           (valid (or (skroad--node-special-p) ;; In specials, presumed valid
-                      (and (listp (skroad--buf-indices)) ;; Buffer has indices?
-                           (skroad--link-has-live-p node)) ;; and they have it?
-                      (skroad--cache-peek node) ;; If not, how about the cache?
-                      (skroad--validate-node-title node)))) ;; If not, validate.
-      (unless valid
-        (skroad--highlight-invalid-match 1)
-        (when skroad--scan-in-progress
-          (skroad--lint-report (format "Invalid link: '%s'" node))))
-      valid)))
+    (or (skroad--node-special-p) ;; In specials, presume all links are valid.
+        (let* ((node (skroad--clean-whitespace
+                      (match-string-no-properties 1))) ;; Rectify link first.
+               (valid (or (and (listp (skroad--buf-indices)) ;; Have indices?
+                               (skroad--link-has-live-p node)) ;; they have it?
+                          (skroad--cache-peek node) ;; or how about the cache?
+                          (skroad--validate-node-title node)))) ;; or validate.
+          (unless valid
+            (skroad--highlight-invalid-match 1)
+            (when skroad--scan-in-progress
+              (skroad--lint-report (format "Invalid link: '%s'" node))))
+          valid))))
 
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
