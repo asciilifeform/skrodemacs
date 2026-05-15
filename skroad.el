@@ -1911,7 +1911,7 @@ If NODE does not exist, this is a no-op."
       (unless valid
         (skroad--highlight-invalid-match 1)
         (when skroad--scan-in-progress
-          (skroad--lint-report (format "Link '%s' is invalid!" node))))
+          (skroad--lint-report (format "Invalid link: '%s'" node))))
       valid)))
 
 (skroad--deftype skroad--text-link-node-live
