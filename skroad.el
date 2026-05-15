@@ -1835,7 +1835,8 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
       (skroad--mouse-warp)) ;; Move the mouse cursor to the point (or backlink)
     ;; TODO: this should be configurable
     (unless (or (get-buffer-window orig-buf t) ;; Kill orig if we had buried it
-                (skroad--node-special-p node)) ;; ... unless we opened a special
+                (skroad--node-special-p node) ;; ... unless we opened a special
+                (skroad--node-special-p orig-node)) ;; ... or were in one before
       (with-current-buffer orig-buf
         (skroad--buf-indices-sync)
         (skroad--save-current-node)
