@@ -26,14 +26,7 @@
 (defconst skroad--max-file-name-bytes 253
   "Max bytes permitted in file name.  (Leaves room for lock file suffixes).")
 
-;; TODO: [[test\[123\]] matches early if inserted manually
-(defconst skroad--regexp-text-in-brackets
-  (rx (* blank)
-      (+ (or (: ?\\ not-newline)
-             (not (any "[]" blank ?\n))))
-      (*? (or (: ?\\ not-newline)
-              (not (any "[]\n")))))
-  "Regexp matching text that could be delimited by square brackets.")
+(defconst skroad--log-date-format "%d %B, %Y" "Format used for log dates.")
 
 ;;; Fonts. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -146,11 +139,12 @@
   "Foreground face for the `> ' glyph in quote-depth blocks."
   :group 'skroad-faces)
 
-;; (defface skroad--timestamp-face
-;;   '((t :inherit skroad--text-face
-;;        :foreground "black" :background "white"))
-;;   "Face used for timestamps."
-;;   :group 'skroad-faces)
+(defface skroad--timestamp-face
+  '((t :inherit skroad--text-face
+       :extend t
+       :foreground "black" :background "Orange"))
+  "Face used for timestamps."
+  :group 'skroad-faces)
 
 ;;; Utility functions. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -161,6 +155,10 @@
         (apply #'message args)
       (when (current-message)
         (message nil)))))
+
+(defun skroad--current-date-string ()
+  "Generate a string representing today's date."
+  (format-time-string skroad--log-date-format (seconds-to-time (current-time))))
 
 (defun skroad--last-ev-was-mouse-p ()
   "Return t when the last input event was a mouse event."
@@ -1010,10 +1008,13 @@ Return the new position if the jump actually happened; otherwise nil."
 
 ;; Decorative text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defconst skroad--regexp-padded-any (rx (* blank) (+ print) (* blank))
+  "Regexp for any padded text.")
+
 (skroad--deftype skroad--text-mixin-render-delimited-decorative
   :doc "Mixin for decorative delimited text types rendered by font-lock."
   :mixin t
-  :payload-regex (rx (* blank) (+ print) (* blank))
+  :payload-regex skroad--regexp-padded-any
   :require 'face
   :render
   '(lambda () (add-face-text-property (match-beginning 0) (match-end 0) face))
@@ -1202,23 +1203,25 @@ Secondary type actions (always run, except for special nodes) :
   "If the current node has not been indexed yet, create its text type indices.
 Otherwise, apply any pending changes.  Then write the indices back to the cache.
 Runs text type actions, unless NO-ACTIONS is t or the current node is special."
-  (skroad--buf-indices-ensure-change-tracker) ;; Init tracker if not done yet
   (let* ((indices (skroad--buf-indices))
          (init (eq indices 'index-me))
          (have-changes (skroad--buf-indices-have-pending-p)))
+    (unless (skroad--node-special-no-index-p)
+      (skroad--buf-indices-ensure-change-tracker)) ;; Init tracker if not yet
     (when init
-      (when have-changes
-        (message "Tried to apply changes to unindexed node: '%s', rescanning!"
-                 (skroad--current-node))
-        (setq-local skroad--buf-indices-pending nil))
-      (skroad--index-scan-region (point-min) (point-max) 1)
+      (unless (skroad--node-special-no-index-p)
+        (when have-changes
+          (message "Tried to apply changes to unindexed node: '%s', rescanning!"
+                   (skroad--current-node))
+          (setq-local skroad--buf-indices-pending nil))
+        (skroad--index-scan-region (point-min) (point-max) 1))
       (setq have-changes t)
       (setq indices nil)
-      (skroad--save-current-node)) ;; We may have rectified links, so save it
+      (skroad--save-current-node)) ;; May have rectified links, so save it
     (when have-changes
       (setq indices (skroad--indices-update
                      indices skroad--buf-indices-pending
-                     (or no-actions (skroad--node-special-p)) init)) ;; TODO?
+                     (or no-actions (skroad--node-special-p)) init))
       (setq-local skroad--buf-indices-table indices)
       (skroad--cache-write (skroad--current-node) indices))))
 
@@ -1778,6 +1781,15 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   "Unescape PAYLOAD for links."
   (skroad--bracket-unescape payload))
 
+;; TODO: [[test\[123\]] matches early if inserted manually
+(defconst skroad--regexp-text-in-brackets
+  (rx (* blank)
+      (+ (or (: ?\\ not-newline)
+             (not (any "[]" blank ?\n))))
+      (*? (or (: ?\\ not-newline)
+              (not (any "[]\n")))))
+  "Regexp matching text that could be delimited by square brackets.")
+
 (skroad--deftype skroad--text-link-node
   :doc "Fundamental type for skroad node links (live or dead)."
   :use 'skroad--text-atomic
@@ -2270,21 +2282,46 @@ See e.g. `skroad--merge-node-into-current'."
 
 ;; Timestamps. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; (skroad--deftype skroad--text-timestamp
-;;   :doc "Timestamp."
-;;   :use 'skroad--text-atomic
-;;   :face 'skroad--timestamp-face
-;;   :match-number 1
-;;   :payload-regex (rx (+ digit))
-;;   :begins "$%&_Time=" :ends "_&%$"
-;;   :display-function
-;;   '(lambda (payload)
-;;      (format-time-string
-;;       "%B %d, %Y"
-;;       (seconds-to-time (string-to-number payload))))
-;;   :finder-filter #'skroad--in-node-body-p
-;;   :use 'skroad--text-mixin-atomic-delimited
-;;   )
+;; TODO: keymap for jumping to prev/next
+(skroad--deftype skroad--text-timestamp
+  :doc "Timestamp."
+  :use 'skroad--text-atomic
+  :face 'skroad--timestamp-face
+  :match-number 1
+  :visible-match-number 1
+  :payload-regex (rx (+ print) "\n")
+  :begins "@Time@" :ends ""
+  :finder-filter #'skroad--in-node-body-p
+  :use 'skroad--text-mixin-atomic-delimited
+  )
+
+(defun skroad--jump-after-current-date ()
+  "Find a timestamp with the current date forward of point, or insert one here."
+  (let ((date (skroad--current-date-string)))
+    (unless (funcall (get 'skroad--text-timestamp 'search) date)
+      (newline)
+      (insert (funcall (get 'skroad--text-timestamp 'generate) date))
+      (newline))))
+
+(defun skroad--find-date-forward ()
+  "Find the previous timestamp entry (i.e. below point), or point-max."
+  (or (save-mark-and-excursion
+        (when (funcall (get 'skroad--text-timestamp 'find-any-forward))
+          (match-beginning 0)))
+      (point-max)))
+
+(defun skroad--append-log-entry (text &optional unique)
+  "Insert TEXT as a log entry in the current buffer, under the current date.
+If UNIQUE is true, do not allow duplicate entries."
+  (skroad--goto-node-body-start)
+  (skroad--jump-after-current-date)
+  (let ((date-bottom (skroad--find-date-forward)))
+    (unless (and unique
+                 (search-forward text date-bottom t))
+      (goto-char date-bottom)
+      (skip-syntax-backward " ")
+      (newline)
+      (insert text))))
 
 ;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2794,16 +2831,26 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
 contain only mechanically-generated content; and cannot be renamed, deleted,
 or edited interactively.  Special nodes are not subject to auto-backlinking.")
 
-(defmacro skroad--define-special-node (handle node &rest legend)
-  "Define a special NODE; store title in HANDLE."
-  (declare (indent defun))
-  `(progn
-     (defconst ,handle ,node ,@legend)
-     (add-to-list 'skroad--special-nodes ,node)))
-
 (defun skroad--node-special-p (&optional node)
   "Return t if NODE (if given; else the current node) is a special node."
   (member (or node (skroad--current-node)) skroad--special-nodes))
+
+(defvar skroad--special-nodes-no-index nil
+  "List of all special nodes where indexing is inhibited.")
+
+(defun skroad--node-special-no-index-p (&optional node)
+  "Return t if NODE (if given; else the current node) has indexing inhibited."
+  (member (or node (skroad--current-node)) skroad--special-nodes-no-index))
+
+(defmacro skroad--define-special-node (handle node allow-index &rest legend)
+  "Define a special NODE; store title in HANDLE.
+If ALLOW-INDEX is false, do not track changes or maintain indices for the node."
+  (declare (indent defun))
+  `(progn
+     (defconst ,handle ,node ,@legend)
+     (add-to-list 'skroad--special-nodes ,node)
+     (unless ,allow-index
+       (add-to-list 'skroad--special-nodes-no-index ,node))))
 
 (defun skroad--connected-p (origin &optional node)
   "Test whether NODE (if given; else the current node) is linked from ORIGIN.
@@ -2824,14 +2871,14 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
     t))
 
 ;; TODO: make log work
-(skroad--define-special-node skroad--special-node-log "#Log"
+(skroad--define-special-node skroad--special-node-log "#Log" t
   "Record of node creation, modification, and renaming.")
 
 ;; (defun skroad--node-logged-p (&optional node) ;; TODO: use?
 ;;   "Return t when NODE (if given; else the current node) is linked in the log."
 ;;   (skroad--connected-p skroad--special-node-log node))
 
-(skroad--define-special-node skroad--special-node-lint "#Lint"
+(skroad--define-special-node skroad--special-node-lint "#Lint" nil
   "Record of all lint output.")
 
 (defun skroad--lint-report (text &optional use-prefix)
@@ -2844,20 +2891,17 @@ If USE-PREFIX is given, use it.  Otherwise prefix the current node, if any."
                           (skroad--link-generate-live (skroad--current-node)))
                 "")))
          (report (concat prefix text)))
-    (message report) ;; Always print to console also
+    (message (concat "Skroad Lint: " report)) ;; Always print to console also
     (skroad--with-node skroad--special-node-lint t
-      (goto-char (point-max))
-      (newline)
-      (insert report)
-      (newline))))
+      (skroad--append-log-entry report t))))
 
-(skroad--define-special-node skroad--special-node-stubs "#Stubs"
+(skroad--define-special-node skroad--special-node-stubs "#Stubs" t
   "A node with links to all known stub nodes. A stub node is a non-special node
 without any text between the title and the tail.  New nodes start out as stubs.
 Stubs which are disconnected do not retain dead links; when orphaned, a stub
 will be queued for auto-deletion (see `skroad--node-set-orphan' below.)")
 
-(skroad--define-special-node skroad--special-node-orphans "#Orphans"
+(skroad--define-special-node skroad--special-node-orphans "#Orphans" t
   "A node with links to all known orphans (non-special nodes that have no live
 links other than to special nodes and/or to themselves.)  A node found to be an
 orphan becomes a candidate for deletion (and the only nodes that may be deleted
@@ -3032,10 +3076,9 @@ Warning: undo info is lost in all affected buffers!"
                    skroad--special-node-stubs
                    skroad--special-node-lint))
       (skroad--with-node node t
-        (skroad--change-internal-title node) ;; In case it got munged somehow
+        (skroad--change-internal-title node)
         (skroad--goto-node-body-start)
         (delete-region (point) (point-max))))
-    (skroad--lint-report "Starting..." "Lint: ")
     (let ((count 0))
       (skroad--cache-foreach ;; Dispatch for each known non-special node:
        #'(lambda (node)
