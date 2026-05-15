@@ -2848,7 +2848,8 @@ If USE-PREFIX is given, use it.  Otherwise prefix the current node, if any."
     (skroad--with-node skroad--special-node-lint t
       (goto-char (point-max))
       (newline)
-      (insert report))))
+      (insert report)
+      (newline))))
 
 (skroad--define-special-node skroad--special-node-stubs "#Stubs"
   "A node with links to all known stub nodes. A stub node is a non-special node
