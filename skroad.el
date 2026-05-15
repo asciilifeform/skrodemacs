@@ -2987,19 +2987,6 @@ Warning: undo info is lost in all affected buffers!"
           (skroad--clear-buf-undo-info)) ;; Zap undo info
       (error "Could not rename node '%s' to '%s'!" old new))))
 
-;; TODO: write log entry if changing
-(defun skroad--rectify-node-title ()
-  "Ensure that the current node's internal and external titles match."
-  (let ((external-title (skroad--current-node))
-        (internal-title (skroad--current-internal-title)))
-    (unless (string-equal internal-title external-title)
-      (message
-       "Node '%s' internal title '%s' does not match filename!"
-       external-title internal-title)
-      ;; temporary:
-      (skroad--change-internal-title external-title)
-      )))
-
 ;; TODO: actually log during lint
 (defun skroad--lint-report (text)
   "Log TEXT to the current lint report."
@@ -3011,6 +2998,20 @@ Warning: undo info is lost in all affected buffers!"
              "")))
       (message (concat prefix text)))))
 
+;; TODO: write log entry if changing
+(defun skroad--rectify-node-title ()
+  "Ensure that the current node's internal and external titles match."
+  (let ((external-title (skroad--current-node))
+        (internal-title (skroad--current-internal-title)))
+    (unless (string-equal internal-title external-title)
+      (skroad--lint-report
+       (format
+        "Internal title '%s' does not match external title!" internal-title))
+      ;; temporary:
+      (skroad--change-internal-title external-title)
+      )))
+
+;; TODO: detect actual completion
 (defun skroad--lint ()
   "Perform a full rescan of all known nodes."
   (unless skroad--lint-in-progress
@@ -3029,7 +3030,7 @@ Warning: undo info is lost in all affected buffers!"
            (unless (skroad--node-special-p node)
              (skroad--defer
               (setq count (1+ count))
-              (skroad--cache-invalidate node)
+              (skroad--cache-invalidate node) ;; Zap existing indices
               (skroad--with-node node t
                 (skroad--rectify-node-title)
                 (skroad--update-stub-status)
