@@ -1898,7 +1898,8 @@ If NODE does not exist, this is a no-op."
                       (skroad--validate-node-title node)))) ;; If not, validate.
       (unless valid
         (skroad--highlight-invalid-match 1)
-        (skroad--lint-report (format "Link '%s' is invalid!" node)))
+        (when skroad--scan-in-progress
+          (skroad--lint-report (format "Link '%s' is invalid!" node))))
       valid)))
 
 (skroad--deftype skroad--text-link-node-live
@@ -2739,7 +2740,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
   "If the current node had been visited in this session, restore the point."
   (let ((cached-point (gethash (skroad--current-node) skroad--point-cache)))
     (when cached-point
-      (goto-char cached-point))))
+      (goto-char (min (point-max) cached-point)))))
 
 ;; Back-end. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2824,11 +2825,29 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
 
 ;; TODO: make log work
 (skroad--define-special-node skroad--special-node-log "#Log"
-  "Record of node creation, modification, renaming; and lint output.")
+  "Record of node creation, modification, and renaming.")
 
-(defun skroad--node-logged-p (&optional node) ;; TODO: use?
-  "Return t when NODE (if given; else the current node) is linked in the log."
-  (skroad--connected-p skroad--special-node-log node))
+;; (defun skroad--node-logged-p (&optional node) ;; TODO: use?
+;;   "Return t when NODE (if given; else the current node) is linked in the log."
+;;   (skroad--connected-p skroad--special-node-log node))
+
+(skroad--define-special-node skroad--special-node-lint "#Lint"
+  "Record of all lint output.")
+
+(defun skroad--lint-report (text &optional use-prefix)
+  "Log TEXT to the current lint report.  If USE-PREFIX is given, use it."
+  (let* ((prefix
+          (or use-prefix
+              (if (skroad--current-buffer-node-p)
+                  (format "Node %s : "
+                          (skroad--link-generate-live (skroad--current-node)))
+                "")))
+         (report (concat prefix text)))
+    (message report) ;; Always print to console also
+    (skroad--with-node skroad--special-node-lint t
+      (goto-char (point-max))
+      (newline)
+      (insert report))))
 
 (skroad--define-special-node skroad--special-node-stubs "#Stubs"
   "A node with links to all known stub nodes. A stub node is a non-special node
@@ -2987,17 +3006,6 @@ Warning: undo info is lost in all affected buffers!"
           (skroad--clear-buf-undo-info)) ;; Zap undo info
       (error "Could not rename node '%s' to '%s'!" old new))))
 
-;; TODO: actually log during lint
-(defun skroad--lint-report (text)
-  "Log TEXT to the current lint report."
-  (when skroad--lint-in-progress
-    (let ((prefix
-           (if (skroad--current-buffer-node-p)
-               (format "Node %s : "
-                       (skroad--link-generate-live (skroad--current-node)))
-             "")))
-      (message (concat prefix text)))))
-
 ;; TODO: write log entry if changing
 (defun skroad--rectify-node-title ()
   "Ensure that the current node's internal and external titles match."
@@ -3017,13 +3025,15 @@ Warning: undo info is lost in all affected buffers!"
   (unless skroad--lint-in-progress
     (skroad--complete-all-deferred) ;; Ensure no ops are pending
     (setq skroad--lint-in-progress t)
-    (skroad--lint-report "Lint starting...")
     (dolist (node ;; Hollow out (don't delete) the nodes we regenerate :
-             (list skroad--special-node-orphans skroad--special-node-stubs))
+             (list skroad--special-node-orphans
+                   skroad--special-node-stubs
+                   skroad--special-node-lint))
       (skroad--with-node node t
         (skroad--change-internal-title node) ;; In case it got munged somehow
         (skroad--goto-node-body-start)
         (delete-region (point) (point-max))))
+    (skroad--lint-report "Starting..." "Lint: ")
     (let ((count 0))
       (skroad--cache-foreach ;; Dispatch for each known non-special node:
        #'(lambda (node)
@@ -3037,7 +3047,7 @@ Warning: undo info is lost in all affected buffers!"
                 )))))
       (skroad--defer
        (skroad--lint-report
-        (format "Lint complete, linted %s nodes." count))
+        (format "Complete, linted %s nodes." count) "Lint: ")
        (setq skroad--lint-in-progress nil)
        (skroad--refontify-open-nodes)))))
 
