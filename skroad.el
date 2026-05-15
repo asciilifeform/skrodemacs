@@ -2835,7 +2835,8 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
   "Record of all lint output.")
 
 (defun skroad--lint-report (text &optional use-prefix)
-  "Log TEXT to the current lint report.  If USE-PREFIX is given, use it."
+  "Log TEXT to the current lint report.
+If USE-PREFIX is given, use it.  Otherwise prefix the current node, if any."
   (let* ((prefix
           (or use-prefix
               (if (skroad--current-buffer-node-p)
