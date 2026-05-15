@@ -1905,7 +1905,8 @@ If NODE does not exist, this is a no-op."
   (when (skroad--in-node-body-p) ;; Entirely ignore (do nothing!) when in title.
     (let* ((node (skroad--clean-whitespace
                   (match-string-no-properties 1))) ;; Rectify the link first.
-           (valid (or (and (listp (skroad--buf-indices)) ;; Buffer has indices?
+           (valid (or (skroad--node-special-p) ;; In specials, presumed valid
+                      (and (listp (skroad--buf-indices)) ;; Buffer has indices?
                            (skroad--link-has-live-p node)) ;; and they have it?
                       (skroad--cache-peek node) ;; If not, how about the cache?
                       (skroad--validate-node-title node)))) ;; If not, validate.
@@ -2872,7 +2873,7 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
     t))
 
 ;; TODO: make log work
-(skroad--define-special-node skroad--special-node-log "#Log" t
+(skroad--define-special-node skroad--special-node-log "#Log" nil
   "Record of node creation, modification, and renaming.")
 
 ;; (defun skroad--node-logged-p (&optional node) ;; TODO: use?
