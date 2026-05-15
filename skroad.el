@@ -3046,6 +3046,7 @@ Warning: undo info is lost in all affected buffers!"
               (skroad--with-node node t
                 (skroad--rectify-node-title)
                 (skroad--update-stub-status)
+                (skroad--clear-buf-undo-info)
                 )))))
       (skroad--defer
        (skroad--lint-report
