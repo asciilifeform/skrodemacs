@@ -818,6 +818,9 @@ No refontification is triggered; existing properties are untouched."
 
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defvar skroad--hidden-link-delimiters t
+  "If t, link delimiters are hidden.")
+
 (skroad--deftype skroad--text-mixin-rendered-zoned
   :doc "Mixin for zoned text types rendered by font-lock."
   :mixin t
@@ -840,7 +843,7 @@ No refontification is triggered; existing properties are untouched."
            (plist-put props 'mouse-face (list mouse-face)) props)
        (add-text-properties start end props)
        ;; If visible-match-number is given, hide everything but that match:
-       (when (numberp visible-match-number)
+       (when (and (numberp visible-match-number) skroad--hidden-link-delimiters)
          (let ((vis-start (match-beginning visible-match-number))
                (vis-end (match-end visible-match-number)))
            (put-text-property start vis-start 'invisible t)
@@ -1746,7 +1749,6 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 (skroad--deftype skroad--text-link-node
   :doc "Fundamental type for skroad node links (live or dead)."
   :use 'skroad--text-atomic
-  :mouse-face 'skroad--highlight-link-face
   :payload-regex skroad--regexp-text-in-brackets
   :visible-match-number 1
   :hide-escapes t
@@ -1874,6 +1876,7 @@ If NODE does not exist, this is a no-op."
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :use 'skroad--text-link-node
+  :mouse-face 'skroad--highlight-link-face
   :on-init-none #'skroad--action-orphaned
   :on-destroy-last #'skroad--action-orphaned
   :on-init-first #'skroad--action-unorphaned
@@ -3313,6 +3316,13 @@ Warning: undo info is lost in all affected buffers!"
   (interactive)
   (skroad--tail-jump-before))
 
+(defun skroad--cmd-top-toggle-invisible-delimiters ()
+  "Toggle the hiding of link delimiters."
+  (interactive)
+  (setq skroad--hidden-link-delimiters
+        (not skroad--hidden-link-delimiters))
+  (skroad--refontify-open-nodes))
+
 (defvar skroad--mode-map
   (define-keymap
     ">" #'skroad--cmd-top-gt
@@ -3321,6 +3331,7 @@ Warning: undo info is lost in all affected buffers!"
     "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
     "C-<tab>" #'skroad--cmd-top-jump-to-prev-atomic
     "M-t" #'skroad--cmd-top-goto-tail
+    "C-M-l" #'skroad--cmd-top-toggle-invisible-delimiters
     )
   "Top-level keymap for the skroad major mode.")
 
