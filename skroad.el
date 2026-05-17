@@ -68,38 +68,50 @@
   ["#202050" "#204020" "#5c2020" "#4a2050" "#205050"]
   "Pool of quote backgrounds.")
 
+(defface skroad--node-link-face
+  '((t :inherit link :underline nil
+       :box (:line-width (2 . 2))))
+  "Face used as a base for all node links."
+  :group 'skroad-faces)
+
 (defface skroad--highlight-link-face
-  '((t :inherit highlight))
+  '((t :inherit (highlight skroad--node-link-face)))
   "Face used for highlighted links."
   :group 'skroad-faces)
 
 (defface skroad--live-link-face
-  '((t :inherit link))
+  '((t :inherit skroad--node-link-face))
   "Face used for live links."
   :group 'skroad-faces)
 
 (defface skroad--stub-link-face
-  '((t :inherit link :foreground "Orange"))
+  '((t :inherit skroad--node-link-face :foreground "Orange"))
   "Face used for live stub links."
   :group 'skroad-faces)
 
 (defface skroad--special-link-face
-  '((t :inherit link :inverse-video t))
+  '((t :inherit skroad--node-link-face :inverse-video t))
   "Face used for live special links."
   :group 'skroad-faces)
 
 (defface skroad--self-link-face
-  '((t :inherit link :foreground "white" :background "purple"))
+  '((t :inherit skroad--node-link-face
+       :foreground "white" :background "purple"))
   "Face used for live self links."
   :group 'skroad-faces)
 
 (defface skroad--dead-link-face
-  '((t :inherit link :foreground "red"))
+  '((t :inherit skroad--node-link-face :foreground "red"))
   "Face used for dead links."
   :group 'skroad-faces)
 
+(defface skroad--dead-orphaned-link-face
+  '((t :inherit skroad--dead-link-face :strike-through t))
+  "Face used for dead links to nodes which no longer exist."
+  :group 'skroad-faces)
+
 (defface skroad--invalid-text-face
-  '((t :inherit link :foreground "red" :strike-through t))
+  '((t :foreground "red" :strike-through t :inverse-video t))
   "Face used for invalid text."
   :group 'skroad-faces)
 
@@ -827,18 +839,17 @@ No refontification is triggered; existing properties are untouched."
        (if (facep mouse-face)
            (plist-put props 'mouse-face (list mouse-face)) props)
        (add-text-properties start end props)
-       (add-face-text-property start end add-face)
        ;; If visible-match-number is given, hide everything but that match:
-       (cond ((numberp visible-match-number)
-              (put-text-property start end 'invisible t)
-              (let ((vis-start (match-beginning visible-match-number))
-                    (vis-end (match-end visible-match-number)))
-                (remove-text-properties vis-start vis-end '(invisible))
-                (when hide-escapes
-                  (skroad--hide-escape-slashes vis-start vis-end))))
-             ;; No visible match number is set:
-             (t (when hide-escapes
-                  (skroad--hide-escape-slashes start end))))))
+       (when (numberp visible-match-number)
+         (let ((vis-start (match-beginning visible-match-number))
+               (vis-end (match-end visible-match-number)))
+           (put-text-property start vis-start 'invisible t)
+           (put-text-property vis-end end 'invisible t)
+           (setq start vis-start
+                 end vis-end)))
+       (when hide-escapes
+         (skroad--hide-escape-slashes start end))
+       (add-face-text-property start end add-face)))
   :use 'skroad--text-mixin-regexp-rendered
   :use 'skroad--text-mixin-rendered)
 
@@ -1343,59 +1354,6 @@ These may occur if ill-behaved minor modes are in use.")
 (skroad--define-atomics-region-cmd kill-region)
 (skroad--define-atomics-region-cmd kill-ring-save)
 
-(defvar-local skroad--buf-selector nil
-  "Selector overlay active when an atomic is under the point.")
-
-(defconst skroad--selector-properties
-  `((face skroad--selector-face) (evaporate t))
-  "Text properties of the selector.")
-
-(defun skroad--buf-overlay-active-p (overlay)
-  "Determine whether OVERLAY is active in the current buffer."
-  (and (overlayp overlay) (eq (current-buffer) (overlay-buffer overlay))))
-
-(defun skroad--selector-active-p ()
-  "Return t if the selector is active in this buffer."
-  (skroad--buf-overlay-active-p skroad--buf-selector))
-
-(defun skroad--selector-init ()
-  "Initialize the selector overlay in the current buffer."
-  (setq-local skroad--buf-selector (make-overlay (point-min) (point-min)))
-  (skroad--selector-deactivate)
-  (dolist (p skroad--selector-properties)
-    (overlay-put skroad--buf-selector (car p) (cadr p))))
-
-(defun skroad--selector-unhide ()
-  "Reveal the selector overlay when it may have been hidden."
-  (when (skroad--selector-active-p)
-    (overlay-put skroad--buf-selector 'face 'skroad--selector-face)))
-
-(defun skroad--selector-hide ()
-  "Hide (but not destroy) the selector overlay."
-  (when (skroad--selector-active-p)
-    (overlay-put skroad--buf-selector 'face nil)))
-
-(defun skroad--selector-activate-in-current-zone ()
-  "Activate (if inactive) or move the selector to the current zone."
-  (skroad--with-current-zone
-    (move-overlay skroad--buf-selector start end (current-buffer))
-    (unless (skroad--last-ev-was-mouse-p)
-      (skroad--show-key-help)))
-  (setq-local cursor-type nil show-paren-mode nil))
-
-(defun skroad--selector-deactivate ()
-  "Deactivate the selector; it can be reactivated again."
-  (when (skroad--selector-active-p)
-    (delete-overlay skroad--buf-selector)
-    (skroad--info))
-  (setq-local cursor-type t show-paren-mode t))
-
-(defun skroad--selector-update ()
-  "Enable the selector if point is on an atomic zone; otherwise disable it."
-  (if (skroad--prop-at 'zone)
-      (skroad--selector-activate-in-current-zone)
-    (skroad--selector-deactivate)))
-
 (defun skroad--cmd-atomic-set-mark ()
   "Set the mark inside an atomic."
   (interactive)
@@ -1404,11 +1362,6 @@ These may occur if ill-behaved minor modes are in use.")
       (setq-local skroad--buf-alt-mark start)
       (goto-char end)
       (call-interactively 'set-mark-command))))
-
-(defun skroad--show-key-help ()
-  "Display the keymap help of the current point."
-  (let ((km (skroad--prop-at 'keymap))) ;; Display keymap help
-    (when km (skroad--info (skroad--make-keymap-help km)))))
 
 (skroad--deftype skroad--text-atomic
   :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
@@ -1795,6 +1748,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   :use 'skroad--text-atomic
   :mouse-face 'skroad--highlight-link-face
   :payload-regex skroad--regexp-text-in-brackets
+  :visible-match-number 1
   :hide-escapes t
   :escape #'skroad--link-escaper
   :unescape #'skroad--link-unescaper
@@ -1819,25 +1773,26 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
       (pop-to-buffer (find-file-noselect node-path))))) ;; ... or open it anew.
 
 (defun skroad--action-open-node (node)
-  "Navigate to NODE."
+  "Navigate to NODE.  Must be called from a buffer containing a node."
   (unless (skroad--cache-peek node) ;; Possibly node creation is still pending?
     (skroad--complete-all-deferred)) ;; ... if so, let all deferred work finish.
-  (let ((orig-node (skroad--current-node)) ;; Node we triggered the action in
-        (orig-buf (current-buffer))) ;; Buffer we triggered the action in
+  (let* ((from-node (skroad--current-node)) ;; Node we triggered the action in
+         (from-special (skroad--node-special-p from-node)) ;; Was it special?
+         (from-buf (current-buffer))) ;; Buffer we triggered the action in
     (unless (skroad--cache-peek node) ;; Suppose the node still doesn't exist?
-      (skroad--in-node node #'skroad--connect-to orig-node)) ;; ... create it.
+      (skroad--in-node node #'skroad--connect-to from-node)) ;; ... create it.
     (skroad--display-node node) ;; Display the node.
-    ;; TODO: this should be configurable
-    (unless (or (skroad--maybe-restore-cached-point) ;; If no cached point...
-                (skroad--node-special-p orig-node)) ;; ... and not from special
-      (skroad--link-maybe-jump-to-live orig-node))
+    ;; TODO: this should be configurable?
+    (unless (or from-special ;; Unless coming from a special node
+                (skroad--maybe-restore-cached-point)) ;; or have a cached point
+      (skroad--link-maybe-jump-to-live from-node)) ;; Try jumping to orig link
     (when (skroad--last-ev-was-mouse-p)
       (skroad--mouse-warp)) ;; Move the mouse cursor to the point (or backlink)
-    ;; TODO: this should be configurable
-    (unless (or (get-buffer-window orig-buf t) ;; Kill orig if we had buried it
-                (skroad--node-special-p node) ;; ... unless we opened a special
-                (skroad--node-special-p orig-node)) ;; ... or were in one before
-      (with-current-buffer orig-buf
+    ;; TODO: this should be configurable?
+    (unless (or from-special ;; Unless coming from a special node
+                (get-buffer-window from-buf t) ;; ... or there was no burial
+                (skroad--node-special-p node)) ;; ... or opened a special node
+      (with-current-buffer from-buf
         (skroad--buf-indices-sync)
         (skroad--save-current-node)
         (kill-buffer)))))
@@ -1903,7 +1858,7 @@ If NODE does not exist, this is a no-op."
 (defun skroad--node-link-filter ()
   "Filter for all node links.  Return t when link is valid; highlight invalids."
   (when (skroad--in-node-body-p) ;; Entirely ignore (do nothing!) when in title.
-    (or (skroad--node-special-p) ;; In specials, presume all links are valid.
+    (or (skroad--node-special-p) ;; In specials, presume all links to be valid.
         (let* ((node (skroad--clean-whitespace
                       (match-string-no-properties 1))) ;; Rectify link first.
                (valid (or (and (listp (skroad--buf-indices)) ;; Have indices?
@@ -1952,6 +1907,33 @@ If NODE does not exist, this is a no-op."
   :use 'skroad--text-mixin-renameable
   :use 'skroad--text-mixin-indexed)
 
+(skroad--deftype skroad--text-link-node-log
+  :doc "Link to a skroad node appearing in logs.  Navigable when node exists."
+  :use 'skroad--text-link-node
+  :on-activate #'skroad--action-open-node
+  :face-function
+  '(lambda (payload)
+     (cond ((skroad--node-self-p payload)
+            'skroad--self-link-face)
+           ((skroad--node-stub-p payload)
+            'skroad--stub-link-face)
+           ((skroad--node-special-p payload)
+            'skroad--special-link-face)
+           ((skroad--cache-peek payload)
+            'skroad--live-link-face)
+           (t 'skroad--dead-link-face)))
+  :help-echo 'skroad--mouseover-node-preview
+  :begins "[~[" :ends "]~]"
+  :visible-match-number 1
+  :keymap
+  (define-keymap
+    "<remap> <yank>" #'ignore
+    "<remap> <kill-ring-save>" #'ignore ;; TODO: convert to live/dead?
+    )
+  :finder-filter #'skroad--in-node-body-p
+  :use 'skroad--text-mixin-link-navigable
+  :use 'skroad--text-mixin-atomic-delimited)
+
 ;; TODO: do this in title def?
 (defun skroad--link-valid-p (string)
   "Determine whether STRING represents a valid link payload."
@@ -1991,8 +1973,13 @@ If NODE does not exist, this is a no-op."
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
   :use 'skroad--text-link-node
   :begins "[-[" :ends "]-]"
-  :face 'skroad--dead-link-face
+  :face-function
+  '(lambda (payload)
+     (if (skroad--cache-peek payload)
+         'skroad--dead-link-face
+       'skroad--dead-orphaned-link-face))
   :keymap (define-keymap
+            "<return>" #'ignore
             "l" #'skroad--cmd-liven-at
             "<mouse-1>" #'skroad--cmd-link-mouse-activate) ;; Only move point
   :finder-filter #'skroad--node-link-filter
@@ -2450,7 +2437,6 @@ Any dead links found below the computed tail are deleted."
        (newline 2))
      (skroad--update-stub-status)))
 
-;; TODO: find out why this ends up scanning extraneous nodes
 (defun skroad--update-stub-status ()
   "Determine whether the current node is a stub, and update Stubs if necessary.
 A stub is a node where only whitespace is found between the title and the tail.
@@ -2557,6 +2543,74 @@ If the tail did not previously exist in the current node, it is emplaced."
   :use 'skroad--text-mixin-rendered-zoned
   )
 
+;; Link selector. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defvar-local skroad--buf-selector nil
+  "Selector overlay active when an atomic is under the point.")
+
+(defconst skroad--selector-properties
+  `((face skroad--selector-face) (evaporate t))
+  "Text properties of the selector.")
+
+(defun skroad--buf-overlay-active-p (overlay)
+  "Determine whether OVERLAY is active in the current buffer."
+  (and (overlayp overlay) (eq (current-buffer) (overlay-buffer overlay))))
+
+(defun skroad--selector-active-p ()
+  "Return t if the selector is active in this buffer."
+  (skroad--buf-overlay-active-p skroad--buf-selector))
+
+(defun skroad--selector-zone ()
+  "Get the zone in which the selector is currently active (or nil if none)."
+  (when-let* ((selector skroad--buf-selector)
+              (start (overlay-start selector)))
+    (skroad--prop-at 'zone start)))
+
+(defun skroad--selector-init ()
+  "Initialize the selector overlay in the current buffer."
+  (setq-local skroad--buf-selector (make-overlay (point-min) (point-min)))
+  (skroad--selector-deactivate)
+  (dolist (p skroad--selector-properties)
+    (overlay-put skroad--buf-selector (car p) (cadr p))))
+
+(defun skroad--selector-unhide ()
+  "Reveal the selector overlay when it may have been hidden."
+  (when (skroad--selector-active-p)
+    (overlay-put skroad--buf-selector 'face 'skroad--selector-face)))
+
+(defun skroad--selector-hide ()
+  "Hide (but not destroy) the selector overlay."
+  (when (skroad--selector-active-p)
+    (overlay-put skroad--buf-selector 'face nil)))
+
+(defun skroad--selector-activate-in-current-zone ()
+  "Activate (if inactive) or move the selector to the current zone."
+  (skroad--with-current-zone
+    (move-overlay skroad--buf-selector start end)
+    (unless (skroad--last-ev-was-mouse-p)
+      (skroad--show-key-help)))
+  (setq-local cursor-type nil show-paren-mode nil))
+
+(defun skroad--selector-deactivate ()
+  "Deactivate the selector; it can be reactivated again."
+  (when (skroad--selector-active-p)
+    (delete-overlay skroad--buf-selector)
+    (skroad--info))
+  (setq-local cursor-type t show-paren-mode t))
+
+(defun skroad--selector-update ()
+  "Enable the selector if point is on an atomic zone; otherwise disable it."
+  (let ((zone (skroad--prop-at 'zone)))
+    (if zone
+        (when (not (eq zone (skroad--selector-zone)))
+          (skroad--selector-activate-in-current-zone))
+      (skroad--selector-deactivate))))
+
+(defun skroad--show-key-help ()
+  "Display the keymap help of the current point."
+  (let ((km (skroad--prop-at 'keymap))) ;; Display keymap help
+    (when km (skroad--info (skroad--make-keymap-help km)))))
+
 ;; Cursor motion, mark, and floating title handling. ;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar-local skroad--buf-pre-command-point-state (list (point-min) nil)
@@ -2575,6 +2629,7 @@ If the tail did not previously exist in the current node, it is emplaced."
           (setq done (= old-p p))
           (unless done
             (when zone
+              (setq disable-point-adjustment t) ;; Don't skip invisibles
               (goto-char ;; Point may still need to move:
                (if (and (eq zone old-zone) ;; Point moved inside a zone?
                         (> p old-p)) ;; ... forward?
@@ -2618,10 +2673,12 @@ If the tail did not previously exist in the current node, it is emplaced."
       ;;   (skroad--update-stub-status)) ;; TODO: move to save hook?
       ))
   (skroad--post-cmd-refresh-tail)
-  (skroad--point-zone-handler skroad--buf-pre-command-point-state)
+  (unless (and isearch-mode (not (use-region-p)))
+    (skroad--point-zone-handler skroad--buf-pre-command-point-state))
   (skroad--selector-update)
   (skroad--adjust-mark-if-present)
-  (skroad--save-cache-point))
+  (skroad--save-cache-point)
+  )
 
 (defun skroad--before-save-hook ()
   "Triggers prior to a skroad buffer save."
@@ -2795,7 +2852,8 @@ Return the path where the node is found on disk."
         (write-region (concat node "\n") nil node-path nil 0) ;; Insert title
         (skroad--cache-write node nil) ;; Intern the node with an empty index
         (skroad--node-set-stub node t) ;; It starts as a stub (unless special)
-        (message "Created new node: '%s'" node) ;; TODO: write log entry
+        (skroad--log-report
+         (concat "Created " (skroad--link-generate-live node)))
         )
        (t (error "Could not activate node '%s'!" node))))
     node-path))
@@ -2815,7 +2873,6 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
                (skroad--save-current-node)))
         t)))
 
-;; TODO: override readonly only here, rather than in with-file ?
 (defun skroad--in-node (node op target &optional allow-special)
   "Ensure that NODE exists, and run OP on TARGET (nil: current node) from it.
 If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
@@ -2854,6 +2911,14 @@ If ALLOW-INDEX is false, do not track changes or maintain indices for the node."
      (unless ,allow-index
        (add-to-list 'skroad--special-nodes-no-index ,node))))
 
+(defun skroad--clear-special-node (node)
+  "Hollow out the given special NODE."
+  (when (skroad--node-special-p node)
+    (skroad--with-node node t
+      (skroad--change-internal-title node)
+      (skroad--goto-node-body-start)
+      (delete-region (point) (point-max)))))
+
 (defun skroad--connected-p (origin &optional node)
   "Test whether NODE (if given; else the current node) is linked from ORIGIN.
 ORIGIN is indexed/created if required.  If NODE is a special node, return nil."
@@ -2876,9 +2941,17 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
 (skroad--define-special-node skroad--special-node-log "#Log" nil
   "Record of node creation, modification, and renaming.")
 
-;; (defun skroad--node-logged-p (&optional node) ;; TODO: use?
-;;   "Return t when NODE (if given; else the current node) is linked in the log."
-;;   (skroad--connected-p skroad--special-node-log node))
+(defun skroad--log-report (text)
+  "Log TEXT to the log special node under the current date."
+  (skroad--with-node skroad--special-node-log t
+    (skroad--append-log-entry text t)))
+
+(defun skroad--log-zap ()
+  "Reset the log."
+  (interactive)
+  (skroad--clear-special-node skroad--special-node-log))
+
+;; (skroad--log-zap)
 
 (skroad--define-special-node skroad--special-node-lint "#Lint" nil
   "Record of all lint output.")
@@ -2943,9 +3016,10 @@ unless the node stops being an orphan stub and then later becomes one again."
 
 ;; TODO: deaden (or textify?) links to deleted node in the log ?
 (defun skroad--delete-node (node &optional force)
-  "Request deletion of NODE.  No-op if NODE does not exist.
+  "Request deletion of NODE.  No-op if NODE does not exist or is special.
 If NODE is open in a buffer, prompt to ask permission (unless FORCE is t)."
-  (when (skroad--cache-peek node)
+  (when (and (skroad--cache-peek node)
+             (not (skroad--node-special-p node)))
     (let* ((node-path (skroad--node-path node))
            (visiting-buffer (find-buffer-visiting node-path)))
       (when (or (null visiting-buffer)
@@ -2962,7 +3036,8 @@ If NODE is open in a buffer, prompt to ask permission (unless FORCE is t)."
         (skroad--node-set-stub node nil) ;; Banish from stubs
         (skroad--cache-evict node) ;; Banish from cache
         (delete-file node-path) ;; Permanently delete the node file!
-        (message "Deleted node: '%s'" node))))) ;; TODO: write log entry
+        (skroad--log-report
+         (concat "Deleted " (skroad--link-generate-live node)))))))
 
 (defun skroad--current-node-linked-from (&optional all-specials)
   "Return a list of all nodes known to contain a live link to the current node.
@@ -3050,7 +3125,10 @@ Warning: undo info is lost in all affected buffers!"
              (skroad--with-node affected-node t ;; Don't perform actions
                (skroad--link-replace old new)
                (skroad--clear-buf-undo-info))))
-          (skroad--defer (skroad--refontify-open-nodes))
+          (skroad--defer
+           ;; TODO: log
+           (skroad--refontify-open-nodes)
+           )
           (skroad--clear-buf-undo-info)) ;; Zap undo info
       (error "Could not rename node '%s' to '%s'!" old new))))
 
@@ -3077,10 +3155,7 @@ Warning: undo info is lost in all affected buffers!"
              (list skroad--special-node-orphans
                    skroad--special-node-stubs
                    skroad--special-node-lint))
-      (skroad--with-node node t
-        (skroad--change-internal-title node)
-        (skroad--goto-node-body-start)
-        (delete-region (point) (point-max))))
+      (skroad--clear-special-node node))
     (let ((count 0))
       (skroad--cache-foreach ;; Dispatch for each known non-special node:
        #'(lambda (node)
