@@ -3319,8 +3319,7 @@ Warning: undo info is lost in all affected buffers!"
 (defun skroad--cmd-top-toggle-invisible-delimiters ()
   "Toggle the hiding of link delimiters."
   (interactive)
-  (setq skroad--hidden-link-delimiters
-        (not skroad--hidden-link-delimiters))
+  (setq skroad--hidden-link-delimiters (not skroad--hidden-link-delimiters))
   (skroad--refontify-open-nodes))
 
 (defvar skroad--mode-map
