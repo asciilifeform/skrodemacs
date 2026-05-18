@@ -156,7 +156,7 @@
 (defface skroad--timestamp-face
   '((t :inherit skroad--text-face
        :extend t
-       :foreground "black" :background "Orange"))
+       :foreground "black" :background "white"))
   "Face used for timestamps."
   :group 'skroad-faces)
 
