@@ -1721,14 +1721,15 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   "User is mousing over a link in WINDOW, BUF, at POSITION.  Preview body."
   (with-current-buffer buf
     (let ((node (skroad--data-at position)))
-      (when (and (stringp node) (skroad--cache-peek node))
+      (when (stringp node)
         (cond ((skroad--node-stub-p node) (format "Stub node '%s'" node))
               ((skroad--node-special-p node) (format "Special node '%s'" node))
               ((skroad--node-self-p node) "Current node.")
-              (t (propertize
-                  (skroad--with-node node t
-                    (skroad--node-extract-body))
-                  'help-echo-inhibit-substitution t))))))) ;; Emacs 29+
+              ((skroad--cache-peek node)
+               (propertize
+                (skroad--with-node node t (skroad--node-extract-body))
+                'help-echo-inhibit-substitution t)) ;; Emacs 29+
+              (t "This node does not exist."))))))
 
 (defun skroad--link-escaper (payload)
   "Escape PAYLOAD for links."
@@ -1750,6 +1751,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 (skroad--deftype skroad--text-link-node
   :doc "Fundamental type for skroad node links (live or dead)."
   :use 'skroad--text-atomic
+  :help-echo 'skroad--mouseover-node-preview
   :payload-regex skroad--regexp-text-in-brackets
   :visible-match-number 1
   :hide-escapes t
@@ -1888,14 +1890,10 @@ If NODE does not exist, this is a no-op."
   :on-activate #'skroad--action-open-node
   :face-function
   '(lambda (payload)
-     (cond ((skroad--node-self-p payload)
-            'skroad--self-link-face)
-           ((skroad--node-stub-p payload)
-            'skroad--stub-link-face)
-           ((skroad--node-special-p payload)
-            'skroad--special-link-face)
+     (cond ((skroad--node-self-p payload) 'skroad--self-link-face)
+           ((skroad--node-stub-p payload) 'skroad--stub-link-face)
+           ((skroad--node-special-p payload) 'skroad--special-link-face)
            (t 'skroad--live-link-face)))
-  :help-echo 'skroad--mouseover-node-preview
   :begins skroad--link-node-live-start-delim
   :ends skroad--link-node-live-end-delim
   :keymap (define-keymap
@@ -1914,19 +1912,13 @@ If NODE does not exist, this is a no-op."
 (skroad--deftype skroad--text-link-node-log
   :doc "Link to a skroad node appearing in logs.  Navigable when node exists."
   :use 'skroad--text-link-node
-  :on-activate #'skroad--action-open-node
+  :on-activate #'skroad--action-open-node ;; TODO: open only if exists
   :face-function
   '(lambda (payload)
-     (cond ((skroad--node-self-p payload)
-            'skroad--self-link-face)
-           ((skroad--node-stub-p payload)
-            'skroad--stub-link-face)
-           ((skroad--node-special-p payload)
-            'skroad--special-link-face)
-           ((skroad--cache-peek payload)
-            'skroad--live-link-face)
-           (t 'skroad--dead-link-face)))
-  :help-echo 'skroad--mouseover-node-preview
+     (cond ((skroad--node-stub-p payload) 'skroad--stub-link-face)
+           ((skroad--node-special-p payload) 'skroad--special-link-face)
+           ((skroad--cache-peek payload) 'skroad--live-link-face)
+           (t 'skroad--dead-orphaned-link-face)))
   :begins "[~[" :ends "]~]"
   :visible-match-number 1
   :keymap
