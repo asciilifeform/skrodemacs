@@ -1580,7 +1580,7 @@ disable the renamer and return nil."
   :use 'skroad--text-mixin-renamer-overlay
   :use 'skroad--text-mixin-node-renamer
   :face 'skroad--indirect-renamer-face
-  :prefix "  " :suffix "  ")
+  :suffix " ")
 
 (defun skroad--url-renamer-name (pos)
   "Obtain the current caption (if any) of the URL at POS."
