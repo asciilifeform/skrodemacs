@@ -1751,6 +1751,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 (skroad--deftype skroad--text-link-node
   :doc "Fundamental type for skroad node links (live or dead)."
   :use 'skroad--text-atomic
+  :mouse-face 'skroad--highlight-link-face
   :help-echo 'skroad--mouseover-node-preview
   :payload-regex skroad--regexp-text-in-brackets
   :visible-match-number 1
@@ -1879,7 +1880,6 @@ If NODE does not exist, this is a no-op."
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :use 'skroad--text-link-node
-  :mouse-face 'skroad--highlight-link-face
   :on-init-none #'skroad--action-orphaned
   :on-destroy-last #'skroad--action-orphaned
   :on-init-first #'skroad--action-unorphaned
