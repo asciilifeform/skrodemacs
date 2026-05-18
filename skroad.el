@@ -71,7 +71,9 @@
 (defface skroad--node-link-face
   '((t :inherit link :underline nil
        :background "black"
-       :box (:line-width (2 . 2))))
+       :box t
+       ;; :box (:line-width (2 . 2))
+       ))
   "Face used as a base for all node links."
   :group 'skroad-faces)
 
@@ -1724,12 +1726,12 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
       (when (stringp node)
         (cond ((skroad--node-stub-p node) (format "Stub node '%s'" node))
               ((skroad--node-special-p node) (format "Special node '%s'" node))
-              ((skroad--node-self-p node) "Current node.")
+              ((skroad--node-self-p node) "The current node!")
               ((skroad--cache-peek node)
-               (propertize
+               (propertize ;; TODO: use a less invasive way to get the body?
                 (skroad--with-node node t (skroad--node-extract-body))
                 'help-echo-inhibit-substitution t)) ;; Emacs 29+
-              (t "This node does not exist."))))))
+              (t "A deleted node."))))))
 
 (defun skroad--link-escaper (payload)
   "Escape PAYLOAD for links."
@@ -1802,6 +1804,23 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
         (skroad--buf-indices-sync)
         (skroad--save-current-node)
         (kill-buffer)))))
+
+;; TODO
+;; (defun skroad--verify-dead-link (node)
+;;   "A dead link to NODE must be revived if there is a live reciprocal link."
+;;   (when (and (skroad--cache-peek node) ;; Target node exists, and:
+;;              (skroad--connected-p node)) ;; and has a live link to current node.
+;;     (skroad--link-revive node)
+;;     (skroad--lint-report (format "Auto-revived dead link to '%s'" node))))
+
+;; (defun skroad--lint-dead-links ()
+;;   "Liven any wrongly-dead links found in the current node."
+;;   (let ((current-node (skroad--current-node)))
+;;     (skroad--current-indices-foreach
+;;      'skroad--text-link-node-dead ;; For each dead link in the current node:
+;;      #'(lambda (l)
+;;          )))
+;;     (skroad--buf-indices-sync)))
 
 ;; TODO: log entry
 ;; TODO: check if we have an unreachable that can be renamed and will correspond
@@ -2837,6 +2856,8 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 
 ;; Back-end. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: 'import buffer as node' interactive command?
+
 (defun skroad--node-ensure (node)
   "Find or create NODE, and ensure that it is interned in the cache.
 Return the path where the node is found on disk."
@@ -2943,18 +2964,17 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
   (skroad--with-node skroad--special-node-log t
     (skroad--append-log-entry text t)))
 
+;; TODO: make a key binding for this ?
 (defun skroad--log-zap ()
   "Reset the log."
   (interactive)
   (skroad--clear-special-node skroad--special-node-log))
 
-;; (skroad--log-zap)
-
 (skroad--define-special-node skroad--special-node-lint "#Lint" nil
-  "Record of all lint output.")
+  "Record of all lint output (including problems corrected at run time).")
 
 (defun skroad--lint-report (text &optional use-prefix)
-  "Log TEXT to the current lint report.
+  "Log TEXT to the current lint report (when it does not already appear there.)
 If USE-PREFIX is given, use it.  Otherwise prefix the current node, if any."
   (let* ((prefix
           (or use-prefix
@@ -2992,7 +3012,10 @@ not currently open in any buffer; but if it is, the user is prompted first.")
   "Defer a check for orphan-stub status of NODE; propose deletion if true."
   (skroad--defer
    (when (and (skroad--node-orphan-p node) (skroad--node-stub-p node))
-     (skroad--delete-node node))))
+     (when (skroad--delete-node node)
+       (skroad--log-report
+        (concat "Removed " (skroad--link-generate-live node) ;; TODO
+                " (orphan stub)"))))))
 
 (defun skroad--node-set-stub (node status)
   "Set the stub STATUS of NODE.  See also `skroad--node-set-orphan'."
@@ -3011,7 +3034,6 @@ unless the node stops being an orphan stub and then later becomes one again."
          status)
     (skroad--defer-orphan-stub-check node))) ;; May have become an orphan stub
 
-;; TODO: deaden (or textify?) links to deleted node in the log ?
 (defun skroad--delete-node (node &optional force)
   "Request deletion of NODE.  No-op if NODE does not exist or is special.
 If NODE is open in a buffer, prompt to ask permission (unless FORCE is t)."
@@ -3033,8 +3055,7 @@ If NODE is open in a buffer, prompt to ask permission (unless FORCE is t)."
         (skroad--node-set-stub node nil) ;; Banish from stubs
         (skroad--cache-evict node) ;; Banish from cache
         (delete-file node-path) ;; Permanently delete the node file!
-        (skroad--log-report
-         (concat "Deleted " (skroad--link-generate-live node)))))))
+        t)))) ;; Return t when actually deleted.
 
 (defun skroad--current-node-linked-from (&optional all-specials)
   "Return a list of all nodes known to contain a live link to the current node.
@@ -3048,7 +3069,6 @@ The current node itself is not included, even if it contains self-links."
          (candidates (append outgoing-links possible-specials)))
     (seq-filter #'(lambda (n) (skroad--connected-p n node)) candidates)))
 
-;; TODO: log entry
 (defun skroad--merge-node-into-current (victim)
   "Permanently merge the node VICTIM (which must exist) into the current node.
 Prompts for confirmation, since this op wipes undo info in all affected buffers!
@@ -3101,18 +3121,21 @@ After all of this, the VICTIM is permanently deleted."
       (skroad--save-current-node) ;; Save immediately
       (skroad--clear-buf-undo-info) ;; Zap undo info
       ;; TODO: defer deletion?
-      (skroad--delete-node victim t)))) ;; Permanently delete the victim!
+      (skroad--delete-node victim t) ;; Permanently delete the victim!
+      ;; TODO: log
+      )))
 
 (defun skroad--rename-node (old new) ;; TODO: log to actual log
   "Rename node OLD to NEW.  OLD is presumed to exist; NEW is a valid title.
 Warning: undo info is lost in all affected buffers!"
   (skroad--node-must-exist old)
-  (message (format "renaming: '%s' -> '%s'" old new))
   (skroad--complete-all-deferred) ;; Ensure no ops are pending
   (let ((linked-from (skroad--with-node old t
                        (skroad--current-node-linked-from t))))
     (if (and (skroad--cache-rename old new)
              (skroad--mv-file (skroad--node-path old) (skroad--node-path new)))
+        (skroad--log-report
+         (concat "Removed " (skroad--link-generate-live old) " (renamed)"))
         (skroad--with-node new t
           (skroad--change-internal-title new)
           (setq-local skroad--current-node-title nil) ;; Zap cached title
@@ -3123,9 +3146,11 @@ Warning: undo info is lost in all affected buffers!"
                (skroad--link-replace old new)
                (skroad--clear-buf-undo-info))))
           (skroad--defer
-           ;; TODO: log
-           (skroad--refontify-open-nodes)
-           )
+           ;; TODO: retcon the log to reflect renaming?
+           (skroad--log-report
+            (concat "Created " (skroad--link-generate-live new) ;; TODO
+                    " (renamed from '" old "')"))
+           (skroad--refontify-open-nodes))
           (skroad--clear-buf-undo-info)) ;; Zap undo info
       (error "Could not rename node '%s' to '%s'!" old new))))
 
@@ -3160,7 +3185,7 @@ Warning: undo info is lost in all affected buffers!"
              (skroad--defer
               (setq count (1+ count))
               (skroad--cache-invalidate node) ;; Zap existing indices
-              (skroad--with-node node t
+              (skroad--with-node node t ;; TODO: permit actions???
                 (skroad--rectify-node-title)
                 (skroad--update-stub-status)
                 (skroad--clear-buf-undo-info)
@@ -3173,6 +3198,8 @@ Warning: undo info is lost in all affected buffers!"
 
 ;; Autocomplete for live node links. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: get rid of boxification in the completer, it screws up corfu's popup
+;; TODO: let help-echo mouseover work in the completer?
 (defun skroad--autocomplete-affixation (candidates)
   "Propertize filtered completion CANDIDATES before they are displayed."
   (mapcar (lambda (c)
