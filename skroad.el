@@ -70,6 +70,7 @@
 
 (defface skroad--node-link-face
   '((t :inherit link :underline nil
+       :background "black"
        :box (:line-width (2 . 2))))
   "Face used as a base for all node links."
   :group 'skroad-faces)
@@ -90,7 +91,7 @@
   :group 'skroad-faces)
 
 (defface skroad--special-link-face
-  '((t :inherit skroad--node-link-face :inverse-video t))
+  '((t :inherit skroad--node-link-face :foreground "white"))
   "Face used for live special links."
   :group 'skroad-faces)
 
@@ -111,7 +112,8 @@
   :group 'skroad-faces)
 
 (defface skroad--invalid-text-face
-  '((t :foreground "red" :strike-through t :inverse-video t))
+  '((t :inherit skroad--text-face
+       :foreground "red" :strike-through t :inverse-video t))
   "Face used for invalid text."
   :group 'skroad-faces)
 
@@ -818,8 +820,8 @@ No refontification is triggered; existing properties are untouched."
 
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar skroad--hidden-link-delimiters t
-  "If t, link delimiters are hidden.")
+(defvar skroad--atomic-show-payload-only t
+  "If t, rendered atomics display only their payloads.")
 
 (skroad--deftype skroad--text-mixin-rendered-zoned
   :doc "Mixin for zoned text types rendered by font-lock."
@@ -842,14 +844,13 @@ No refontification is triggered; existing properties are untouched."
        (if (facep mouse-face)
            (plist-put props 'mouse-face (list mouse-face)) props)
        (add-text-properties start end props)
-       ;; If visible-match-number is given, hide everything but that match:
-       (when (and (numberp visible-match-number) skroad--hidden-link-delimiters)
+       (when (and (numberp visible-match-number)
+                  skroad--atomic-show-payload-only)
          (let ((vis-start (match-beginning visible-match-number))
                (vis-end (match-end visible-match-number)))
            (put-text-property start vis-start 'invisible t)
            (put-text-property vis-end end 'invisible t)
-           (setq start vis-start
-                 end vis-end)))
+           (setq start vis-start end vis-end)))
        (when hide-escapes
          (skroad--hide-escape-slashes start end))
        (add-face-text-property start end add-face)))
@@ -1972,6 +1973,7 @@ If NODE does not exist, this is a no-op."
   (interactive)
   (skroad--link-revive (skroad--data-at)))
 
+;; TODO: on-init and on-create to verify target is gone or non-reciprocating?
 (skroad--deftype skroad--text-link-node-dead
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
   :use 'skroad--text-link-node
@@ -3316,10 +3318,10 @@ Warning: undo info is lost in all affected buffers!"
   (interactive)
   (skroad--tail-jump-before))
 
-(defun skroad--cmd-top-toggle-invisible-delimiters ()
-  "Toggle the hiding of link delimiters."
+(defun skroad--cmd-top-toggle-atomic-text-hiding ()
+  "Toggle non-match text hiding in atomics having a `visible-match-number'."
   (interactive)
-  (setq skroad--hidden-link-delimiters (not skroad--hidden-link-delimiters))
+  (setq skroad--atomic-show-payload-only (not skroad--atomic-show-payload-only))
   (skroad--refontify-open-nodes))
 
 (defvar skroad--mode-map
@@ -3330,7 +3332,7 @@ Warning: undo info is lost in all affected buffers!"
     "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
     "C-<tab>" #'skroad--cmd-top-jump-to-prev-atomic
     "M-t" #'skroad--cmd-top-goto-tail
-    "C-M-l" #'skroad--cmd-top-toggle-invisible-delimiters
+    "C-M-l" #'skroad--cmd-top-toggle-atomic-text-hiding
     )
   "Top-level keymap for the skroad major mode.")
 
