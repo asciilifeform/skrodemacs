@@ -1732,8 +1732,9 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
               ((skroad--node-special-p node) (format "Special node '%s'" node))
               ((skroad--node-self-p node) "The current node!")
               ((skroad--cache-peek node)
-               (propertize ;; TODO: use a less invasive way to get the body?
-                (skroad--with-node node t (skroad--node-extract-body))
+               (propertize
+                (skroad--with-file (skroad--node-path node)
+                  (skroad--current-node-extract-body))
                 'help-echo-inhibit-substitution t)) ;; Emacs 29+
               (t "A deleted node."))))))
 
@@ -1952,7 +1953,7 @@ If NODE does not exist, this is a no-op."
     "<remap> <yank>" #'ignore
     "<remap> <kill-ring-save>" #'ignore ;; TODO: convert to live/dead?
     )
-  :finder-filter #'skroad--in-node-body-p
+  :finder-filter #'skroad--in-node-body-p ;; TODO: only appear in specials?
   :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-atomic-delimited)
 
@@ -2528,7 +2529,7 @@ If the tail did not previously exist in the current node, it is emplaced."
       (skroad--refontify-current-line)
       (delete-region (point) (progn (forward-line 1) (point))))))
 
-(defun skroad--node-extract-body ()
+(defun skroad--current-node-extract-body ()
   "Return the body of the current node."
   (save-mark-and-excursion
     (skroad--goto-node-body-start)
@@ -3099,7 +3100,7 @@ After all of this, the VICTIM is permanently deleted."
       (skroad--disconnect-from victim t) ;; Delete this node's links to victim
       (let (victim-is-stub victim-body victim-linked-from)
         (skroad--with-node victim t ;; Get all relevant info from the victim
-          (setq victim-body (skroad--node-extract-body))
+          (setq victim-body (skroad--current-node-extract-body))
           (setq victim-linked-from ;; Nodes (except for this one) linking to it
                 (delete this-node (skroad--current-node-linked-from)))
           (setq victim-is-stub (skroad--node-stub-p)))
@@ -3207,7 +3208,6 @@ Warning: undo info is lost in all affected buffers!"
 
 ;; Autocomplete for live node links. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: let help-echo mouseover work in the completer?
 (defun skroad--autocomplete-affixation (candidates)
   "Propertize filtered completion CANDIDATES before they are displayed."
   (mapcar (lambda (c)
