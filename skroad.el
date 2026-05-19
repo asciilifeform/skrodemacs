@@ -2176,9 +2176,9 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 (defconst skroad--md-url-regexp
   (rx ?\[
       (group (regexp skroad--regexp-text-in-brackets))
-      ?\] ?\(
+      ?\] ?\( ?\<
       (group (regexp skroad--regexp-url-encoded))
-      ?\) )
+      ?\> ?\) )
   "Regexp matching Markdown-style URLs.")
 
 (defconst skroad--md-unsafe-caption-chars '("[]" "\\"))
@@ -2232,7 +2232,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 
 (defun skroad--md-make-url (url caption)
   "Return a Markdown-style URL with CAPTION."
-  (format "[%s](%s)"
+  (format "[%s](<%s>)"
           (skroad--bracket-escape caption)
           (browse-url-url-encode-chars url skroad--unsafe-url-chars)))
 
@@ -2531,6 +2531,7 @@ If the tail did not previously exist in the current node, it is emplaced."
       (skroad--refontify-current-line)
       (delete-region (point) (progn (forward-line 1) (point))))))
 
+;; TODO: what if there's no tail?
 (defun skroad--current-node-extract-body ()
   "Return the body of the current node."
   (save-mark-and-excursion
