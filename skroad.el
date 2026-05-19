@@ -1730,12 +1730,14 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
       (when (stringp node)
         (cond ((skroad--node-stub-p node) (format "Stub node '%s'" node))
               ((skroad--node-special-p node) (format "Special node '%s'" node))
-              ((skroad--node-self-p node) "The current node!")
+              ((skroad--node-self-p node) "This node!")
               ((skroad--cache-peek node)
                (propertize
-                (skroad--with-file (skroad--node-path node)
-                  (skroad--current-node-extract-body))
-                'help-echo-inhibit-substitution t)) ;; Emacs 29+
+                (or (ignore-errors
+                      (skroad--with-file (skroad--node-path node)
+                        (skroad--current-node-extract-body))) ;; Emacs 29+
+                    "This node is missing from the data directory !?")
+                'help-echo-inhibit-substitution t))
               (t "A deleted node."))))))
 
 (defun skroad--link-escaper (payload)
