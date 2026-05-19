@@ -1700,7 +1700,6 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   :doc "Mixin denoting an atomic delimited text type."
   :mixin t
   :require 'atomic
-  :keymap (define-keymap "t" #'skroad--cmd-atomic-delimited-textify)
   :use 'skroad--text-mixin-delimited
   :use 'skroad--text-mixin-rendered-zoned)
 
@@ -1922,6 +1921,7 @@ If NODE does not exist, this is a no-op."
   :begins skroad--link-node-live-start-delim
   :ends skroad--link-node-live-end-delim
   :keymap (define-keymap
+            "t" #'skroad--cmd-atomic-delimited-textify
             "m" #'skroad--cmd-merge-at
             "l" #'skroad--cmd-deaden-at
             "y" #'skroad--cmd-teleyank-at ;; Official teleyank trigger
@@ -2003,6 +2003,7 @@ If NODE does not exist, this is a no-op."
                'skroad--dead-link-face
              'skroad--dead-orphaned-link-face)))
   :keymap (define-keymap
+            "t" #'skroad--cmd-atomic-delimited-textify
             "<return>" #'ignore
             "l" #'skroad--cmd-liven-at
             "<mouse-1>" #'skroad--cmd-link-mouse-activate) ;; Only move point
