@@ -1735,9 +1735,9 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
                (propertize
                 (or (ignore-errors
                       (skroad--with-file (skroad--node-path node)
-                        (skroad--current-node-extract-body))) ;; Emacs 29+
+                        (skroad--current-node-extract-body)))
                     "This node is missing from the data directory !?")
-                'help-echo-inhibit-substitution t))
+                'help-echo-inhibit-substitution t)) ;; Emacs 29+
               (t "A deleted node."))))))
 
 (defun skroad--link-escaper (payload)
