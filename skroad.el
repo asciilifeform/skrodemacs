@@ -70,11 +70,16 @@
 
 (defface skroad--node-link-face
   '((t :inherit link :underline nil
-       :background "black"
+       ))
+  "Face used as a base for all node links."
+  :group 'skroad-faces)
+
+(defface skroad--node-link-decor-face
+  '((t :background "black"
        :box t
        ;; :box (:line-width (2 . 2))
        ))
-  "Face used as a base for all node links."
+  "Face inherited from by node link faces used outside of autocomplete."
   :group 'skroad-faces)
 
 (defface skroad--highlight-link-face
@@ -1909,10 +1914,11 @@ If NODE does not exist, this is a no-op."
   :on-activate #'skroad--action-open-node
   :face-function
   '(lambda (payload)
-     (cond ((skroad--node-self-p payload) 'skroad--self-link-face)
-           ((skroad--node-stub-p payload) 'skroad--stub-link-face)
-           ((skroad--node-special-p payload) 'skroad--special-link-face)
-           (t 'skroad--live-link-face)))
+     (list 'skroad--node-link-decor-face
+           (cond ((skroad--node-self-p payload) 'skroad--self-link-face)
+                 ((skroad--node-stub-p payload) 'skroad--stub-link-face)
+                 ((skroad--node-special-p payload) 'skroad--special-link-face)
+                 (t 'skroad--live-link-face))))
   :begins skroad--link-node-live-start-delim
   :ends skroad--link-node-live-end-delim
   :keymap (define-keymap
@@ -1934,10 +1940,11 @@ If NODE does not exist, this is a no-op."
   :on-activate #'skroad--action-open-node ;; TODO: open only if exists
   :face-function
   '(lambda (payload)
-     (cond ((skroad--node-stub-p payload) 'skroad--stub-link-face)
-           ((skroad--node-special-p payload) 'skroad--special-link-face)
-           ((skroad--cache-peek payload) 'skroad--live-link-face)
-           (t 'skroad--dead-orphaned-link-face)))
+     (list 'skroad--node-link-decor-face
+           (cond ((skroad--node-stub-p payload) 'skroad--stub-link-face)
+                 ((skroad--node-special-p payload) 'skroad--special-link-face)
+                 ((skroad--cache-peek payload) 'skroad--live-link-face)
+                 (t 'skroad--dead-orphaned-link-face))))
   :begins "[~[" :ends "]~]"
   :visible-match-number 1
   :keymap
@@ -1991,9 +1998,10 @@ If NODE does not exist, this is a no-op."
   :begins "[-[" :ends "]-]"
   :face-function
   '(lambda (payload)
-     (if (skroad--cache-peek payload)
-         'skroad--dead-link-face
-       'skroad--dead-orphaned-link-face))
+     (list 'skroad--node-link-decor-face
+           (if (skroad--cache-peek payload)
+               'skroad--dead-link-face
+             'skroad--dead-orphaned-link-face)))
   :keymap (define-keymap
             "<return>" #'ignore
             "l" #'skroad--cmd-liven-at
@@ -3198,7 +3206,6 @@ Warning: undo info is lost in all affected buffers!"
 
 ;; Autocomplete for live node links. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: get rid of boxification in the completer, it screws up corfu's popup
 ;; TODO: let help-echo mouseover work in the completer?
 (defun skroad--autocomplete-affixation (candidates)
   "Propertize filtered completion CANDIDATES before they are displayed."
