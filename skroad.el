@@ -2249,8 +2249,8 @@ Already-encoded URLs are left untouched to avoid double-encoding."
   (skroad--with-current-zone
     (save-mark-and-excursion
       (goto-char end)
-      (when (search-backward "](" start)
-        (replace-match "] (")))))
+      (when (search-backward "](<" start)
+        (replace-match "] (<")))))
 
 (skroad--deftype skroad-text-md-url-link
   :doc "Markdown-style URL."
