@@ -3156,8 +3156,7 @@ After all of this, the VICTIM is permanently deleted."
       ;; TODO: defer deletion?
       (skroad--delete-node victim t) ;; Permanently delete the victim!
       (skroad--log-report-node
-       "Removed" victim
-       (concat "(merged into " (skroad--link-generate-log this-node) ")"))
+       "Merged " victim (concat "into " (skroad--link-generate-log this-node)))
       ;; TODO: retcon log???
       )))
 
@@ -3181,9 +3180,8 @@ Warning: undo info is lost in all affected buffers!"
                (skroad--clear-buf-undo-info))))
           (skroad--defer
            ;; TODO: retcon the log to reflect renaming?
-           (skroad--log-report-node "Removed" old "(renamed)")
            (skroad--log-report-node
-            "Created" new (concat "(renamed from '" old "')"))
+            "Renamed" old (concat "to " (skroad--link-generate-log new)))
            (skroad--refontify-open-nodes))
           (skroad--clear-buf-undo-info)) ;; Zap undo info
       (error "Could not rename node '%s' to '%s'!" old new))))
