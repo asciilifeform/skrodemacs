@@ -1916,11 +1916,11 @@ If NODE does not exist, this is a no-op."
   :on-activate #'skroad--action-open-node
   :face-function
   '(lambda (payload)
-     (list 'skroad--node-link-decor-face
-           (cond ((skroad--node-self-p payload) 'skroad--self-link-face)
+     (list (cond ((skroad--node-self-p payload) 'skroad--self-link-face)
                  ((skroad--node-stub-p payload) 'skroad--stub-link-face)
                  ((skroad--node-special-p payload) 'skroad--special-link-face)
-                 (t 'skroad--live-link-face))))
+                 (t 'skroad--live-link-face))
+           'skroad--node-link-decor-face))
   :begins skroad--link-node-live-start-delim
   :ends skroad--link-node-live-end-delim
   :keymap (define-keymap
@@ -1943,11 +1943,11 @@ If NODE does not exist, this is a no-op."
   :on-activate #'skroad--action-open-node ;; TODO: open only if exists
   :face-function
   '(lambda (payload)
-     (list 'skroad--node-link-decor-face
-           (cond ((skroad--node-stub-p payload) 'skroad--stub-link-face)
+     (list (cond ((skroad--node-stub-p payload) 'skroad--stub-link-face)
                  ((skroad--node-special-p payload) 'skroad--special-link-face)
                  ((skroad--cache-peek payload) 'skroad--live-link-face)
-                 (t 'skroad--dead-orphaned-link-face))))
+                 (t 'skroad--dead-orphaned-link-face))
+           'skroad--node-link-decor-face))
   :begins "[~[" :ends "]~]"
   :visible-match-number 1
   :keymap
@@ -2005,10 +2005,10 @@ If NODE does not exist, this is a no-op."
   :begins "[-[" :ends "]-]"
   :face-function
   '(lambda (payload)
-     (list 'skroad--node-link-decor-face
-           (if (skroad--cache-peek payload)
+     (list (if (skroad--cache-peek payload)
                'skroad--dead-link-face
-             'skroad--dead-orphaned-link-face)))
+             'skroad--dead-orphaned-link-face)
+           'skroad--node-link-decor-face))
   :keymap (define-keymap
             "t" #'skroad--cmd-atomic-delimited-textify
             "<return>" #'ignore
@@ -2333,6 +2333,7 @@ See e.g. `skroad--merge-node-into-current'."
           (match-beginning 0)))
       (point-max)))
 
+;; TODO: if deduplicated, move the matching entry to the end of the day
 (defun skroad--append-log-entry (text &optional unique)
   "Insert TEXT as a log entry in the current buffer, under the current date.
 If UNIQUE is true, do not allow duplicate entries."
@@ -2340,7 +2341,7 @@ If UNIQUE is true, do not allow duplicate entries."
   (skroad--jump-after-current-date)
   (let ((date-bottom (skroad--find-date-forward)))
     (unless (and unique
-                 (search-forward text date-bottom t))
+                 (search-forward text date-bottom t)) ;; TODO: match whole line?
       (goto-char date-bottom)
       (skip-syntax-backward " ")
       (newline)
