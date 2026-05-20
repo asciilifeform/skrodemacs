@@ -2081,14 +2081,14 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
         (skroad--link-delete node)
       (skroad--link-unlink node))))
 
-;; TODO: make sure an 'Edited' log entry is created
 (defun skroad--yank-into (node &rest yank-args)
   "Ensure that NODE exists, and yank into it.  YANK-ARGS are passed to yank."
   (unless (skroad--node-special-p node) ;; Don't teleyank into special nodes
     (skroad--with-node node nil ;; Yank could contain links, so actions must run
       (skroad--install-yank-transformer) ;; Ensure that transformer is present
       (skroad--tail-do-before
-       (apply #'yank yank-args)))))
+       (apply #'yank yank-args)))
+    (skroad--log-report (concat "Edited " (skroad--link-generate-log node)))))
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2333,15 +2333,15 @@ See e.g. `skroad--merge-node-into-current'."
           (match-beginning 0)))
       (point-max)))
 
-;; TODO: if deduplicated, move the matching entry to the end of the day
 (defun skroad--append-log-entry (text &optional unique)
   "Insert TEXT as a log entry in the current buffer, under the current date.
-If UNIQUE is true, do not allow duplicate entries."
-  (skroad--goto-node-body-start)
-  (skroad--jump-after-current-date)
-  (let ((date-bottom (skroad--find-date-forward)))
-    (unless (and unique
-                 (search-forward text date-bottom t)) ;; TODO: match whole line?
+If UNIQUE is true, TEXT found to be a duplicate is simply moved to the end."
+  (save-mark-and-excursion
+    (skroad--goto-node-body-start)
+    (skroad--jump-after-current-date)
+    (let ((date-bottom (copy-marker (skroad--find-date-forward))))
+      (when (and unique (search-forward (concat text "\n") date-bottom t))
+        (delete-region (match-beginning 0) (match-end 0)))
       (goto-char date-bottom)
       (skip-syntax-backward " ")
       (newline)
@@ -3046,13 +3046,13 @@ not currently open in any buffer; but if it is, the user is prompted first.")
      (when (skroad--delete-node node)
        (skroad--log-report
         (concat "Deleted " (skroad--link-generate-log node)))
-       (skroad--refontify-open-nodes)))))
+       (skroad--refontify-open-nodes))))) ;; TODO: agglomerate?
 
 (defun skroad--node-set-stub (node status)
   "Set the stub STATUS of NODE.  See also `skroad--node-set-orphan'."
   (when (skroad--set-special-status node skroad--special-node-stubs status)
-    (when status ;; May have become an orphan stub, so queue a check
-      (skroad--defer-orphan-stub-check node))
+    (when status
+      (skroad--defer-orphan-stub-check node)) ;; Possible deletion
     (unless skroad--lint-in-progress
       (skroad--refontify-open-nodes)))) ;; Refontify links if status changed
 
@@ -3063,7 +3063,7 @@ unless the node stops being an orphan stub and then later becomes one again."
   (when (and
          (skroad--set-special-status node skroad--special-node-orphans status)
          status)
-    (skroad--defer-orphan-stub-check node))) ;; May have become an orphan stub
+    (skroad--defer-orphan-stub-check node))) ;; Possible deletion
 
 (defun skroad--delete-node (node &optional force)
   "Request deletion of NODE.  No-op if NODE does not exist or is special.
