@@ -1959,6 +1959,10 @@ If NODE does not exist, this is a no-op."
   :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-atomic-delimited)
 
+(defun skroad--link-generate-log (node)
+  "Generate a log link to NODE."
+  (funcall (get 'skroad--text-link-node-log 'generate) node))
+
 ;; TODO: do this in title def?
 (defun skroad--link-valid-p (string)
   "Determine whether STRING represents a valid link payload."
@@ -2284,6 +2288,7 @@ See e.g. `skroad--merge-node-into-current'."
   :use 'skroad--text-atomic
   :face 'skroad--atomic-comment-face
   :match-number 1
+  :visible-match-number 1
   :payload-regex (rx (or (seq (+? (or (not ?*)
                                       (seq ?* (not ?$))
                                       (seq "*$" (not ?*))))
@@ -2709,6 +2714,17 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--save-cache-point)
   )
 
+(defvar skroad--at-a-distance nil
+  "Will equal t if we are executing inside a `skroad--with-node'.")
+
+(defun skroad--after-save-hook ()
+  "Triggers following a skroad buffer save."
+  (when (and (not skroad--at-a-distance)
+             (memq this-command '(save-buffer save-some-buffers
+                                  write-file basic-save-buffer)))
+    (skroad--log-report
+     (concat "Edited " (skroad--link-generate-log (skroad--current-node))))))
+
 (defun skroad--before-save-hook ()
   "Triggers prior to a skroad buffer save."
   (skroad--renamer-deactivate))
@@ -2884,7 +2900,7 @@ Return the path where the node is found on disk."
         (skroad--cache-write node nil) ;; Intern the node with an empty index
         (skroad--node-set-stub node t) ;; It starts as a stub (unless special)
         (skroad--log-report
-         (concat "Created " (skroad--link-generate-live node)))
+         (concat "Created " (skroad--link-generate-log node)))
         )
        (t (error "Could not activate node '%s'!" node))))
     node-path))
@@ -2895,14 +2911,15 @@ NODE's indices are synced with any pending changes (or, if absent, created.)
 Optional BODY is evaluated with NODE buffer; new changes are synced and saved.
 When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
   (declare (indent defun))
-  `(skroad--with-file (skroad--node-ensure ,node)
-     (skroad--buf-indices-sync)
-     ,(if body
-          `(unwind-protect ,@body
-             (when (buffer-modified-p)
-               (skroad--buf-indices-sync ,no-actions)
-               (skroad--save-current-node)))
-        t)))
+  `(let ((skroad--at-a-distance t))
+     (skroad--with-file (skroad--node-ensure ,node)
+       (skroad--buf-indices-sync)
+       ,(if body
+            `(unwind-protect ,@body
+               (when (buffer-modified-p)
+                 (skroad--buf-indices-sync ,no-actions)
+                 (skroad--save-current-node)))
+          t))))
 
 (defun skroad--in-node (node op target &optional allow-special)
   "Ensure that NODE exists, and run OP on TARGET (nil: current node) from it.
@@ -2968,7 +2985,6 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
      special (if status #'skroad--connect-to #'skroad--disconnect-from) node t)
     t))
 
-;; TODO: make log work
 (skroad--define-special-node skroad--special-node-log "#Log" nil
   "Record of node creation, modification, and renaming.")
 
@@ -2993,7 +3009,7 @@ If USE-PREFIX is given, use it.  Otherwise prefix the current node, if any."
           (or use-prefix
               (if (skroad--current-buffer-node-p)
                   (format "Node %s : "
-                          (skroad--link-generate-live (skroad--current-node)))
+                          (skroad--link-generate-log (skroad--current-node)))
                 "")))
          (report (concat prefix text)))
     (message (concat "Skroad Lint: " report)) ;; Always print to console also
@@ -3027,16 +3043,16 @@ not currently open in any buffer; but if it is, the user is prompted first.")
    (when (and (skroad--node-orphan-p node) (skroad--node-stub-p node))
      (when (skroad--delete-node node)
        (skroad--log-report
-        (concat "Removed " (skroad--link-generate-live node) ;; TODO
-                " (orphan stub)"))))))
+        (concat "Deleted " (skroad--link-generate-log node)))
+       (skroad--refontify-open-nodes)))))
 
 (defun skroad--node-set-stub (node status)
   "Set the stub STATUS of NODE.  See also `skroad--node-set-orphan'."
   (when (skroad--set-special-status node skroad--special-node-stubs status)
-    (unless skroad--lint-in-progress
-      (skroad--refontify-open-nodes)) ;; Refontify links if stub status changed
     (when status ;; May have become an orphan stub, so queue a check
-      (skroad--defer-orphan-stub-check node))))
+      (skroad--defer-orphan-stub-check node))
+    (unless skroad--lint-in-progress
+      (skroad--refontify-open-nodes)))) ;; Refontify links if status changed
 
 (defun skroad--node-set-orphan (node status)
   "Set the orphan STATUS of NODE.  If it became an orphan stub, try deleting it.
@@ -3111,14 +3127,14 @@ After all of this, the VICTIM is permanently deleted."
           (skroad--tail-do-before ;; Insert a demarcated copy of victim's body
            (let (import-start import-end)
              (skroad--atomic-comment-insert
-              (format " Start of merged node '%s' " victim))
+              (format "Start of merged node '%s'" victim))
              (newline)
              (setq import-start (point))
              (insert victim-body)
              (setq import-end (point))
              (newline)
              (skroad--atomic-comment-insert
-              (format " End of merged node '%s' " victim))
+              (format "End of merged node '%s'" victim))
              (newline)
              (goto-char import-start) ;; Jump to the start indicator
              ;; Fix self-links of the victim in the imported body:
@@ -3135,7 +3151,10 @@ After all of this, the VICTIM is permanently deleted."
       (skroad--clear-buf-undo-info) ;; Zap undo info
       ;; TODO: defer deletion?
       (skroad--delete-node victim t) ;; Permanently delete the victim!
-      ;; TODO: log
+      (skroad--log-report
+       (concat "Merged '" victim "' into "
+               (skroad--link-generate-log this-node)))
+      ;; TODO: retcon log???
       )))
 
 (defun skroad--rename-node (old new) ;; TODO: log to actual log
@@ -3147,8 +3166,6 @@ Warning: undo info is lost in all affected buffers!"
                        (skroad--current-node-linked-from t))))
     (if (and (skroad--cache-rename old new)
              (skroad--mv-file (skroad--node-path old) (skroad--node-path new)))
-        (skroad--log-report
-         (concat "Removed " (skroad--link-generate-live old) " (renamed)"))
         (skroad--with-node new t
           (skroad--change-internal-title new)
           (setq-local skroad--current-node-title nil) ;; Zap cached title
@@ -3161,8 +3178,7 @@ Warning: undo info is lost in all affected buffers!"
           (skroad--defer
            ;; TODO: retcon the log to reflect renaming?
            (skroad--log-report
-            (concat "Created " (skroad--link-generate-live new) ;; TODO
-                    " (renamed from '" old "')"))
+            (concat "Renamed '" old "' to " (skroad--link-generate-log new)))
            (skroad--refontify-open-nodes))
           (skroad--clear-buf-undo-info)) ;; Zap undo info
       (error "Could not rename node '%s' to '%s'!" old new))))
@@ -3413,6 +3429,7 @@ Warning: undo info is lost in all affected buffers!"
   (add-hook 'pre-command-hook 'skroad--pre-command-hook nil t)
   (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
   (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
+  (add-hook 'after-save-hook #'skroad--after-save-hook nil t)
   (add-hook 'kill-buffer-hook 'skroad--before-kill-buffer-hook nil t)
   (add-hook 'window-scroll-functions #'skroad--update-window-state nil t)
   (add-hook 'window-state-change-functions #'skroad--update-window-state nil t)
