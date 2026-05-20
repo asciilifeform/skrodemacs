@@ -2081,6 +2081,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
         (skroad--link-delete node)
       (skroad--link-unlink node))))
 
+;; TODO: make sure an 'Edited' log entry is created
 (defun skroad--yank-into (node &rest yank-args)
   "Ensure that NODE exists, and yank into it.  YANK-ARGS are passed to yank."
   (unless (skroad--node-special-p node) ;; Don't teleyank into special nodes
