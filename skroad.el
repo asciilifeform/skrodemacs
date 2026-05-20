@@ -2088,7 +2088,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
       (skroad--install-yank-transformer) ;; Ensure that transformer is present
       (skroad--tail-do-before
        (apply #'yank yank-args)))
-    (skroad--log-report (concat "Edited " (skroad--link-generate-log node)))))
+    (skroad--log-report-node "Changed" node)))
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2336,16 +2336,16 @@ See e.g. `skroad--merge-node-into-current'."
 (defun skroad--append-log-entry (text &optional unique)
   "Insert TEXT as a log entry in the current buffer, under the current date.
 If UNIQUE is true, TEXT found to be a duplicate is simply moved to the end."
-  (save-mark-and-excursion
-    (skroad--goto-node-body-start)
-    (skroad--jump-after-current-date)
-    (let ((date-bottom (copy-marker (skroad--find-date-forward))))
-      (when (and unique (search-forward (concat text "\n") date-bottom t))
-        (delete-region (match-beginning 0) (match-end 0)))
-      (goto-char date-bottom)
-      (skip-syntax-backward " ")
-      (newline)
-      (insert text))))
+  (skroad--goto-node-body-start)
+  (skroad--jump-after-current-date)
+  (let ((date-bottom (copy-marker (skroad--find-date-forward)))
+        (log-line (concat text "\n")))
+    (when (and unique (search-forward log-line date-bottom t))
+      (delete-region (match-beginning 0) (match-end 0)))
+    (goto-char date-bottom)
+    (skip-syntax-backward " ")
+    (forward-line)
+    (insert log-line)))
 
 ;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2724,8 +2724,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (when (and (not skroad--at-a-distance)
              (memq this-command '(save-buffer save-some-buffers
                                   write-file basic-save-buffer)))
-    (skroad--log-report
-     (concat "Edited " (skroad--link-generate-log (skroad--current-node))))))
+    (skroad--log-report-node "Changed" (skroad--current-node))))
 
 (defun skroad--before-save-hook ()
   "Triggers prior to a skroad buffer save."
@@ -2901,9 +2900,7 @@ Return the path where the node is found on disk."
         (write-region (concat node "\n") nil node-path nil 0) ;; Insert title
         (skroad--cache-write node nil) ;; Intern the node with an empty index
         (skroad--node-set-stub node t) ;; It starts as a stub (unless special)
-        (skroad--log-report
-         (concat "Created " (skroad--link-generate-log node)))
-        )
+        (skroad--log-report-node "Created" node)) ;; Report creation to log.
        (t (error "Could not activate node '%s'!" node))))
     node-path))
 
@@ -2995,6 +2992,12 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
   (skroad--with-node skroad--special-node-log t
     (skroad--append-log-entry text t)))
 
+(defun skroad--log-report-node (op node &optional detail)
+  "Annotate an OP concerning NODE in today's log, with optional DETAIL."
+  (skroad--log-report
+   (concat op " " (skroad--link-generate-log node)
+           (or (concat " " detail) ""))))
+
 ;; TODO: make a key binding for this ?
 (defun skroad--log-zap ()
   "Reset the log."
@@ -3044,8 +3047,7 @@ not currently open in any buffer; but if it is, the user is prompted first.")
   (skroad--defer
    (when (and (skroad--node-orphan-p node) (skroad--node-stub-p node))
      (when (skroad--delete-node node)
-       (skroad--log-report
-        (concat "Deleted " (skroad--link-generate-log node)))
+       (skroad--log-report-node "Removed" node)
        (skroad--refontify-open-nodes))))) ;; TODO: agglomerate?
 
 (defun skroad--node-set-stub (node status)
@@ -3153,9 +3155,9 @@ After all of this, the VICTIM is permanently deleted."
       (skroad--clear-buf-undo-info) ;; Zap undo info
       ;; TODO: defer deletion?
       (skroad--delete-node victim t) ;; Permanently delete the victim!
-      (skroad--log-report
-       (concat "Merged '" victim "' into "
-               (skroad--link-generate-log this-node)))
+      (skroad--log-report-node
+       "Removed" victim
+       (concat "(merged into " (skroad--link-generate-log this-node) ")"))
       ;; TODO: retcon log???
       )))
 
@@ -3179,8 +3181,9 @@ Warning: undo info is lost in all affected buffers!"
                (skroad--clear-buf-undo-info))))
           (skroad--defer
            ;; TODO: retcon the log to reflect renaming?
-           (skroad--log-report
-            (concat "Renamed '" old "' to " (skroad--link-generate-log new)))
+           (skroad--log-report-node "Removed" old "(renamed)")
+           (skroad--log-report-node
+            "Created" new (concat "(renamed from '" old "')"))
            (skroad--refontify-open-nodes))
           (skroad--clear-buf-undo-info)) ;; Zap undo info
       (error "Could not rename node '%s' to '%s'!" old new))))
