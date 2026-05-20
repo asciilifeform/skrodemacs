@@ -2088,7 +2088,7 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
       (skroad--install-yank-transformer) ;; Ensure that transformer is present
       (skroad--tail-do-before
        (apply #'yank yank-args)))
-    (skroad--log-report-node "Changed" node)))
+    (skroad--log-report-node "Revised" node)))
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2724,7 +2724,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (when (and (not skroad--at-a-distance)
              (memq this-command '(save-buffer save-some-buffers
                                   write-file basic-save-buffer)))
-    (skroad--log-report-node "Changed" (skroad--current-node))))
+    (skroad--log-report-node "Revised" (skroad--current-node))))
 
 (defun skroad--before-save-hook ()
   "Triggers prior to a skroad buffer save."
