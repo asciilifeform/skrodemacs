@@ -1647,22 +1647,42 @@ DISPLAY-MODE controls what happens when this results in opening a buffer."
       (skroad--type-action
        (skroad--prop-at 'category pos) 'on-activate (skroad--data-at pos)))))
 
-(defun skroad--mouse-warp ()
+(defun skroad--mouse-warp-to-pos (pos)
+  "Move the mouse to the geometric center of the character at POS."
+  (let ((posn (posn-at-point pos)))
+    (when posn
+      (let* ((edges (window-edges nil t nil t))  ; body edges, pixelwise
+             (pos-xy (posn-x-y posn))
+             (obj (posn-object-width-height posn))
+             (char-w (if (zerop (car obj)) (frame-char-width) (car obj)))
+             (char-h (if (zerop (cdr obj)) (line-pixel-height) (cdr obj)))
+             (x (+ (nth 0 edges) (car pos-xy) (/ char-w 2)))
+             (y (+ (nth 1 edges) (cdr pos-xy) (/ char-h 2))))
+        (set-mouse-pixel-position (selected-frame) x y)))))
+
+(defun skroad--mouse-warp-to-current ()
   "Warp mouse to the middle of the current zone, if possible; else, to point."
   (skroad--refontify-current-line)
   (redisplay t)
-  (let ((posn (or (and (skroad--mode-p) ;; Could be in a non-skroad buffer
-                       (skroad--prop-at 'zone)
-                       (posn-at-point
-                        (+ (point)
-                           (skroad--with-current-zone (/ (- end start) 2)))))
-                  (posn-at-point))))
-    (when posn
-      (let* ((pos-xy (posn-x-y posn))
-             (x (+ (window-pixel-left) (car pos-xy)))
-             (y (+ (window-pixel-top) (window-header-line-height) (cdr pos-xy)
-                   (/ (line-pixel-height) 2))))
-        (set-mouse-pixel-position (selected-frame) x y)))))
+  (if (and (skroad--mode-p) (skroad--prop-at 'zone))
+      (skroad--with-current-zone
+        (let* ((s (save-mark-and-excursion
+                    (goto-char start)
+                    (while (and (< (point) end)
+                                (invisible-p
+                                 (get-char-property (point) 'invisible)))
+                      (forward-char))
+                    (point)))
+               (e (save-mark-and-excursion
+                    (goto-char end)
+                    (while (and (> (point) s)
+                                (invisible-p
+                                 (get-char-property (1- (point)) 'invisible)))
+                      (backward-char))
+                    (point))))
+          (unless (>= s e)
+            (skroad--mouse-warp-to-pos (+ s (/ (- e s) 2))))))
+    (skroad--mouse-warp-to-pos (point))))
 
 (defun skroad--cmd-link-mouse-activate (click &optional display-mode)
   "Perform the action attribute of the link that got the CLICK.
@@ -1678,7 +1698,8 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
       (select-window window))
     (goto-char (skroad--zone-start click-pos))
     (skroad--save-cache-point)
-    (skroad--do-link-action click-pos display-mode)))
+    (skroad--do-link-action click-pos display-mode)
+    (skroad--mouse-warp-to-current)))
 
 (defun skroad--cmd-link-mouse-activate-new-win (click)
   "Activate a link via the mouse, opening any buffers in a new window."
@@ -1772,45 +1793,53 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
      (not (or (skroad--node-self-p node)
               (skroad--node-special-p node)))))
 
-(defun skroad--display-node (node) ;; NODE is presumed to exist!
-  "If NODE is visible anywhere, go there; otherwise open in the current window."
-  (let* ((node-path (skroad--node-path node)) ;; Target path
-         (node-buf (find-buffer-visiting node-path))) ;; Target buf (maybe nil)
-    (if node-buf ;; If node is already open in a buffer, use that buffer:
-        (let* ((node-win (get-buffer-window node-buf t))
-               (node-frame (window-frame node-win)))
-          (if node-win ;; If it already has a visible window, go there
-              (progn
-                (unless (eq (window-frame) node-frame) ;; If in different frame:
-                  (select-frame-set-input-focus node-frame)) ;; ... focus it.
-                (select-window node-win))
-            (switch-to-buffer node-buf))) ;; ... else, unbury in current window
-      (pop-to-buffer (find-file-noselect node-path))))) ;; ... or open it anew.
+(defun skroad--foreground-node (node)
+  "If NODE is visible somewhere, go there; otherwise open in the current window.
+If NODE does not exist, this is a no-op.  On success, return t."
+  (when (and node (skroad--cache-peek node))
+    (let* ((node-path (skroad--node-path node)) ;; Target path
+           (node-buf (find-buffer-visiting node-path))) ;; buf (maybe nil)
+      (if node-buf ;; If node is already open in a buffer, use that buffer:
+          (let* ((node-win (get-buffer-window node-buf t))
+                 (node-frame (window-frame node-win)))
+            (if node-win ;; If it already has a visible window, go there
+                (progn
+                  (unless (eq (window-frame) node-frame) ;; In different frame?
+                    (select-frame-set-input-focus node-frame)) ;; ... focus it.
+                  (select-window node-win))
+              (switch-to-buffer node-buf))) ;; ... unbury in current window.
+        (pop-to-buffer (find-file-noselect node-path)))) ;; ... or open it.
+    t)) ;; Return t when displayed.
 
-(defun skroad--action-open-node (node)
-  "Navigate to NODE.  Must be called from a buffer containing a node."
-  (unless (skroad--cache-peek node) ;; Possibly node creation is still pending?
-    (skroad--complete-all-deferred)) ;; ... if so, let all deferred work finish.
-  (let* ((from-node (skroad--current-node)) ;; Node we triggered the action in
-         (from-special (skroad--node-special-p from-node)) ;; Was it special?
-         (from-buf (current-buffer))) ;; Buffer we triggered the action in
+(defun skroad--maybe-show-node (node)
+  "Navigate to NODE, if it exists.  If called from a node buffer, may close it."
+  (let* ((from-node (and (skroad--mode-p) (skroad--current-node))) ;; origin
+         (from-buf (current-buffer)))
+    (when (skroad--foreground-node node) ;; Display the node, if exists
+      (let ((restored-point (skroad--maybe-restore-cached-point)))
+        (unless (or (null from-node) ;; Did we come from minibuffer ?
+                    (skroad--node-special-p from-node)) ;; ... from a special?
+          ;; TODO: this should be configurable?
+          (unless restored-point
+            (skroad--link-maybe-jump-to-live from-node))
+          ;; TODO: this should be configurable?
+          (unless (or (get-buffer-window from-buf t) ;; ... or from still-active
+                      (skroad--node-special-p node)) ;; ... or opened a special?
+            (with-current-buffer from-buf ;; Sync and close the buried node:
+              (skroad--buf-indices-sync)
+              (skroad--save-current-node)
+              (kill-buffer)))))
+      t))) ;; Return t when displayed.
+
+(defun skroad--ensure-and-show-node (node)
+  "Navigate to NODE.  The node will be created if it does not yet exist.
+Must be called from a buffer containing a node."
+  (unless (skroad--cache-peek node) ;; Is creation is still pending?
+    (skroad--complete-all-deferred) ;; ... if so, let all deferred work finish.
     (unless (skroad--cache-peek node) ;; Suppose the node still doesn't exist?
-      (skroad--in-node node #'skroad--connect-to from-node)) ;; ... create it.
-    (skroad--display-node node) ;; Display the node.
-    ;; TODO: this should be configurable?
-    (unless (or from-special ;; Unless coming from a special node
-                (skroad--maybe-restore-cached-point)) ;; or have a cached point
-      (skroad--link-maybe-jump-to-live from-node)) ;; Try jumping to orig link
-    (when (skroad--last-ev-was-mouse-p)
-      (skroad--mouse-warp)) ;; Move the mouse cursor to the point (or backlink)
-    ;; TODO: this should be configurable?
-    (unless (or from-special ;; Unless coming from a special node
-                (get-buffer-window from-buf t) ;; ... or there was no burial
-                (skroad--node-special-p node)) ;; ... or opened a special node
-      (with-current-buffer from-buf
-        (skroad--buf-indices-sync)
-        (skroad--save-current-node)
-        (kill-buffer)))))
+      (skroad--in-node ;; Force immediate creation.
+       node #'skroad--connect-to (skroad--current-node))))
+  (skroad--maybe-show-node node))
 
 ;; TODO
 ;; (defun skroad--verify-dead-link (node)
@@ -1913,7 +1942,7 @@ If NODE does not exist, this is a no-op."
   :on-init #'skroad--action-connected-on-init
   :on-create #'skroad--action-connected
   :on-destroy #'skroad--action-disconnected
-  :on-activate #'skroad--action-open-node
+  :on-activate #'skroad--ensure-and-show-node
   :face-function
   '(lambda (payload)
      (list (cond ((skroad--node-self-p payload) 'skroad--self-link-face)
@@ -1940,7 +1969,7 @@ If NODE does not exist, this is a no-op."
 (skroad--deftype skroad--text-link-node-log
   :doc "Link to a skroad node appearing in logs.  Navigable when node exists."
   :use 'skroad--text-link-node
-  :on-activate #'skroad--action-open-node ;; TODO: open only if exists
+  :on-activate #'skroad--maybe-show-node
   :face-function
   '(lambda (payload)
      (list (cond ((skroad--node-stub-p payload) 'skroad--stub-link-face)
@@ -2819,7 +2848,6 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--cache-intern (skroad--current-node)) ;; TODO?
   (skroad--update-stub-status) ;; TODO: do we want this here?
   (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
-  (skroad--goto-node-body-start)
   (skip-syntax-forward " ")
   (skroad--init-font-lock)
   )
@@ -2879,10 +2907,13 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
   (skroad--save-cache-point))
 
 (defun skroad--maybe-restore-cached-point ()
-  "If the current node had been visited in this session, restore the point."
+  "If the current node had been visited in this session, restore the point.
+Returns t when a cached position was actually found."
   (let ((cached-point (gethash (skroad--current-node) skroad--point-cache)))
-    (when cached-point
-      (goto-char (min (point-max) cached-point)))))
+    (if cached-point
+        (goto-char (min (point-max) cached-point))
+      (skroad--goto-node-body-start)
+      nil)))
 
 ;; Back-end. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -3160,7 +3191,7 @@ After all of this, the VICTIM is permanently deleted."
       ;; TODO: retcon log???
       )))
 
-(defun skroad--rename-node (old new) ;; TODO: log to actual log
+(defun skroad--rename-node (old new)
   "Rename node OLD to NEW.  OLD is presumed to exist; NEW is a valid title.
 Warning: undo info is lost in all affected buffers!"
   (skroad--node-must-exist old)
@@ -3339,11 +3370,7 @@ Warning: undo info is lost in all affected buffers!"
   (let* ((display-buffer-overriding-action
           skroad--disp-mode-this-window-or-existing)
          (node (skroad--autocomplete-minibuffer-prompt "Find Skroad node: ")))
-    (when (and node (skroad--cache-peek node))
-      (if (skroad--mode-p) ;; If in mode, use the standard opener
-          (skroad--action-open-node node)
-        (skroad--display-node node) ;; ... otherwise, don't close any buffers
-        (skroad--maybe-restore-cached-point)))))
+    (skroad--maybe-show-node node)))
 
 (defun skroad--cmd-top-jump-to-next-atomic ()
   "Jump to the next atomic after the point; try to cycle to first if none."
