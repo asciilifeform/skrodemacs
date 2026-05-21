@@ -1718,8 +1718,10 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
     (goto-char (skroad--zone-start click-pos))
     (skroad--selector-update) ;; Make sure we update before leaving a node
     (skroad--save-cache-point)
-    (skroad--do-link-action click-pos display-mode)
-    (skroad--mouse-warp-to-current)))
+    (let ((old-buf (current-buffer)))
+      (skroad--do-link-action click-pos display-mode)
+      (unless (eq old-buf (current-buffer)) ;; Don't warp if remained in buffer
+        (skroad--mouse-warp-to-current)))))
 
 (defun skroad--cmd-link-mouse-activate-new-win (click)
   "Activate a link via the mouse, opening any buffers in a new window."
