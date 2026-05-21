@@ -185,6 +185,12 @@
   "Return t when the last input event was a mouse event."
   (listp last-input-event))
 
+(defun skroad--toggle-cursor-state (toggle)
+  "Set the cursor and paren mode state for the current buffer to TOGGLE."
+  (setq-local cursor-type toggle
+              cursor-in-non-selected-windows toggle
+              show-paren-mode toggle))
+
 (defun skroad--visible-buffer-substring (from to)
   "Return buffer text between FROM and TO, excluding invisible characters."
   (let (parts (pos from))
@@ -1710,6 +1716,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
     (unless (eq window (selected-window))
       (select-window window))
     (goto-char (skroad--zone-start click-pos))
+    (skroad--selector-update) ;; Make sure we update before leaving a node
     (skroad--save-cache-point)
     (skroad--do-link-action click-pos display-mode)
     (skroad--mouse-warp-to-current)))
@@ -2667,14 +2674,14 @@ If the tail did not previously exist in the current node, it is emplaced."
     (move-overlay skroad--buf-selector start end)
     (unless (skroad--last-ev-was-mouse-p)
       (skroad--show-key-help)))
-  (setq-local cursor-type nil show-paren-mode nil))
+  (skroad--toggle-cursor-state nil))
 
 (defun skroad--selector-deactivate ()
   "Deactivate the selector; it can be reactivated again."
   (when (skroad--selector-active-p)
     (delete-overlay skroad--buf-selector)
     (skroad--info))
-  (setq-local cursor-type t show-paren-mode t))
+  (skroad--toggle-cursor-state t))
 
 (defun skroad--selector-update ()
   "Enable the selector if point is on an atomic zone; otherwise disable it."
