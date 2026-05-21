@@ -177,10 +177,6 @@
       (when (current-message)
         (message nil)))))
 
-(defun skroad--current-date-string ()
-  "Generate a string representing today's date."
-  (format-time-string skroad--log-date-format (seconds-to-time (current-time))))
-
 (defun skroad--last-ev-was-mouse-p ()
   "Return t when the last input event was a mouse event."
   (listp last-input-event))
@@ -2355,7 +2351,6 @@ See e.g. `skroad--merge-node-into-current'."
 
 ;; Timestamps. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: keymap for jumping to prev/next
 (skroad--deftype skroad--text-timestamp
   :doc "Timestamp."
   :use 'skroad--text-atomic
@@ -2364,35 +2359,59 @@ See e.g. `skroad--merge-node-into-current'."
   :visible-match-number 1
   :payload-regex (rx (+ print) "\n")
   :begins "@Time@" :ends ""
+  :keymap (define-keymap
+            "M-<up>" #'skroad--cmd-timestamp-jump-later
+            "M-<down>" #'skroad--cmd-timestamp-jump-earlier
+            )
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-atomic-delimited
   )
 
-(defun skroad--jump-after-current-date ()
-  "Find a timestamp with the current date forward of point, or insert one here."
-  (let ((date (skroad--current-date-string)))
-    (unless (funcall (get 'skroad--text-timestamp 'search) date)
-      (newline)
-      (insert (funcall (get 'skroad--text-timestamp 'generate) date))
-      (newline))))
+(defun skroad--cmd-timestamp-jump-earlier ()
+  "Previous"
+  (interactive)
+  (let ((pos (save-mark-and-excursion
+               (forward-char)
+               (skroad--timestamp-find-forward))))
+    (when pos (goto-char pos))))
 
-(defun skroad--find-date-forward ()
-  "Find the previous timestamp entry (i.e. below point), or point-max."
-  (or (save-mark-and-excursion
-        (when (funcall (get 'skroad--text-timestamp 'find-any-forward))
-          (match-beginning 0)))
-      (point-max)))
+(defun skroad--cmd-timestamp-jump-later ()
+  "Next"
+  (interactive)
+  (let ((pos (skroad--timestamp-find-backward)))
+    (when pos (goto-char pos))))
+
+(defun skroad--timestamp-find-forward ()
+  "Return the position of the timestamp at or below the point; nil if none."
+  (save-mark-and-excursion
+    (when (funcall (get 'skroad--text-timestamp 'find-any-forward))
+      (match-beginning 0))))
+
+(defun skroad--timestamp-find-backward ()
+  "Return the position of the timestamp above the point; nil if none."
+  (save-mark-and-excursion
+    (when (funcall (get 'skroad--text-timestamp 'find-any-backward))
+      (match-beginning 0))))
+
+(defun skroad--current-date-string ()
+  "Generate a string representing today's date."
+  (format-time-string skroad--log-date-format (seconds-to-time (current-time))))
 
 (defun skroad--append-log-entry (text &optional unique)
   "Insert TEXT as a log entry in the current buffer, under the current date.
 If UNIQUE is true, TEXT found to be a duplicate is simply moved to the end."
   (skroad--goto-node-body-start)
-  (skroad--jump-after-current-date)
-  (let ((date-bottom (copy-marker (skroad--find-date-forward)))
+  (let ((now (skroad--current-date-string)))
+    (unless (funcall (get 'skroad--text-timestamp 'search) now)
+      (newline)
+      (insert (funcall (get 'skroad--text-timestamp 'generate) now))
+      (newline)))
+  (let ((day-bottom
+         (copy-marker (or (skroad--timestamp-find-forward) (point-max))))
         (log-line (concat text "\n")))
-    (when (and unique (search-forward log-line date-bottom t))
+    (when (and unique (search-forward log-line day-bottom t))
       (delete-region (match-beginning 0) (match-end 0)))
-    (goto-char date-bottom)
+    (goto-char day-bottom)
     (skip-syntax-backward " ")
     (forward-line)
     (insert log-line)))
