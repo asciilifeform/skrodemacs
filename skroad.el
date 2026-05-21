@@ -1842,10 +1842,9 @@ If NODE does not exist, this is a no-op.  On success, return t."
         (unless (or (null from-node) ;; Did we come from minibuffer ?
                     (skroad--node-special-p from-node)) ;; ... from a special?
           ;; TODO: this should be configurable?
-          (unless restored-point
-            (skroad--link-maybe-jump-to-live from-node))
-          ;; TODO: this should be configurable?
-          (unless (or (get-buffer-window from-buf t) ;; ... or from still-active
+          (unless restored-point ;; If we don't have a cached pos:
+            (skroad--link-maybe-jump-to-live from-node)) ;; Find link to origin
+          (unless (or (get-buffer-window from-buf t) ;; Origin buf not buried?
                       (skroad--node-special-p node)) ;; ... or opened a special?
             (with-current-buffer from-buf ;; Sync and close the buried node:
               (skroad--buf-indices-sync)
