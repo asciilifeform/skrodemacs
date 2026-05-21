@@ -804,10 +804,12 @@ No refontification is triggered; existing properties are untouched."
      skroad--font-lock-suspended nil)))
 
 (defun skroad--refontify-current-line ()
-  "Refresh fontification of the current line in a skroad buffer."
+  "Refresh fontification of the current line in a skroad buffer.
+Return t when we were actually in the mode and the refontification happened."
   (when (skroad--mode-p)
     (save-mark-and-excursion
-      (font-lock-ensure (line-beginning-position) (line-end-position)))))
+      (font-lock-ensure (line-beginning-position) (line-end-position)))
+    t))
 
 (defun skroad--refontify-current-buffer ()
   "Refresh fontification in the visible portion of the current buffer."
@@ -878,6 +880,28 @@ No refontification is triggered; existing properties are untouched."
   (declare (indent defun))
   `(let ((start (skroad--zone-start)) (end (skroad--zone-end)))
      ,@body))
+
+(defmacro skroad--with-current-visible-zone (&rest body)
+  "Evaluate BODY with vis-start and vis-end denoting the visible zone at point."
+  (declare (indent defun))
+  `(skroad--with-current-zone
+     (let* ((vis-start
+             (save-mark-and-excursion
+               (goto-char start)
+               (while (and (< (point) end)
+                           (invisible-p
+                            (get-char-property (point) 'invisible)))
+                 (forward-char))
+               (point)))
+            (vis-end
+             (save-mark-and-excursion
+               (goto-char end)
+               (while (and (> (point) vis-start)
+                           (invisible-p
+                            (get-char-property (1- (point)) 'invisible)))
+                 (backward-char))
+               (point))))
+       ,@body)))
 
 (defun skroad--zone-jump-from (pos &optional backwards wrap)
   "Jump to the next (or previous, if BACKWARDS) distinct zone from POS.
@@ -1649,6 +1673,7 @@ DISPLAY-MODE controls what happens when this results in opening a buffer."
 
 (defun skroad--mouse-warp-to-pos (pos)
   "Move the mouse to the geometric center of the character at POS."
+  (redisplay t)
   (let ((posn (posn-at-point pos)))
     (when posn
       (let* ((edges (window-edges nil t nil t))  ; body edges, pixelwise
@@ -1662,27 +1687,15 @@ DISPLAY-MODE controls what happens when this results in opening a buffer."
 
 (defun skroad--mouse-warp-to-current ()
   "Warp mouse to the middle of the current zone, if possible; else, to point."
-  (skroad--refontify-current-line)
-  (redisplay t)
-  (if (and (skroad--mode-p) (skroad--prop-at 'zone))
-      (skroad--with-current-zone
-        (let* ((s (save-mark-and-excursion
-                    (goto-char start)
-                    (while (and (< (point) end)
-                                (invisible-p
-                                 (get-char-property (point) 'invisible)))
-                      (forward-char))
-                    (point)))
-               (e (save-mark-and-excursion
-                    (goto-char end)
-                    (while (and (> (point) s)
-                                (invisible-p
-                                 (get-char-property (1- (point)) 'invisible)))
-                      (backward-char))
-                    (point))))
-          (unless (>= s e)
-            (skroad--mouse-warp-to-pos (+ s (/ (- e s) 2))))))
-    (skroad--mouse-warp-to-pos (point))))
+  (let ((warp-pos
+         (if (and (skroad--refontify-current-line) ;; We're in the modes
+                  (skroad--prop-at 'zone)) ;; There's a zone at point
+             (skroad--with-current-visible-zone
+               (if (< vis-start vis-end) ;; Valid zone?
+                   (+ vis-start (/ (- vis-end vis-start) 2))
+                 (point))) ;; If no valid zone, return point
+           (point))))
+    (skroad--mouse-warp-to-pos warp-pos))) ;; Warp the mouse.
 
 (defun skroad--cmd-link-mouse-activate (click &optional display-mode)
   "Perform the action attribute of the link that got the CLICK.
