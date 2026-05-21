@@ -1688,12 +1688,12 @@ DISPLAY-MODE controls what happens when this results in opening a buffer."
 (defun skroad--mouse-warp-to-current ()
   "Warp mouse to the middle of the current zone, if possible; else, to point."
   (let ((warp-pos
-         (if (and (skroad--refontify-current-line) ;; We're in the modes
+         (if (and (skroad--refontify-current-line) ;; We're in-mode
                   (skroad--prop-at 'zone)) ;; There's a zone at point
              (skroad--with-current-visible-zone
                (if (< vis-start vis-end) ;; Valid zone?
-                   (+ vis-start (/ (- vis-end vis-start) 2))
-                 (point))) ;; If no valid zone, return point
+                   (+ vis-start (/ (- vis-end vis-start) 2)) ;; Middle of zone
+                 (point))) ;; If no valid zone: use point.
            (point))))
     (skroad--mouse-warp-to-pos warp-pos))) ;; Warp the mouse.
 
