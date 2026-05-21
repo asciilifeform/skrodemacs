@@ -83,7 +83,7 @@
   :group 'skroad-faces)
 
 (defface skroad--highlight-link-face
-  '((t :inherit (highlight skroad--node-link-face)))
+  '((t :inherit highlight :box t))
   "Face used for highlighted links."
   :group 'skroad-faces)
 
