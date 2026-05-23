@@ -1879,7 +1879,7 @@ Must be called from a buffer containing a node."
   (unless (skroad--node-special-p)
     (skroad--node-set-orphan
      (skroad--current-node)
-     (let ((live-link-count ;; Note that live log links are included in this!
+     (let ((live-link-count ;; Note that this includes live log links!
             (skroad--current-indices-count 'skroad--text-link-node-live)))
        (or (zerop live-link-count) ;; Is an orphan if there are no live links;
            (= live-link-count ;; ... or if the only live links are log links.
@@ -2000,7 +2000,7 @@ If NODE does not exist, this is a no-op."
   :help-echo 'skroad--mouseover-node-preview ;; TODO: filter log lines for this node?
   :payload-regex skroad--regexp-text-in-brackets
   :visible-match-number 1
-  :on-activate #'skroad--ensure-and-show-node ;; TODO: fast fwd to 1st mention?
+  :on-activate #'skroad--maybe-show-node
   :begins skroad--link-node-live-start-delim
   :ends skroad--link-node-live-end-delim
   :finder-filter #'skroad--node-log-link-filter
@@ -3342,9 +3342,9 @@ Warning: undo info is lost in all affected buffers!"
   (mapcar (lambda (c)
             (list (propertize
                    c 'face
-                   (cond ((skroad--node-stub-p c) 'skroad--stub-link-face)
+                   (cond ((skroad--node-log-p c) 'skroad--log-link-face)
+                         ((skroad--node-stub-p c) 'skroad--stub-link-face)
                          ((skroad--node-special-p c) 'skroad--special-link-face)
-                         ((skroad--node-log-p c) 'skroad--log-link-face)
                          (t 'skroad--live-link-face)))
                   ""
                   (if (skroad--node-orphan-p c) " (Orphan)" "")))
