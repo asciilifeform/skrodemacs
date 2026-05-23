@@ -1871,8 +1871,7 @@ Must be called from a buffer containing a node."
 
 (defun skroad--buf-indices-finalize ()
   "Perform actions required after updating the current node's indices."
-  (skroad--defer-in-current-buffer
-   (skroad--current-node-check-orphan)))
+   (skroad--current-node-check-orphan))
 
 (defun skroad--current-node-check-orphan ()
   "Unless the current node is special, determine and store its orphan status."
@@ -1986,10 +1985,7 @@ If NODE does not exist, this is a no-op."
   "Filter for live links to log nodes."
   (and (skroad--in-node-body-p)
        (let ((node (match-string-no-properties 1)))
-         (and (skroad--node-log-p node) ;; Must have the node log prefix
-              ;; (skroad--cache-peek node) ;; The target node must exist
-              t
-              ))))
+         (skroad--node-log-p node)))) ;; Must have the node log prefix
 
 (skroad--deftype skroad--text-link-node-log
   :doc "Live link to a log node."
