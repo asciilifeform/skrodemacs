@@ -1871,7 +1871,7 @@ Must be called from a buffer containing a node."
 
 (defun skroad--buf-indices-finalize ()
   "Perform actions required after updating the current node's indices."
-   (skroad--current-node-check-orphan))
+  (skroad--current-node-check-orphan))
 
 (defun skroad--current-node-check-orphan ()
   "Unless the current node is special, determine and store its orphan status."
