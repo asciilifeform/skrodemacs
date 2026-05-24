@@ -91,7 +91,7 @@
   :group 'skroad-faces)
 
 (defface skroad--log-link-face
-  '((t :inherit skroad--node-link-face :foreground "green"))
+  '((t :inherit skroad--node-link-face :foreground "white"))
   "Face used for live log links."
   :group 'skroad-faces)
 
@@ -101,7 +101,8 @@
   :group 'skroad-faces)
 
 (defface skroad--special-link-face
-  '((t :inherit skroad--node-link-face :foreground "white"))
+  '((t :inherit skroad--node-link-face
+       :foreground "black" :background "white"))
   "Face used for live special links."
   :group 'skroad-faces)
 
