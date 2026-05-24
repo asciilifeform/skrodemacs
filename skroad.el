@@ -1578,6 +1578,9 @@ disable the renamer and return nil."
         ((skroad--cache-peek proposed)
          (skroad--info "'%s' is an existing node!" proposed)
          nil)
+        ((skroad--node-log-p proposed)
+         (skroad--info "Cannot rename a node to a log node!")
+         nil)
         (t
          (skroad--info
           "Press <return> to rename, or leave field to cancel.")
