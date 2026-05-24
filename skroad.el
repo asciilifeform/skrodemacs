@@ -3081,13 +3081,18 @@ If ALLOW-INDEX is false, do not track changes or maintain indices for the node."
      (unless ,allow-index
        (add-to-list 'skroad--special-nodes-no-index ,node))))
 
-(defun skroad--clear-special-node (node)
+(defun skroad--clear-current-node ()
+  "Jettison the entire contents (body and tail) of the current node."
+  (skroad--goto-node-body-start)
+  (delete-region (point) (point-max))
+  t)
+
+(defun skroad--reset-special-node (node)
   "Hollow out the given special NODE."
   (when (skroad--node-special-p node)
     (skroad--with-node node t
       (skroad--change-internal-title node)
-      (skroad--goto-node-body-start)
-      (delete-region (point) (point-max)))))
+      (skroad--clear-current-node))))
 
 (defun skroad--connected-p (origin &optional node)
   "Test whether NODE (if given; else the current node) is linked from ORIGIN.
@@ -3175,25 +3180,32 @@ unless the node stops being an orphan stub and then later becomes one again."
 
 (defun skroad--delete-node (node &optional force)
   "Request deletion of NODE.  No-op if NODE does not exist or is special.
-If NODE is open in a buffer, prompt to ask permission (unless FORCE is t)."
+If NODE is open in a buffer, prompt to ask permission (unless FORCE is t).
+Before deleting, clear the node to disconnect any remaining log links."
   (when (and (skroad--cache-peek node)
              (not (skroad--node-special-p node)))
     (let* ((node-path (skroad--node-path node))
-           (visiting-buffer (find-buffer-visiting node-path)))
-      (when (or (null visiting-buffer)
-                (with-current-buffer visiting-buffer ;; If node is open:
-                  (when (or force ;; If force is t, just close it immediately;
-                            skroad--lint-in-progress ;; If linting, ditto;
-                            (y-or-n-p ;; ... otherwise, user may veto deletion.
-                             (format "Permanently delete node '%s' ?" node)))
-                    (let ((inhibit-read-only t))
-                      (kill-all-local-variables)
-                      (restore-buffer-modified-p nil)
-                      (kill-buffer)))))
-        (skroad--node-set-orphan node nil) ;; Banish from orphans
-        (skroad--node-set-stub node nil) ;; Banish from stubs
-        (skroad--cache-evict node) ;; Banish from cache
+           (visiting-buffer (find-buffer-visiting node-path))
+           (node-closed (null visiting-buffer)))
+      (when (or node-closed ;; If node is closed, don't need to offer a veto
+                force ;; If force is t, just close the node silently right now
+                skroad--lint-in-progress ;; If linting, ditto;
+                (y-or-n-p ;; ... otherwise, user may veto deletion:
+                 (format "Permanently delete node '%s' ?" node)))
+        (skroad--with-node node nil ;; Node could still have log links!
+          (skroad--clear-current-node)) ;; Wipe everything, with sync actions.
+        (unless node-closed ;; Unless already closed, clean it up and close:
+          (with-current-buffer visiting-buffer
+            (let ((inhibit-read-only t))
+              (kill-all-local-variables)
+              (restore-buffer-modified-p nil)
+              (kill-buffer))))
+        (skroad--node-set-orphan node nil) ;; Banish it from orphans
+        (skroad--node-set-stub node nil) ;; Banish it from stubs
+        (skroad--cache-evict node) ;; Banish it from the cache
         (delete-file node-path) ;; Permanently delete the node file!
+        (skroad--with-node skroad--special-node-lint t
+          (skroad--link-deaden node)) ;; Deaden any links to it in #Lint
         t)))) ;; Return t when actually deleted.
 
 (defun skroad--current-node-linked-from (&optional all-specials)
@@ -3312,7 +3324,7 @@ Warning: undo info is lost in all affected buffers!"
              (list skroad--special-node-orphans
                    skroad--special-node-stubs
                    skroad--special-node-lint))
-      (skroad--clear-special-node node))
+      (skroad--reset-special-node node))
     (let ((count 0))
       (skroad--cache-foreach ;; Dispatch for each known non-special node:
        #'(lambda (node)
