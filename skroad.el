@@ -3217,6 +3217,7 @@ Before deleting, clear the node to disconnect any remaining log links."
         (delete-file node-path) ;; Permanently delete the node file!
         t)))) ;; Return t when actually deleted.
 
+;; TODO: exclude lint log, as it has no indices?
 (defun skroad--current-node-linked-from (&optional all-specials)
   "Return a list of all nodes known to contain a live link to the current node.
 If ALL-SPECIALS is t, the list may include any special; otherwise only the log.
@@ -3237,8 +3238,6 @@ to the current node, into a demarcated block above the tail.  Its tail is merged
 into the current node's tail.  All non-special nodes (and the Log) which
 formerly linked to the VICTIM will now link to the current node instead.
 After all of this, the VICTIM is permanently deleted."
-  (skroad--buf-indices-sync) ;; Make sure current indices are up to date
-  (skroad--complete-all-deferred) ;; Ensure that there are no pending ops
   (let ((this-node (skroad--current-node))) ;; The node we're merging into
     (when (and victim ;; Victim is not nil
                (skroad--cache-peek victim) ;; Victim is a node which exists
@@ -3248,6 +3247,8 @@ After all of this, the VICTIM is permanently deleted."
                         (skroad--node-special-p victim))) ;; ... or special node
                (y-or-n-p ;; Ask first, because the victim will be perma-deleted!
                 (format "Permanently merge node '%s' into this node ?" victim)))
+      (skroad--buf-indices-sync) ;; Make sure current indices are up to date
+      (skroad--complete-all-deferred) ;; Ensure that there are no pending ops
       (skroad--disconnect-from victim t) ;; Delete this node's links to victim
       (let (victim-is-stub victim-body victim-linked-from)
         (skroad--with-node victim t ;; Get all relevant info from the victim
