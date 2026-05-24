@@ -1623,7 +1623,7 @@ disable the renamer and return nil."
 
 (defun skroad--url-renamer-validate (_current proposed)
   "Determine whether a URL may be recaptioned to PROPOSED."
-  (cond ((string-empty-p (skroad--clean-whitespace proposed))
+  (cond ((string-empty-p proposed)
          (skroad--info "URL caption may not be empty!")
          nil)
         (t t)))
