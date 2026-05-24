@@ -3193,6 +3193,8 @@ Before deleting, clear the node to disconnect any remaining log links."
                 (y-or-n-p ;; ... otherwise, user may veto deletion:
                  (format "Permanently delete node '%s' ?" node)))
         (skroad--with-node node nil ;; Node could still have log links!
+          (when skroad--lint-in-progress
+            (skroad--lint-report "Deleted during lint."))
           (skroad--clear-current-node)) ;; Wipe everything, with sync actions.
         (unless node-closed ;; Unless already closed, clean it up and close:
           (with-current-buffer visiting-buffer
