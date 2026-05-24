@@ -3205,7 +3205,7 @@ Before deleting, clear the node to disconnect any remaining log links."
         (skroad--cache-evict node) ;; Banish it from the cache
         (delete-file node-path) ;; Permanently delete the node file!
         (skroad--with-node skroad--special-node-lint t
-          (skroad--link-deaden node)) ;; Deaden any links to it in #Lint
+          (skroad--link-deaden node)) ;; Deaden any links to it in lint log
         t)))) ;; Return t when actually deleted.
 
 (defun skroad--current-node-linked-from (&optional all-specials)
