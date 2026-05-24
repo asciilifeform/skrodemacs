@@ -1878,8 +1878,8 @@ Must be called from a buffer containing a node."
   (skroad--current-node-check-orphan))
 
 (defun skroad--current-node-check-orphan ()
-  "Unless the current node is special, determine and store its orphan status."
-  (unless (skroad--node-special-p)
+  "Unless the current node is a special or log, determine its orphan status."
+  (unless (or (skroad--node-special-p) (skroad--node-log-p))
     (skroad--node-set-orphan
      (skroad--current-node)
      (let ((live-link-count ;; Note that this includes live log links!
@@ -2425,9 +2425,10 @@ If UNIQUE is true, TEXT found to be a duplicate is simply moved to the end."
     (forward-line)
     (insert log-line)))
 
-(defun skroad--node-log-p (node)
-  "Return t when NODE is a log node."
-  (and (stringp node) (string-prefix-p "@" node)))
+(defun skroad--node-log-p (&optional node)
+  "Return t when NODE (if not given: the current node) is a log node."
+  (let ((n (or node (skroad--current-node))))
+    (and (stringp n) (string-prefix-p "@" n))))
 
 ;; TODO: ensure current month log
 (defun skroad--log-node-op (node live op &optional unique reason)
@@ -3187,7 +3188,8 @@ unless the node stops being an orphan stub and then later becomes one again."
 If NODE is open in a buffer, prompt to ask permission (unless FORCE is t).
 Before deleting, clear the node to disconnect any remaining log links."
   (when (and (skroad--cache-peek node)
-             (not (skroad--node-special-p node)))
+             (not (or (skroad--node-special-p node)
+                      (skroad--node-log-p node))))
     (let* ((node-path (skroad--node-path node))
            (visiting-buffer (find-buffer-visiting node-path))
            (node-closed (null visiting-buffer)))
