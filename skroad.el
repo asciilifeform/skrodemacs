@@ -2456,22 +2456,20 @@ REASON, if given, is a comment describing the cause of the operation."
 
 (defun skroad--log-node-remove (node &optional reason)
   "Record the removal of NODE to the current log, with optional REASON."
-  (skroad--log-node-op node nil "Deleted" nil reason)) ;; May duplicate
+  (skroad--log-node-op node nil "Deleted" nil reason) ;; May duplicate
+  (skroad--lint-deaden node)) ;; Deaden any old links in the lint log
 
 (defun skroad--log-node-rename (old node)
   "Record the renaming of OLD to NODE to the current log."
   (skroad--log-node-op ;; May duplicate
-   node t "Renamed" nil (concat "Was: " (skroad--link-generate-dead old))))
+   node t "Renamed" nil (concat "Was: " (skroad--link-generate-dead old)))
+  (skroad--lint-deaden old)) ;; Deaden any old links in the lint log
 
 (defun skroad--log-node-merge (victim target)
   "Record the merging of VICTIM into TARGET to the current log."
   (skroad--log-node-remove
    victim (concat "Merged into " (skroad--link-generate-live target)))
   (skroad--log-node-revise target))
-
-
-;; TODO: date links must not count for deorphaning???
-;; ... possibly check after any delinking whether only date links now remain?
 
 ;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -3137,6 +3135,11 @@ If USE-PREFIX is given, use it.  Otherwise prefix the current node, if any."
     (skroad--with-node skroad--special-node-lint t
       (skroad--emplace-log-entry report t))))
 
+(defun skroad--lint-deaden (node)
+  "Deaden any links to defunct NODE in the current lint report."
+  (skroad--with-node skroad--special-node-lint t
+    (skroad--link-deaden node)))
+
 (skroad--define-special-node skroad--special-node-stubs "#Stubs" t
   "A node with links to all known stub nodes. A stub node is a non-special node
 without any text between the title and the tail.  New nodes start out as stubs.
@@ -3212,8 +3215,6 @@ Before deleting, clear the node to disconnect any remaining log links."
         (skroad--node-set-stub node nil) ;; Banish it from stubs
         (skroad--cache-evict node) ;; Banish it from the cache
         (delete-file node-path) ;; Permanently delete the node file!
-        (skroad--with-node skroad--special-node-lint t
-          (skroad--link-deaden node)) ;; Deaden any links to it in lint log
         t)))) ;; Return t when actually deleted.
 
 (defun skroad--current-node-linked-from (&optional all-specials)
