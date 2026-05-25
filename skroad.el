@@ -148,7 +148,7 @@
 (defface skroad--node-tail-face
   '((t :inherit skroad--text-face
        :foreground "white" :background "purple"
-       :weight bold))
+       :weight bold :extend t))
   "Face used for skroad tails."
   :group 'skroad-faces)
 
@@ -1156,11 +1156,6 @@ or the node's indices, if it has been indexed; or `empty' (indices are null).")
   "Evaluate (for side effects) FN applied to each node currently in the cache."
   (maphash #'(lambda (key _val) (funcall fn key)) (skroad--cache)))
 
-(defun skroad--node-must-exist (node)
-  "Signal an error if NODE does not exist."
-  (unless (skroad--cache-peek node)
-    (error "Node '%s' does not exist!" node)))
-
 ;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--index-delta (index payload delta &optional final create destroy)
@@ -2008,6 +2003,59 @@ If NODE does not exist, this is a no-op."
   :use 'skroad--text-mixin-atomic-delimited
   :use 'skroad--text-mixin-indexed)
 
+(defun skroad--log-earlier-p (a b)
+  "Return non-nil if date string A represents an earlier date than B.
+Unparseable strings are treated as earlier than parseable ones,
+and equal to each other.  Never signals an error."
+  (let ((da (ignore-errors (date-to-day a)))
+        (db (ignore-errors (date-to-day b))))
+    (cond
+     ((and da db) (< da db))
+     (db t)
+     (t nil))))
+
+(defun skroad--link-emplace-x (node)
+  (save-mark-and-excursion
+    (let ((tail (save-mark-and-excursion
+                  (skroad--tail-jump-after)
+                  (point)
+                  )))
+      (cond ((skroad--node-log-p node)
+             (goto-char (point-max))
+             (skip-syntax-backward " " tail)
+             (while (and
+                     (funcall
+                      (get 'skroad--text-link-node-live 'find-any-backward)
+                      tail)
+                     (if (skroad--log-earlier-p
+                          node (match-string-no-properties 1))
+                         (goto-char (match-beginning 0))
+                       (goto-char (match-end 0))
+                       nil))))
+            (t (goto-char tail)))
+      (newline)
+      (skroad--link-insert-live node))))
+
+;; (skroad--with-node "moolag" nil
+;;   (skroad--link-emplace-x "@June 2026")
+;;   (skroad--link-emplace-x "xyz")
+;;   (skroad--link-emplace-x "@May 2026")
+;;   (skroad--link-emplace-x "@April 2026")
+;;   )
+
+;; (skroad--with-node "moolag" nil
+;;   (call-interactively #'undo))
+
+;; ;; TODO: handle log links
+;; (defun skroad--link-emplace (node)
+;;   "Emplace a live link to NODE in the current node."
+;;   (skroad--tail-jump-after)
+;;   (newline)
+;;   (skroad--link-insert-live node))
+
+
+;; (skroad--find-log-insertion-point)
+
 ;; TODO: do this in title def?
 (defun skroad--link-valid-p (string)
   "Determine whether STRING represents a valid link payload."
@@ -2099,8 +2147,9 @@ If START/END are given, constrain the replacement to that range."
    (get 'skroad--text-link-node-live 'regen)
    node 'skroad--text-link-node-live target start end))
 
+;; TODO: handle log links
 (defun skroad--link-emplace (node)
-  "Emplace a live link to NODE below the tail."
+  "Emplace a live link to NODE in the current node."
   (skroad--tail-jump-after)
   (newline)
   (skroad--link-insert-live node))
@@ -2120,7 +2169,7 @@ If it had dead links to NODE, liven them; if not, insert a link under the tail."
     (or (skroad--link-has-live-p node) ;; Already has a live link to node?
         (and (skroad--link-has-dead-p node) ;; If not, any dead links to it?
              (skroad--link-revive node)) ;; Liven the dead links.
-        (skroad--link-emplace node)))) ;; ... Or create a link below the tail.
+        (skroad--link-emplace node)))) ;; ... Or emplace a new link.
 
 (defun skroad--disconnect-from (node &optional delete-all)
   "Ensure that the current node does NOT have any live links to NODE.
@@ -2475,6 +2524,10 @@ REASON, if given, is a comment describing the cause of the operation."
 
 (defconst skroad--node-tail "@@@" "Node tail indicator.")
 
+;; (defconst skroad--node-tail-regexp
+;;   (rx line-start (literal skroad--node-tail) "\n")
+;;   "Regexp for the node tail indicator.")
+
 (defconst skroad--node-tail-regexp
   (rx line-start (literal skroad--node-tail) line-end)
   "Regexp for the node tail indicator.")
@@ -2488,6 +2541,7 @@ REASON, if given, is a comment describing the cause of the operation."
 (defun skroad--set-tail-marker (pos)
   "Use POS (which may be nil) as a possibly-new position of the tail marker."
   (unless (eq skroad--buf-tail-marker pos)
+    ;; (message "setting new tail: %s" pos)
     (setq-local skroad--buf-tail-marker (and pos (copy-marker pos)))
     (setq-local skroad--buf-tail-needs-refresh t)))
 
@@ -2505,7 +2559,13 @@ REASON, if given, is a comment describing the cause of the operation."
 
 (defun skroad--tail-indicator-breaking (&rest _args)
   "Triggered when an active tail indicator may have been disturbed."
-  (skroad--set-tail-marker nil))
+  (unless (and (markerp skroad--buf-tail-marker)
+               (save-excursion
+                 (goto-char skroad--buf-tail-marker)
+                 (beginning-of-line)
+                 (looking-at-p skroad--node-tail-regexp)))
+    (message "breaking tail")
+    (skroad--set-tail-marker nil)))
 
 (skroad--deftype skroad--text-node-tail
   :doc "Node tail indicator."
@@ -3249,6 +3309,7 @@ After all of this, the VICTIM is permanently deleted."
                 (format "Permanently merge node '%s' into this node ?" victim)))
       (skroad--buf-indices-sync) ;; Make sure current indices are up to date
       (skroad--complete-all-deferred) ;; Ensure that there are no pending ops
+      ;; TODO: instead of zapping old links to victim, transform to self-links?
       (skroad--disconnect-from victim t) ;; Delete this node's links to victim
       (let (victim-is-stub victim-body victim-linked-from)
         (skroad--with-node victim t ;; Get all relevant info from the victim
@@ -3290,7 +3351,6 @@ After all of this, the VICTIM is permanently deleted."
 (defun skroad--rename-node (old new)
   "Rename node OLD to NEW.  OLD is presumed to exist; NEW is a valid title.
 Warning: undo info is lost in all affected buffers!"
-  (skroad--node-must-exist old)
   (skroad--complete-all-deferred) ;; Ensure no ops are pending
   (let ((linked-from (skroad--with-node old t
                        (skroad--current-node-linked-from t))))
@@ -3305,9 +3365,8 @@ Warning: undo info is lost in all affected buffers!"
              (skroad--with-node affected-node t ;; Don't perform actions
                (skroad--link-replace old new)
                (skroad--clear-buf-undo-info))))
-          (skroad--defer
-           (skroad--log-node-rename old new)
-           (skroad--refontify-open-nodes))
+          (skroad--log-node-rename old new)
+          (skroad--defer (skroad--refontify-open-nodes))
           (skroad--clear-buf-undo-info)) ;; Zap undo info
       (error "Could not rename node '%s' to '%s'!" old new))))
 
