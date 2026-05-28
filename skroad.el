@@ -233,6 +233,25 @@
            (insert-file-contents ,file t nil nil t) ;; set as unmodified
            ,@body)))))
 
+(defvar skroad--at-a-distance nil
+  "Will equal t if we are executing inside a `skroad--with-node'.")
+
+(defmacro skroad--with-node (node no-actions &rest body)
+  "If NODE does not exist, it is created and interned in the cache.
+NODE's indices are synced with any pending changes (or, if absent, created.)
+Optional BODY is evaluated with NODE buffer; new changes are synced and saved.
+When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
+  (declare (indent defun))
+  `(let ((skroad--at-a-distance t))
+     (skroad--with-file (skroad--node-ensure ,node)
+       (skroad--buf-indices-sync)
+       ,(if body
+            `(unwind-protect ,@body
+               (when (buffer-modified-p)
+                 (skroad--buf-indices-sync ,no-actions)
+                 (skroad--save-current-node)))
+          t))))
+
 (defmacro skroad--visit-open-nodes (&rest body)
   "Evaluate BODY in each currently-open node buffer."
   (declare (indent defun))
@@ -425,14 +444,6 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
 (defmacro skroad--defer (&rest body)
   "Schedule BODY to run later."
   `(skroad--idle-enqueue (lambda () ,@body)))
-
-;;;; problem: will deadlock if >1 of these are enqueued
-;; (defmacro skroad--defer-final (&rest body)
-;;   "Schedule BODY to run later, but only when the work queue is otherwise empty."
-;;   `(skroad--defer
-;;     (if (skroad--idle-have-work-p)
-;;         (skroad--defer ,@body)
-;;       ,@body)))
 
 (defmacro skroad--defer-in-current-buffer (&rest body)
   "Schedule BODY to run later in the current buffer, supposing it remains live."
@@ -1004,7 +1015,7 @@ Return the new position if the jump actually happened; otherwise nil."
   "Change hook for rectifying line deletions and insertions in quoted text."
   (unless undo-in-progress
     (cond
-     ((zerop length)
+     ((zerop length) ;; Added text
       (let ((depth (or (get-text-property end 'quote-depth)
                        (and (= end (point-max))
                             (> beg (point-min))
@@ -1025,19 +1036,17 @@ Return the new position if the jump actually happened; otherwise nil."
                             "\n+" "\n+"))))
                 (delete-region beg end)
                 (insert text)))))))
-     ((and (= beg end)
+     ((and (= beg end) ;; Removed text
            (eq (char-after beg) ?>)
            (> beg (point-min))
            (not (eq (char-before beg) ?\n)))
       (let ((inhibit-modification-hooks t))
         (delete-region beg
-                       (save-excursion
+                       (save-mark-and-excursion
                          (goto-char beg)
                          (skip-chars-forward "> \t")
                          (point)))
-        (unless (or (= (point) (point-max))
-                    (eq (char-after) ?\n))
-          (insert " ")))))))
+        )))))
 
 (defun skroad--quote-region (beg end)
   "Increment the quote level of the region BEG...END."
@@ -1161,7 +1170,7 @@ or the node's indices, if it has been indexed; or `empty' (indices are null).")
 (defun skroad--index-delta (index payload delta &optional final create destroy)
   "Update the count of PAYLOAD in INDEX by DELTA.
 Return `create' if introduced PAYLOAD; `destroy' if removed last copy; else nil.
-If FINAL is t, the count sum done negative will signal an error."
+If FINAL is t, the count sum going negative will signal an error."
   (let* ((had-prev (gethash payload index 0))
          (had-none (zerop had-prev))
          (sum (+ delta had-prev)))
@@ -1243,10 +1252,11 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
           (message "Tried to apply changes to unindexed node: '%s', rescanning!"
                    (skroad--current-node))
           (setq-local skroad--buf-indices-pending nil))
-        (skroad--index-scan-region (point-min) (point-max) 1))
+        (skroad--scan-region (point-min) (point-max) 1))
       (setq have-changes t)
       (setq indices nil)
-      (skroad--save-current-node)) ;; May have rectified links, so save it
+      (skroad--clear-buf-undo-info) ;; May have rectified links, so zap undo;
+      (skroad--save-current-node)) ;; ... and save the node.
     (when have-changes
       (setq indices (skroad--indices-update
                      indices skroad--buf-indices-pending
@@ -1255,10 +1265,43 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
       (skroad--cache-write (skroad--current-node) indices)
       (skroad--buf-indices-finalize))))
 
-(defvar skroad--text-types-indexed nil "Text types that are indexed.")
+(defvar-local skroad--scan-in-progress nil
+  "When true, indicates that scan is currently in progress.")
 
-(defvar skroad--scan-in-progress nil
-  "Indicates that scan is currently in progress.")
+(defvar-local skroad--change-hook-in-progress nil
+  "When true, indicates that we are inside of a change hook.")
+
+(defvar-local skroad--buf-has-deferred-replacements nil
+  "When true, indicates that deferred replacements are pending in this buffer.")
+
+(defconst skroad--deferred-replace-tag 'skroad--replace-later
+  "Text property used to denote a deferred replacement.")
+
+(defun skroad--deferred-replace (start end new)
+  "Request the replacement of START ... END with NEW after current command."
+  (setq-local skroad--buf-has-deferred-replacements t)
+  (with-silent-modifications
+    (put-text-property start end skroad--deferred-replace-tag new)))
+
+(defun skroad--do-deferred-replacements ()
+  "Perform all deferred replacements requested in the current buffer."
+  (when skroad--buf-has-deferred-replacements
+    (setq-local skroad--buf-has-deferred-replacements nil)
+    (save-mark-and-excursion
+      (goto-char (point-min))
+      (while (< (point) (point-max))
+        (let ((val (get-text-property (point) skroad--deferred-replace-tag))
+              (next (next-single-property-change
+                     (point) skroad--deferred-replace-tag nil (point-max))))
+          (if (stringp val)
+              (let ((inhibit-read-only t)
+                    (inhibit-modification-hooks t))
+                (delete-region (point) next)
+                (unless (string-empty-p val)
+                  (insert val)))
+            (goto-char next)))))))
+
+(defvar skroad--text-types-indexed nil "Text types that are indexed.")
 
 (skroad--deftype skroad--text-mixin-indexed
   :doc "Mixin for indexed text types."
@@ -1276,25 +1319,88 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
             (let* ((raw-match (funcall get-match))
                    (payload (funcall get-unescaped-payload))
                    (escaped-payload (funcall escape payload)))
-              ;; If there's an index filter, apply it:
               (when (or (null index-filter) (funcall index-filter payload))
                 (skroad--index-delta pending-index payload delta))
-              ;; Always rectify, if not already canonical:
+              ;; Try to rectify, if not removing, undoing, or already canonical:
               (when (and (= delta 1) (not undo-in-progress)
                          (not (string-equal raw-match escaped-payload)))
-                (let ((inhibit-read-only t)) ;; Force writability
-                  (funcall swap-match escaped-payload t))))))))
+                (if skroad--change-hook-in-progress ;; Must defer if in chg hook
+                    (skroad--deferred-replace
+                     (match-beginning match-number)
+                     (match-end match-number)
+                     payload)
+                  (let ((inhibit-read-only t)
+                        (inhibit-modification-hooks t)) ;; ... else, do it now:
+                    (funcall swap-match escaped-payload t)))))))))
   :register 'skroad--text-types-indexed)
 
-(defun skroad--index-scan-region (start end delta)
-  "Apply DELTA (must be 1 or -1) to each indexed item found in START ... END
-to the pending changes in the buffer;  `skroad--buf-indices-sync' must be
+(skroad--deftype skroad--text-mixin-pin
+  :doc "Mixin for pin text types."
+  :mixin t
+  :require '(for-all-in-region-forward pin-pos-fn)
+  :scan-region
+  '(lambda (start end delta)
+     (let ((pin-pos (funcall pin-pos-fn)))
+       (if (= delta 1)
+           (funcall
+            for-all-in-region-forward start end
+            #'(lambda ()
+                (unless (and pin-pos
+                             (= (match-beginning 0)
+                                (marker-position (car pin-pos))))
+                  (let ((new-start (copy-marker (match-beginning 0) t))
+                        (new-end (copy-marker (match-end 0) nil)))
+                    (when pin-pos
+                      (message "old pos: %s" pin-pos)
+                      (skroad--deferred-replace (car pin-pos) (cdr pin-pos) "")
+                      )
+                    (funcall pin-pos-fn t (cons new-start new-end))
+                    (message "new pos: %s" (funcall pin-pos-fn))
+                    )
+                  ))
+            )
+         (let ((old (and pin-pos (marker-position (car pin-pos)))))
+           (when (and old (<= start old) (> end old))
+             (funcall pin-pos-fn t nil)))
+         )
+       ))
+  :register 'skroad--text-types-indexed)
+
+(defvar-local skroad--buf-tail-pin nil
+  "Stores the current tail pin position (or nil).")
+
+(defun skroad--buf-pin-pos-fn (&optional set val)
+  "Get the tail pin position, or set it if SET is t and VAL is given."
+  (if set (setq-local skroad--buf-tail-pin val) skroad--buf-tail-pin))
+
+(skroad--deftype skroad--text-node-pin
+  :doc "Node tail indicator."
+  :use 'skroad--text-atomic
+  :face 'skroad--node-tail-face
+  :help-echo "Node tail pin."
+  :match-number 0
+  :regex-any (rx line-start (literal "$$$"))
+  :finder-filter #'skroad--in-node-body-p
+  :pin-pos-fn #'skroad--buf-pin-pos-fn
+  :use 'skroad--text-mixin-findable
+  :use 'skroad--text-mixin-rendered-zoned
+  :use 'skroad--text-mixin-pin
+  )
+
+(defun skroad--scan-region (start end delta)
+  "Find indexable items in the current buffer between START and END;
+Apply count DELTA to each item found.  `skroad--buf-indices-sync' must be
 called to finalize all pending changes when no further ones are expected."
-  (save-match-data
-    (skroad--with-whole-lines start end
-      (dolist (text-type skroad--text-types-indexed)
-        (funcall (get text-type 'scan-region)
-                 start-expanded end-expanded delta)))))
+  (skroad--with-whole-lines start end
+    (save-match-data
+      (save-mark-and-excursion
+        (goto-char start-expanded)
+        (skip-chars-forward " \t\n\r\f\v" end-expanded)
+        (let ((start-trimmed (point)))
+          (when (< start-trimmed end-expanded)
+            (dolist (text-type skroad--text-types-indexed)
+              (funcall (get text-type 'scan-region)
+                       start-trimmed end-expanded delta))))))))
 
 (defvar-local skroad--expecting-after-change-hook nil
   "Detect mismatched change hook activations.
@@ -1309,13 +1415,15 @@ These may occur if ill-behaved minor modes are in use.")
 
 (defun skroad--before-change-function (start end)
   "Triggers prior to a change in the buffer in region START...END."
-  (skroad--verify-change-hook-pairing nil)
-  (skroad--index-scan-region start end -1))
+  (let ((skroad--change-hook-in-progress t))
+    (skroad--verify-change-hook-pairing nil)
+    (skroad--scan-region start end -1)))
 
-(defun skroad--after-change-function (start end _length)
+(defun skroad--after-change-function (start end length)
   "Triggers following a change in the buffer in region START...END."
-  (skroad--verify-change-hook-pairing t)
-  (skroad--index-scan-region start end 1))
+  (let ((skroad--change-hook-in-progress t))
+    (skroad--verify-change-hook-pairing t)
+    (skroad--scan-region start end 1)))
 
 (defvar-local skroad--buf-indices-change-tracker-installed nil
   "Indicates that the change tracker has been installed in this buffer.")
@@ -1933,6 +2041,7 @@ If NODE does not exist, this is a no-op."
        (match-beginning number) (match-end number)
        'skroad--invalid-text-face))))
 
+;; TODO: escapes?
 (defun skroad--node-link-filter ()
   "Filter for all node links.  Return t when link is valid; highlight invalids."
   (when (skroad--in-node-body-p) ;; Entirely ignore (do nothing!) when in title.
@@ -2528,6 +2637,8 @@ REASON, if given, is a comment describing the cause of the operation."
 ;;   (rx line-start (literal skroad--node-tail) "\n")
 ;;   "Regexp for the node tail indicator.")
 
+;; (rx line-start (literal "@@@") "\n")
+
 (defconst skroad--node-tail-regexp
   (rx line-start (literal skroad--node-tail) line-end)
   "Regexp for the node tail indicator.")
@@ -2543,29 +2654,44 @@ REASON, if given, is a comment describing the cause of the operation."
   (unless (eq skroad--buf-tail-marker pos)
     ;; (message "setting new tail: %s" pos)
     (setq-local skroad--buf-tail-marker (and pos (copy-marker pos)))
-    (setq-local skroad--buf-tail-needs-refresh t)))
+    ;; (setq-local skroad--buf-tail-needs-refresh t)
+    ))
 
 ;; TODO: any insert of tail indicator should supercede the old?
 (defun skroad--node-tail-filter ()
   "Finder filter for the node tail."
   (let ((p (point)))
     (when (skroad--in-node-body-p p)
-      (cond ((or (null skroad--buf-tail-marker)
-                 (<= p skroad--buf-tail-marker))
-             (skroad--set-tail-marker p)
-             t)
-            (t (skroad--highlight-invalid-match 0)
-               nil)))))
+      t
+      ;; (cond ((or (null skroad--buf-tail-marker)
+      ;;            (<= p skroad--buf-tail-marker))
+      ;;        (skroad--set-tail-marker p)
+      ;;        t)
+      ;;       (t (skroad--highlight-invalid-match 0)
+      ;;          nil))
+      )))
 
-(defun skroad--tail-indicator-breaking (&rest _args)
-  "Triggered when an active tail indicator may have been disturbed."
-  (unless (and (markerp skroad--buf-tail-marker)
-               (save-excursion
-                 (goto-char skroad--buf-tail-marker)
-                 (beginning-of-line)
-                 (looking-at-p skroad--node-tail-regexp)))
-    (message "breaking tail")
-    (skroad--set-tail-marker nil)))
+;; (defun skroad--tail-indicator-breaking (&rest _args)
+;;   "Triggered when an active tail indicator may have been disturbed."
+;;   (unless (and (markerp skroad--buf-tail-marker)
+;;                (save-excursion
+;;                  (goto-char skroad--buf-tail-marker)
+;;                  (beginning-of-line)
+;;                  (looking-at-p skroad--node-tail-regexp)))
+;;     (message "breaking tail")
+;;     (skroad--set-tail-marker nil)))
+
+;; (defun skroad--action-tail-create (origin _tail)
+;;   (message "tail found in '%s'" origin)
+;;   (message "possible pos: %s" (match-beginning 0))
+;;   )
+
+;; (defun skroad--action-tail-destroy (origin _tail)
+;;   (message "tail destroyed in '%s'" origin)
+;;   )
+
+;; skroad--text-mixin-pin
+
 
 (skroad--deftype skroad--text-node-tail
   :doc "Node tail indicator."
@@ -2574,12 +2700,19 @@ REASON, if given, is a comment describing the cause of the operation."
   :help-echo "Node tail."
   :match-number 0
   :regex-any skroad--node-tail-regexp
-  :modification-hooks '(list 'skroad--tail-indicator-breaking)
-  :insert-in-front-hooks '(list 'skroad--tail-indicator-breaking)
-  :insert-behind-hooks '(list 'skroad--tail-indicator-breaking)
+
+  ;; :on-init #'skroad--action-tail-create
+  ;; :on-create #'skroad--action-tail-create
+  ;; :on-destroy #'skroad--action-tail-destroy
+  
+  ;; :modification-hooks '(list 'skroad--tail-indicator-breaking)
+  ;; :insert-in-front-hooks '(list 'skroad--tail-indicator-breaking)
+  ;; :insert-behind-hooks '(list 'skroad--tail-indicator-breaking)
   :finder-filter #'skroad--node-tail-filter
   :use 'skroad--text-mixin-findable
-  :use 'skroad--text-mixin-rendered-zoned)
+  :use 'skroad--text-mixin-rendered-zoned
+  ;; :use 'skroad--text-mixin-indexed
+  )
 
 (defun skroad--post-cmd-refresh-tail ()
   "Called from post-command hook.  Set a new tail, if required."
@@ -2884,6 +3017,7 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
+  (skroad--do-deferred-replacements)
   (let ((tick (buffer-chars-modified-tick))) ;; Detect changes, including undo
     (unless (= tick skroad--buf-modification-ticks)
       (setq-local skroad--buf-modification-ticks tick)
@@ -2899,9 +3033,6 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--adjust-mark-if-present)
   (skroad--save-cache-point)
   )
-
-(defvar skroad--at-a-distance nil
-  "Will equal t if we are executing inside a `skroad--with-node'.")
 
 (defun skroad--after-save-hook ()
   "Triggers following a skroad buffer save."
@@ -3059,7 +3190,11 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 (defun skroad--before-kill-buffer-hook ()
   "Triggers prior to a skroad buffer being killed."
   (skroad--renamer-deactivate)
-  (skroad--save-cache-point))
+  (skroad--save-cache-point)
+  ;;;
+  (skroad--cache-invalidate (skroad--current-node))
+  ;;;
+  )
 
 (defun skroad--maybe-restore-cached-point ()
   "If the current node had been visited in this session, restore the point.
@@ -3089,22 +3224,6 @@ Return the path where the node is found on disk."
         (skroad--log-node-create node)) ;; Report creation to log.
        (t (error "Could not activate node '%s'!" node))))
     node-path))
-
-(defmacro skroad--with-node (node no-actions &rest body)
-  "If NODE does not exist, it is created and interned in the cache.
-NODE's indices are synced with any pending changes (or, if absent, created.)
-Optional BODY is evaluated with NODE buffer; new changes are synced and saved.
-When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
-  (declare (indent defun))
-  `(let ((skroad--at-a-distance t))
-     (skroad--with-file (skroad--node-ensure ,node)
-       (skroad--buf-indices-sync)
-       ,(if body
-            `(unwind-protect ,@body
-               (when (buffer-modified-p)
-                 (skroad--buf-indices-sync ,no-actions)
-                 (skroad--save-current-node)))
-          t))))
 
 (defun skroad--in-node (node op target &optional allow-special)
   "Ensure that NODE exists, and run OP on TARGET (nil: current node) from it.
