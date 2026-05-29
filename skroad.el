@@ -1301,7 +1301,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
                   (insert val)))
             (goto-char next)))))))
 
-(defvar skroad--text-types-indexed nil "Text types that are indexed.")
+(defvar skroad--text-types-indexed nil "Text types subject to indexing.")
 
 (skroad--deftype skroad--text-mixin-indexed
   :doc "Mixin for indexed text types."
@@ -1328,9 +1328,9 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
                     (skroad--deferred-replace
                      (match-beginning match-number)
                      (match-end match-number)
-                     payload)
-                  (let ((inhibit-read-only t)
-                        (inhibit-modification-hooks t)) ;; ... else, do it now:
+                     escaped-payload)
+                  (let ((inhibit-read-only t) ;; ... else, do it right here:
+                        (inhibit-modification-hooks t))
                     (funcall swap-match escaped-payload t)))))))))
   :register 'skroad--text-types-indexed)
 
