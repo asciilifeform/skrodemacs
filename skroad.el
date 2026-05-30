@@ -1068,6 +1068,15 @@ Return the new position if the jump actually happened; otherwise nil."
   :use 'skroad--text-mixin-regexp-rendered
   :use 'skroad--text-mixin-rendered)
 
+(defun skroad--quote-restore-point ()
+  "Step point past a freshly emplaced quote prefix, then disarm.
+Armed APPENDED from the continuation case so it runs after the drain has
+emplaced the prefix; reads the buffer, so running before that is a no-op."
+  (remove-hook 'post-command-hook #'skroad--quote-restore-point t)
+  (when (and (eq (char-before) ?\n)
+             (eq (char-after) ?>))
+    (skip-chars-forward ">")))
+
 (defun skroad--quote-after-change-hook (beg end length)
   "Rectify line insertions and deletions in quoted text (schedules only)."
   (unless undo-in-progress
@@ -1099,15 +1108,6 @@ Return the new position if the jump actually happened; otherwise nil."
          (skip-chars-forward "> \t")
          (point))
        ""))))
-
-(defun skroad--quote-restore-point ()
-  "Step point past a freshly emplaced quote prefix, then disarm.
-Armed APPENDED from the continuation case so it runs after the drain has
-emplaced the prefix; reads the buffer, so running before that is a no-op."
-  (remove-hook 'post-command-hook #'skroad--quote-restore-point t)
-  (when (and (eq (char-before) ?\n)
-             (eq (char-after) ?>))
-    (skip-chars-forward ">")))
 
 (defun skroad--quote-region (beg end)
   "Increment the quote level of the region BEG...END."
