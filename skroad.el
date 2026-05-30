@@ -1001,52 +1001,46 @@ Return the new position if the jump actually happened; otherwise nil."
   :use 'skroad--text-mixin-regexp-rendered
   :use 'skroad--text-mixin-rendered)
 
-(defvar-local skroad--quote-target nil
-  "Where to move the point after an insertion into a quoted block.")
-
-(defun skroad--quote-fix-point-once ()
-  "Correct for the default behaviour of newline after inserting into a quote."
-  (remove-hook 'post-self-insert-hook #'skroad--quote-fix-point-once t)
-  (when skroad--quote-target
-    (goto-char skroad--quote-target)
-    (setq skroad--quote-target nil)))
-
 (defun skroad--quote-after-change-hook (beg end length)
-  "Change hook for rectifying line deletions and insertions in quoted text."
+  "Rectify line insertions and deletions in quoted text (schedules only)."
   (unless undo-in-progress
-    (cond
-     ((zerop length) ;; Added text
-      (let ((depth (or (get-text-property end 'quote-depth)
+    ;; Added text (pure insertion OR the insert half of a replacement) :
+    (when (> end beg)
+      (let ((depth (or (get-text-property end 'quote-depth) ;; From font lock
                        (and (= end (point-max))
                             (> beg (point-min))
                             (get-text-property (1- beg) 'quote-depth)))))
         (when (and depth (> depth 0))
-          (let ((inhibit-modification-hooks t)
-                (prefix (make-string depth ?>)))
-            (if (and (= end (1+ beg)) (eq (char-after beg) ?\n))
-                (progn
-                  (insert prefix)
-                  (setq skroad--quote-target (point))
-                  (add-hook 'post-self-insert-hook
-                            #'skroad--quote-fix-point-once t t))
-              (let ((text (replace-regexp-in-string
-                           "\n" (concat "\n" prefix)
-                           (string-trim
-                            (buffer-substring-no-properties beg end)
-                            "\n+" "\n+"))))
-                (delete-region beg end)
-                (insert text)))))))
-     ((and (= beg end) ;; Removed text
-           (eq (char-after beg) ?>)
-           (> beg (point-min))
-           (not (eq (char-before beg) ?\n)))
-      (let ((inhibit-modification-hooks t))
-        (delete-region beg
-                       (save-mark-and-excursion
-                         (goto-char beg)
-                         (skip-chars-forward "> \t")
-                         (point)))
-        )))))
+          (let ((repl (concat "\n" (make-string depth ?>))))
+            (save-mark-and-excursion
+              (goto-char beg)
+              (while (search-forward "\n" end t)
+                (skroad--deferred-replace (1- (point)) (point) repl))))
+          (add-hook 'post-command-hook #'skroad--quote-restore-point t t))))
+    ;; Removed text (pure deletion OR the delete half of a replacement) :
+    (when (and (> length 0)
+               (eq (char-after beg) ?>)
+               (> beg (point-min))
+               (save-excursion
+                 (goto-char beg)
+                 (skip-chars-backward "> \t")
+                 (not (bolp))))
+      (skroad--deferred-replace
+       beg
+       (save-mark-and-excursion
+         (goto-char beg)
+         (skip-chars-forward "> \t")
+         (point))
+       ""))))
+
+(defun skroad--quote-restore-point ()
+  "Step point past a freshly emplaced quote prefix, then disarm.
+Armed APPENDED from the continuation case so it runs after the drain has
+emplaced the prefix; reads the buffer, so running before that is a no-op."
+  (remove-hook 'post-command-hook #'skroad--quote-restore-point t)
+  (when (and (eq (char-before) ?\n)
+             (eq (char-after) ?>))
+    (skip-chars-forward ">")))
 
 (defun skroad--quote-region (beg end)
   "Increment the quote level of the region BEG...END."
@@ -1277,29 +1271,66 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
 (defconst skroad--deferred-replace-tag 'skroad--replace-later
   "Text property used to denote a deferred replacement.")
 
+;; Deferred replacement mechanism:
+;;
+;; A replacement is recorded as a text property on the spanned text and applied
+;; at command end by the drain, back to front, point-neutrally.  The tag is
+;; removed SILENTLY before each recorded edit so undo can never restore a tag
+;; onto reinserted text (which would let a later drain re-apply a stale,
+;; undo-resurrected schedule).
+
 (defun skroad--deferred-replace (start end new)
-  "Request the replacement of START ... END with NEW after current command."
+  "Schedule replacement of START..END with NEW after the current command.
+The tag put is silent (unrecorded), so it is never itself in the undo record."
   (setq-local skroad--buf-has-deferred-replacements t)
   (with-silent-modifications
-    (put-text-property start end skroad--deferred-replace-tag new)))
+    (put-text-property start end skroad--deferred-replace-tag
+                       (substring-no-properties new))))
 
 (defun skroad--do-deferred-replacements ()
-  "Perform all deferred replacements requested in the current buffer."
+  "Apply all deferred replacements in the buffer, back to front.
+Point-neutral (`save-excursion').  Highest-position-first, so no edit shifts a
+not-yet-visited run.  When the old text is a prefix of the new, only the
+divergent tail is inserted (the char point sits on is never deleted).  The tag
+is removed silently before each recorded edit, so undo cannot resurrect it.
+Edits run under `inhibit-modification-hooks' (no mode hook sees them); the
+touched lines are marked stale via `fontified' so redisplay refreshes them."
   (when skroad--buf-has-deferred-replacements
     (setq-local skroad--buf-has-deferred-replacements nil)
-    (save-mark-and-excursion
-      (goto-char (point-min))
-      (while (< (point) (point-max))
-        (let ((val (get-text-property (point) skroad--deferred-replace-tag))
-              (next (next-single-property-change
-                     (point) skroad--deferred-replace-tag nil (point-max))))
-          (if (stringp val)
-              (let ((inhibit-read-only t)
-                    (inhibit-modification-hooks t))
-                (delete-region (point) next)
-                (unless (string-empty-p val)
-                  (insert val)))
-            (goto-char next)))))))
+    (let ((inhibit-modification-hooks t)
+          (inhibit-read-only t)
+          (lo most-positive-fixnum)
+          (hi 0))
+      (save-excursion
+        (goto-char (point-max))
+        (while (> (point) (point-min))
+          (let* ((end (point))
+                 (beg (previous-single-property-change
+                       end skroad--deferred-replace-tag nil (point-min)))
+                 (val (get-text-property beg skroad--deferred-replace-tag)))
+            (when (stringp val)
+              (let ((old (buffer-substring-no-properties beg end)))
+                (setq lo (min lo beg))
+                ;; Untag silently FIRST: any text a recorded edit below deletes
+                ;; is then tag-free, so undo reinserts it without the tag.
+                (with-silent-modifications
+                  (remove-text-properties
+                   beg end (list skroad--deferred-replace-tag nil)))
+                (if (string-prefix-p old val)
+                    (progn ; append divergent tail; keep common prefix
+                      (goto-char end)
+                      (insert (substring val (length old))))
+                  (delete-region beg end) ; general case
+                  (unless (string-empty-p val)
+                    (goto-char beg)
+                    (insert val)))
+                (setq hi (max hi (point)))))
+            (goto-char beg))))
+      (when (<= lo hi)
+        (put-text-property
+         (save-excursion (goto-char lo) (line-beginning-position))
+         (save-excursion (goto-char hi) (line-end-position))
+         'fontified nil)))))
 
 (defvar skroad--text-types-indexed nil "Text types subject to indexing.")
 
