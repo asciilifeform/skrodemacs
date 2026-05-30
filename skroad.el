@@ -844,6 +844,73 @@ Return t when we were actually in the mode and the refontification happened."
   "Refresh fontification in all currently-open nodes."
   (skroad--visit-open-nodes (skroad--refontify-current-buffer)))
 
+;; Deferred replacement mechanism:
+;;
+;; A replacement is recorded as a text property on the spanned text and applied
+;; at command end by the drain, back to front, point-neutrally.  The tag is
+;; removed SILENTLY before each recorded edit so undo can never restore a tag
+;; onto reinserted text (which would let a later drain re-apply a stale,
+;; undo-resurrected schedule).
+
+(defvar-local skroad--buf-has-deferred-replacements nil
+  "When true, indicates that deferred replacements are pending in this buffer.")
+
+(defconst skroad--deferred-replace-tag 'skroad--replace-later
+  "Text property used to denote a deferred replacement.")
+
+(defun skroad--deferred-replace (start end new)
+  "Schedule replacement of START..END with NEW after the current command.
+The tag put is silent (unrecorded), so it is never itself in the undo record."
+  (setq-local skroad--buf-has-deferred-replacements t)
+  (with-silent-modifications
+    (put-text-property start end skroad--deferred-replace-tag
+                       (substring-no-properties new))))
+
+(defun skroad--do-deferred-replacements ()
+  "Apply all deferred replacements in the buffer, back to front.
+Point-neutral (`save-excursion').  Highest-position-first, so no edit shifts a
+not-yet-visited run.  When the old text is a prefix of the new, only the
+divergent tail is inserted (the char point sits on is never deleted).  The tag
+is removed silently before each recorded edit, so undo cannot resurrect it.
+Edits run under `inhibit-modification-hooks' (no mode hook sees them); the
+touched lines are marked stale via `fontified' so redisplay refreshes them."
+  (when skroad--buf-has-deferred-replacements
+    (setq-local skroad--buf-has-deferred-replacements nil)
+    (let ((inhibit-modification-hooks t)
+          (inhibit-read-only t)
+          (lo most-positive-fixnum)
+          (hi 0))
+      (save-excursion
+        (goto-char (point-max))
+        (while (> (point) (point-min))
+          (let* ((end (point))
+                 (beg (previous-single-property-change
+                       end skroad--deferred-replace-tag nil (point-min)))
+                 (val (get-text-property beg skroad--deferred-replace-tag)))
+            (when (stringp val)
+              (let ((old (buffer-substring-no-properties beg end)))
+                (setq lo (min lo beg))
+                ;; Untag silently FIRST: any text a recorded edit below deletes
+                ;; is then tag-free, so undo reinserts it without the tag.
+                (with-silent-modifications
+                  (remove-text-properties
+                   beg end (list skroad--deferred-replace-tag nil)))
+                (if (string-prefix-p old val)
+                    (progn ; append divergent tail; keep common prefix
+                      (goto-char end)
+                      (insert (substring val (length old))))
+                  (delete-region beg end) ; general case
+                  (unless (string-empty-p val)
+                    (goto-char beg)
+                    (insert val)))
+                (setq hi (max hi (point)))))
+            (goto-char beg))))
+      (when (<= lo hi)
+        (put-text-property
+         (save-excursion (goto-char lo) (line-beginning-position))
+         (save-excursion (goto-char hi) (line-end-position))
+         'fontified nil)))))
+
 ;; Zoned text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--atomic-show-payload-only t
@@ -1264,73 +1331,6 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
 
 (defvar-local skroad--change-hook-in-progress nil
   "When true, indicates that we are inside of a change hook.")
-
-(defvar-local skroad--buf-has-deferred-replacements nil
-  "When true, indicates that deferred replacements are pending in this buffer.")
-
-(defconst skroad--deferred-replace-tag 'skroad--replace-later
-  "Text property used to denote a deferred replacement.")
-
-;; Deferred replacement mechanism:
-;;
-;; A replacement is recorded as a text property on the spanned text and applied
-;; at command end by the drain, back to front, point-neutrally.  The tag is
-;; removed SILENTLY before each recorded edit so undo can never restore a tag
-;; onto reinserted text (which would let a later drain re-apply a stale,
-;; undo-resurrected schedule).
-
-(defun skroad--deferred-replace (start end new)
-  "Schedule replacement of START..END with NEW after the current command.
-The tag put is silent (unrecorded), so it is never itself in the undo record."
-  (setq-local skroad--buf-has-deferred-replacements t)
-  (with-silent-modifications
-    (put-text-property start end skroad--deferred-replace-tag
-                       (substring-no-properties new))))
-
-(defun skroad--do-deferred-replacements ()
-  "Apply all deferred replacements in the buffer, back to front.
-Point-neutral (`save-excursion').  Highest-position-first, so no edit shifts a
-not-yet-visited run.  When the old text is a prefix of the new, only the
-divergent tail is inserted (the char point sits on is never deleted).  The tag
-is removed silently before each recorded edit, so undo cannot resurrect it.
-Edits run under `inhibit-modification-hooks' (no mode hook sees them); the
-touched lines are marked stale via `fontified' so redisplay refreshes them."
-  (when skroad--buf-has-deferred-replacements
-    (setq-local skroad--buf-has-deferred-replacements nil)
-    (let ((inhibit-modification-hooks t)
-          (inhibit-read-only t)
-          (lo most-positive-fixnum)
-          (hi 0))
-      (save-excursion
-        (goto-char (point-max))
-        (while (> (point) (point-min))
-          (let* ((end (point))
-                 (beg (previous-single-property-change
-                       end skroad--deferred-replace-tag nil (point-min)))
-                 (val (get-text-property beg skroad--deferred-replace-tag)))
-            (when (stringp val)
-              (let ((old (buffer-substring-no-properties beg end)))
-                (setq lo (min lo beg))
-                ;; Untag silently FIRST: any text a recorded edit below deletes
-                ;; is then tag-free, so undo reinserts it without the tag.
-                (with-silent-modifications
-                  (remove-text-properties
-                   beg end (list skroad--deferred-replace-tag nil)))
-                (if (string-prefix-p old val)
-                    (progn ; append divergent tail; keep common prefix
-                      (goto-char end)
-                      (insert (substring val (length old))))
-                  (delete-region beg end) ; general case
-                  (unless (string-empty-p val)
-                    (goto-char beg)
-                    (insert val)))
-                (setq hi (max hi (point)))))
-            (goto-char beg))))
-      (when (<= lo hi)
-        (put-text-property
-         (save-excursion (goto-char lo) (line-beginning-position))
-         (save-excursion (goto-char hi) (line-end-position))
-         'fontified nil)))))
 
 (defvar skroad--text-types-indexed nil "Text types subject to indexing.")
 
