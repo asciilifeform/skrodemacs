@@ -1078,7 +1078,7 @@ emplaced the prefix; reads the buffer, so running before that is a no-op."
     (skip-chars-forward ">")))
 
 (defun skroad--quote-after-change-hook (beg end length)
-  "Rectify line insertions and deletions in quoted text (schedules only)."
+  "Sets up deferred rectification of line insertions and deletions in quotes."
   (unless undo-in-progress
     ;; Added text (pure insertion OR the insert half of a replacement) :
     (when (> end beg)
@@ -1371,7 +1371,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
   :require '(for-all-in-region-forward pin-pos-fn)
   :scan-region
   '(lambda (start end delta)
-     (let ((pin-pos (funcall pin-pos-fn)))
+     (let ((pin-pos (funcall pin-pos-fn))) ;; TODO: move this into the loop
        (if (= delta 1)
            (funcall
             for-all-in-region-forward start end
@@ -2154,12 +2154,14 @@ and equal to each other.  Never signals an error."
      (db t)
      (t nil))))
 
-(defun skroad--link-emplace-x (node)
+(defun skroad--link-emplace-in-tail (node)
+  "Emplace a link to NODE in the tail of the current node.
+If NODE is a log, the link is emplaced at the bottom, in chronological order.
+Otherwise, the link is emplaced at the top, just below the tail indicator."
   (save-mark-and-excursion
     (let ((tail (save-mark-and-excursion
                   (skroad--tail-jump-after)
-                  (point)
-                  )))
+                  (point))))
       (cond ((skroad--node-log-p node)
              (goto-char (point-max))
              (skip-syntax-backward " " tail)
@@ -2175,26 +2177,6 @@ and equal to each other.  Never signals an error."
             (t (goto-char tail)))
       (newline)
       (skroad--link-insert-live node))))
-
-;; (skroad--with-node "moolag" nil
-;;   (skroad--link-emplace-x "@June 2026")
-;;   (skroad--link-emplace-x "xyz")
-;;   (skroad--link-emplace-x "@May 2026")
-;;   (skroad--link-emplace-x "@April 2026")
-;;   )
-
-;; (skroad--with-node "moolag" nil
-;;   (call-interactively #'undo))
-
-;; ;; TODO: handle log links
-;; (defun skroad--link-emplace (node)
-;;   "Emplace a live link to NODE in the current node."
-;;   (skroad--tail-jump-after)
-;;   (newline)
-;;   (skroad--link-insert-live node))
-
-
-;; (skroad--find-log-insertion-point)
 
 ;; TODO: do this in title def?
 (defun skroad--link-valid-p (string)
@@ -2287,13 +2269,6 @@ If START/END are given, constrain the replacement to that range."
    (get 'skroad--text-link-node-live 'regen)
    node 'skroad--text-link-node-live target start end))
 
-;; TODO: handle log links
-(defun skroad--link-emplace (node)
-  "Emplace a live link to NODE in the current node."
-  (skroad--tail-jump-after)
-  (newline)
-  (skroad--link-insert-live node))
-
 (defun skroad--link-merge (victim target)
   "Merge live links to VICTIM in the current node into links to TARGET."
   (let* ((tail (skroad--tail-pos)))
@@ -2309,7 +2284,7 @@ If it had dead links to NODE, liven them; if not, insert a link under the tail."
     (or (skroad--link-has-live-p node) ;; Already has a live link to node?
         (and (skroad--link-has-dead-p node) ;; If not, any dead links to it?
              (skroad--link-revive node)) ;; Liven the dead links.
-        (skroad--link-emplace node)))) ;; ... Or emplace a new link.
+        (skroad--link-emplace-in-tail node)))) ;; ... Or emplace a new link.
 
 (defun skroad--disconnect-from (node &optional delete-all)
   "Ensure that the current node does NOT have any live links to NODE.
@@ -3074,7 +3049,8 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 (defun skroad--before-save-hook ()
   "Triggers prior to a skroad buffer save."
-  (skroad--renamer-deactivate))
+  (skroad--renamer-deactivate)
+  (skroad--do-deferred-replacements))
 
 (when skroad--debug
   (defadvice skroad--post-command-hook (around intercept activate)
@@ -3222,8 +3198,8 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
   "Triggers prior to a skroad buffer being killed."
   (skroad--renamer-deactivate)
   (skroad--save-cache-point)
-  ;;;
-  (skroad--cache-invalidate (skroad--current-node))
+  ;;; TODO: remove!
+  (skroad--cache-invalidate (skroad--current-node)) ;; Evict when closing
   ;;;
   )
 
