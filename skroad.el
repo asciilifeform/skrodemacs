@@ -3433,9 +3433,9 @@ Before deleting, clear the node to disconnect any remaining log links."
                 skroad--lint-in-progress ;; If linting, ditto;
                 (skroad--prompt-delete-node node)) ;; ... or user may veto:
         ;; TODO: report when we delete a node during lint!
-        (let ((linked-from
+        (let ((node-peers
                (skroad--with-node node t (skroad--link-get-all-live))))
-          (dolist (peer linked-from)
+          (dolist (peer node-peers)
             (when (skroad--cache-peek peer)
               (skroad--in-node peer #'skroad--disconnect-from node))))
         (unless node-closed ;; Unless already closed, clean it up and close:
@@ -3484,10 +3484,10 @@ After all of this, the VICTIM is permanently deleted."
       (skroad--complete-all-deferred) ;; Ensure that there are no pending ops
       ;; TODO: instead of zapping old links to victim, transform to self-links?
       (skroad--disconnect-from victim t) ;; Delete this node's links to victim
-      (let (victim-is-stub victim-body victim-linked-from)
+      (let (victim-is-stub victim-body victim-peers)
         (skroad--with-node victim t ;; Get all relevant info from the victim
           (setq victim-body (skroad--current-node-extract-body))
-          (setq victim-linked-from ;; Nodes (except for this one) linking to it
+          (setq victim-peers ;; Nodes (except for this one) linking to it
                 (delete this-node (skroad--current-node-linked-from)))
           (setq victim-is-stub (skroad--node-stub-p)))
         (unless victim-is-stub ;; Don't insert anything if victim is a stub
@@ -3508,9 +3508,9 @@ After all of this, the VICTIM is permanently deleted."
              (skroad--link-replace victim this-node import-start import-end))))
         (skroad--buf-indices-sync t) ;; Sync indices, but don't run actions
         ;; Nodes that linked to the victim will now link to this node instead:
-        (dolist (affected-node victim-linked-from)
+        (dolist (peer victim-peers)
           (skroad--defer
-           (skroad--with-node affected-node nil ;; Run index actions
+           (skroad--with-node peer nil ;; Run index actions
              (skroad--link-merge victim this-node)
              (skroad--clear-buf-undo-info)))))
       (skroad--defer (skroad--refontify-open-nodes))
@@ -3525,17 +3525,17 @@ After all of this, the VICTIM is permanently deleted."
   "Rename node OLD to NEW.  OLD is presumed to exist; NEW is a valid title.
 Warning: undo info is lost in all affected buffers!"
   (skroad--complete-all-deferred) ;; Ensure no ops are pending
-  (let ((linked-from (skroad--with-node old t
-                       (skroad--current-node-linked-from t))))
+  (let ((old-peers (skroad--with-node old t
+                     (skroad--current-node-linked-from t))))
     (if (and (skroad--cache-rename old new)
              (skroad--mv-file (skroad--node-path old) (skroad--node-path new)))
         (skroad--with-node new t
           (skroad--change-internal-title new)
           (setq-local skroad--current-node-title nil) ;; Zap cached title
           (skroad--link-replace old new) ;; Update any self-links
-          (dolist (affected-node linked-from)
+          (dolist (peer old-peers)
             (skroad--defer
-             (skroad--with-node affected-node t ;; Don't perform actions
+             (skroad--with-node peer t ;; Don't perform actions
                (skroad--link-replace old new)
                (skroad--clear-buf-undo-info))))
           (skroad--log-node-rename old new)
