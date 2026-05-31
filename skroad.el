@@ -1652,8 +1652,8 @@ disable the renamer and return nil."
              `(:inherit ,(skroad--renamer-get-default-face)
                         :background ,skroad--renamer-faces-invalid-background)))
           (when (buffer-modified-p)
-            (deactivate-mark))
-          (set-buffer-modified-p nil)
+            (skroad--deactivate-mark)
+            (set-buffer-modified-p nil))
           valid)
       (skroad--renamer-deactivate)
       nil)))
@@ -1692,7 +1692,7 @@ disable the renamer and return nil."
     "<remap> <keyboard-quit>"
     #'(lambda () (interactive)
         (if mark-active
-            (deactivate-mark)
+            (skroad--deactivate-mark)
           (skroad--renamer-deactivate)))))
 
 (skroad--deftype skroad--text-mixin-renameable
