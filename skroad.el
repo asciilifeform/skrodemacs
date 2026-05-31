@@ -2892,6 +2892,13 @@ If the tail did not previously exist in the current node, it is emplaced."
       (skroad--link-insert-live node)
       (copy-region-as-kill (point-min) (point-max)))))
 
+(defun skroad--cmd-title-delete-current-node ()
+  "Delete"
+  (interactive)
+  (let ((node (skroad--current-node)))
+    (when (skroad--prompt-delete-node node)
+      (skroad--delete-node node t))))
+
 (skroad--deftype skroad--text-node-title
   :doc "Node title."
   :use 'skroad--text-atomic
@@ -2904,6 +2911,7 @@ If the tail did not previously exist in the current node, it is emplaced."
     "<remap> <yank>" #'ignore
     "<remap> <kill-region>" #'ignore
     "<remap> <kill-ring-save>" #'skroad--cmd-title-kill-ring-save
+    "d" #'skroad--cmd-title-delete-current-node
     )
   :face 'skroad--title-face
   :inhibit-isearch t ;; Don't interactive-search in the title
@@ -3398,6 +3406,10 @@ unless the node stops being an orphan stub and then later becomes one again."
          status)
     (skroad--defer-orphan-stub-check node))) ;; Possible deletion
 
+(defun skroad--prompt-delete-node (node)
+  "Prompt to confirm the deletion of NODE and return the answer."
+  (y-or-n-p (format "Permanently delete node '%s' ?" node)))
+
 (defun skroad--delete-node (node &optional force)
   "Request deletion of NODE.  No-op if NODE does not exist or is special.
 If NODE is open in a buffer, prompt to ask permission (unless FORCE is t).
@@ -3411,8 +3423,7 @@ Before deleting, clear the node to disconnect any remaining log links."
       (when (or node-closed ;; If node is closed, don't need to offer a veto
                 force ;; If force is t, just close the node silently right now
                 skroad--lint-in-progress ;; If linting, ditto;
-                (y-or-n-p ;; ... otherwise, user may veto deletion:
-                 (format "Permanently delete node '%s' ?" node)))
+                (skroad--prompt-delete-node node)) ;; ... or user may veto:
         (skroad--with-node node nil ;; Node could still have log links!
           (when skroad--lint-in-progress
             (skroad--lint-report "Deleted during lint."))
