@@ -2901,7 +2901,8 @@ If the tail did not previously exist in the current node, it is emplaced."
 (defun skroad--cmd-title-delete-current-node ()
   "Delete"
   (interactive)
-  (skroad--delete-node (skroad--current-node)))
+  (skroad--delete-node (skroad--current-node))
+  (skroad--refontify-open-nodes))
 
 (skroad--deftype skroad--text-node-title
   :doc "Node title."
