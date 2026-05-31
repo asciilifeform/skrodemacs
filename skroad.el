@@ -2035,21 +2035,27 @@ Must be called from a buffer containing a node."
 ;; TODO: check if we have an unreachable that can be renamed and will correspond
 (defun skroad--action-connected-on-init (origin node)
   "A live link to NODE was found for the first time in ORIGIN during indexing."
-  (unless (and (skroad--cache-peek node) ;; Node doesn't exist?
-               (skroad--connected-p node origin)) ;; ... or it has no backlink?
-    (skroad--in-node origin #'skroad--disconnect-from node)
-    (message "Non-reciprocal link in '%s' to '%s' disabled." origin node)))
+  (when (and (skroad--cache-peek origin) ;; Check that origin still exists...
+             (skroad--connected-p origin node)) ;; and still connected to node.
+    (unless (and (skroad--cache-peek node) ;; Node doesn't exist?
+                 (skroad--connected-p node origin)) ;; ... or has no backlink?
+      (skroad--in-node origin #'skroad--disconnect-from node) ;; Disc. in origin
+      (message "Non-reciprocal link in '%s' to '%s' disabled." origin node)))
+    )
 
 (defun skroad--action-connected (origin node)
   "The first instance of a live link to NODE was introduced in ORIGIN.
 NODE will be created if it does not exist."
-  (skroad--in-node node #'skroad--connect-to origin))
+  (when (and (skroad--cache-peek origin) ;; Check that origin still exists...
+             (skroad--connected-p origin node)) ;; and still connected to node.
+    (skroad--in-node node #'skroad--connect-to origin))) ;; Connect in node.
 
 (defun skroad--action-disconnected (origin node)
   "The last instance of a live link to NODE was removed from ORIGIN.
 If NODE does not exist, this is a no-op."
-  (when (skroad--cache-peek node)
-    (skroad--in-node node #'skroad--disconnect-from origin)))
+  (when (and (skroad--cache-peek node) ;; Check that node still exists;
+             (not (skroad--connected-p origin node))) ;; And still not connected.
+    (skroad--in-node node #'skroad--disconnect-from origin))) ;; Disc. in node
 
 ;; Yank (with optional ARGS) into a node when standing on a live link to it.
 (defun skroad--cmd-teleyank-at (&rest args)
@@ -2895,9 +2901,7 @@ If the tail did not previously exist in the current node, it is emplaced."
 (defun skroad--cmd-title-delete-current-node ()
   "Delete"
   (interactive)
-  (let ((node (skroad--current-node)))
-    (when (skroad--prompt-delete-node node)
-      (skroad--delete-node node t))))
+  (skroad--delete-node (skroad--current-node)))
 
 (skroad--deftype skroad--text-node-title
   :doc "Node title."
@@ -3233,6 +3237,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
   (skroad--renamer-deactivate)
   (skroad--save-cache-point)
   ;;; TODO: remove!
+  (message "evicting: %s because closed!" (skroad--current-node))
   (skroad--cache-invalidate (skroad--current-node)) ;; Evict when closing
   ;;;
   )
@@ -3424,10 +3429,12 @@ Before deleting, clear the node to disconnect any remaining log links."
                 force ;; If force is t, just close the node silently right now
                 skroad--lint-in-progress ;; If linting, ditto;
                 (skroad--prompt-delete-node node)) ;; ... or user may veto:
-        (skroad--with-node node nil ;; Node could still have log links!
-          (when skroad--lint-in-progress
-            (skroad--lint-report "Deleted during lint."))
-          (skroad--clear-current-node)) ;; Wipe everything, with sync actions.
+        ;; TODO: report when we delete a node during lint!
+        (let ((linked-from
+               (skroad--with-node node t (skroad--link-get-all-live))))
+          (dolist (peer linked-from)
+            (when (skroad--cache-peek peer)
+              (skroad--in-node peer #'skroad--disconnect-from node))))
         (unless node-closed ;; Unless already closed, clean it up and close:
           (with-current-buffer visiting-buffer
             (let ((inhibit-read-only t))
@@ -3806,3 +3813,6 @@ Warning: undo info is lost in all affected buffers!"
 (provide 'skroad)
 
 ;;; skroad.el ends here
+
+@@@
+
