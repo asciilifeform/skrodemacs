@@ -364,6 +364,10 @@ Return t if there were any matches, otherwise nil."
   (goto-char (point-min))
   (forward-line 1))
 
+(defun skroad--node-body-start ()
+  "Return the position where the current node's body begins."
+  (save-mark-and-excursion (skroad--goto-node-body-start) (point)))
+
 (defun skroad--in-node-title-p (&optional pos)
   "Return t if POS (or point, if not given) is inside the current node's title."
   (save-mark-and-excursion
@@ -1069,9 +1073,7 @@ Return the new position if the jump actually happened; otherwise nil."
   :use 'skroad--text-mixin-rendered)
 
 (defun skroad--quote-restore-point ()
-  "Step point past a freshly emplaced quote prefix, then disarm.
-Armed APPENDED from the continuation case so it runs after the drain has
-emplaced the prefix; reads the buffer, so running before that is a no-op."
+  "Step point past a freshly emplaced quote prefix.  Run once."
   (remove-hook 'post-command-hook #'skroad--quote-restore-point t)
   (when (and (eq (char-before) ?\n)
              (eq (char-after) ?>))
@@ -1635,7 +1637,9 @@ If the cursor has left the renamer or the buffer in which it was active,
 disable the renamer and return nil."
   (when (skroad--renamer-active-p)
     (if (and (eq (current-buffer) (overlay-buffer skroad--renamer))
-             (skroad--point-in-renamer-p))
+             (or (skroad--point-in-renamer-p)
+                 (and mark-active
+                      (goto-char (1- (overlay-end skroad--renamer))))))
         (let ((valid
                (skroad--fn-or-t
                 (overlay-get skroad--renamer 'validate-rename)
@@ -1647,6 +1651,8 @@ disable the renamer and return nil."
                (skroad--renamer-get-default-face)
              `(:inherit ,(skroad--renamer-get-default-face)
                         :background ,skroad--renamer-faces-invalid-background)))
+          (when (buffer-modified-p)
+            (deactivate-mark))
           (set-buffer-modified-p nil)
           valid)
       (skroad--renamer-deactivate)
@@ -1684,7 +1690,10 @@ disable the renamer and return nil."
                (delete-char -1))))
     "<return>" #'skroad--cmd-renamer-accept-changes
     "<remap> <keyboard-quit>"
-    #'(lambda () (interactive) (skroad--renamer-deactivate))))
+    #'(lambda () (interactive)
+        (if mark-active
+            (deactivate-mark)
+          (skroad--renamer-deactivate)))))
 
 (skroad--deftype skroad--text-mixin-renameable
   :doc "Mixin for allowing the use of the rename command with an atomic type."
@@ -2786,6 +2795,10 @@ Any dead links found below the computed tail are deleted."
   "Return the position at the start of the tail."
   (save-mark-and-excursion (skroad--tail-jump-before) (point)))
 
+(defun skroad--after-tail-pos ()
+  "Return the position immediately below the tail."
+  (save-mark-and-excursion (skroad--tail-jump-after) (point)))
+
 (defmacro skroad--tail-do-before (&rest body)
   "Run BODY in a space created above the tail."
   `(save-mark-and-excursion
@@ -2980,13 +2993,25 @@ If the tail did not previously exist in the current node, it is emplaced."
   "Return a snapshot of the current point and zone."
   (list (point) (skroad--prop-at 'zone)))
 
+(defun skroad--mark-jail (p)
+  "If mark is inactive, return point P; otherwise, return a constrained P."
+  (if mark-active
+    (let ((m (mark)))
+      (if (< m (skroad--tail-pos)) ;; Mark is above the tail
+          (min (max p (skroad--node-body-start)) (skroad--tail-pos))
+        (max p (skroad--after-tail-pos)))) ;; Mark is below the tail
+    p)) ;; No mark
+
 (defun skroad--point-zone-handler (prev)
   "To be called when the point may have moved.  PREV has old point and zone."
   (let ((done nil))
     (while (not done)
       (let ((current (skroad--get-point-state)))
         (seq-let (old-p old-zone p zone) (append prev current)
-          (setq done (= old-p p))
+          (setq done (or (= old-p p)
+                         (let ((detent (skroad--mark-jail p)))
+                           (when (/= p detent)
+                             (goto-char detent)))))
           (unless done
             (when zone
               (setq disable-point-adjustment t) ;; Don't skip invisibles
@@ -2995,9 +3020,8 @@ If the tail did not previously exist in the current node, it is emplaced."
                         (> p old-p)) ;; ... forward?
                    (skroad--zone-end) ;; ... jump forward out of this zone.
                  (skroad--zone-start)))) ;; Moved back or jumped from outside
-            (when (and mark-active skroad--buf-alt-mark
-                       (eq p (point)) (eq p (mark)))
-              (if (< skroad--buf-alt-mark p) (forward-char) (backward-char)))
+            (when (and mark-active skroad--buf-alt-mark (= p (point) (mark)))
+                (if (< skroad--buf-alt-mark p) (forward-char) (backward-char)))
             (setq prev current)))))))
 
 (defun skroad--adjust-mark-if-present ()
@@ -3034,11 +3058,12 @@ If the tail did not previously exist in the current node, it is emplaced."
         (skroad--update-stub-status)) ;; TODO: move to save hook?
       ))
   (skroad--post-cmd-refresh-tail)
-  (unless (and isearch-mode (not (use-region-p)))
-    (skroad--point-zone-handler skroad--buf-pre-command-point-state))
-  (skroad--selector-update)
-  (skroad--adjust-mark-if-present)
-  (skroad--save-cache-point)
+  (unless (skroad--renamer-active-p)
+    (unless (and isearch-mode (not (use-region-p)))
+      (skroad--point-zone-handler skroad--buf-pre-command-point-state))
+    (skroad--selector-update)
+    (skroad--adjust-mark-if-present)
+    (skroad--save-cache-point))
   )
 
 (defun skroad--after-save-hook ()
