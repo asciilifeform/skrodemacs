@@ -3505,8 +3505,7 @@ After all of this, the VICTIM is permanently deleted."
               (format "End merged body of node '%s'" victim)))
             ;; Fix self-links of the victim in the imported body:
             (skroad--link-replace victim this-node import-start import-end)
-            (goto-char import-start) ;; Jump to the start indicator
-            ))
+            (goto-char import-start))) ;; Jump to the start indicator
         (skroad--buf-indices-sync t) ;; Sync indices, but don't run actions
         ;; Nodes that linked to the victim will now link to this node instead:
         (dolist (peer victim-peers)
