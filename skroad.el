@@ -182,6 +182,13 @@
       (when (current-message)
         (message nil)))))
 
+(defmacro skroad--buf-was-modified (counter)
+  "Detect whether the buffer was modified since the last call using COUNTER."
+  `(let ((tick (buffer-chars-modified-tick))) ;; Detect changes, including undo
+     (when (or (null ,counter) (/= tick ,counter))
+       (setq-local ,counter tick)
+       t)))
+
 (defun skroad--last-ev-was-mouse-p ()
   "Return t when the last input event was a mouse event."
   (listp last-input-event))
@@ -838,9 +845,14 @@ Return t when we were actually in the mode and the refontification happened."
       (font-lock-ensure (line-beginning-position) (line-end-position)))
     t))
 
+(defvar-local skroad--buf-last-fontification-ticks nil
+  "Count of the current buffer's modification ticks at the last refontify.")
+
 (defun skroad--refontify-current-buffer ()
   "Refresh fontification in the visible portion of the current buffer."
-  (when (skroad--mode-p)
+  (when (and (skroad--mode-p)
+             (skroad--buf-was-modified skroad--buf-last-fontification-ticks))
+    ;; (message "refontifying %s" (skroad--current-node))
     (font-lock-flush) ;; Flush all fontification, will get refontified on demand
     (let ((windows (get-buffer-window-list (current-buffer) nil t)))
       (when windows
@@ -3070,20 +3082,18 @@ If the tail did not previously exist in the current node, it is emplaced."
   "Triggers prior to every user-interactive command."
   (setq-local skroad--buf-pre-command-point-state (skroad--get-point-state)))
 
-(defvar-local skroad--buf-modification-ticks 0
+(defvar-local skroad--buf-modification-ticks nil
   "Character modification count for the current buffer.")
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
   (skroad--do-deferred-replacements)
-  (let ((tick (buffer-chars-modified-tick))) ;; Detect changes, including undo
-    (unless (= tick skroad--buf-modification-ticks)
-      (setq-local skroad--buf-modification-ticks tick)
-      (skroad--refontify-current-line)
-      (skroad--buf-indices-sync)
-      (unless (skroad--renamer-active-p)
-        (skroad--update-stub-status)) ;; TODO: move to save hook?
-      ))
+  (when (skroad--buf-was-modified skroad--buf-modification-ticks)
+    (skroad--refontify-current-line)
+    (skroad--buf-indices-sync)
+    (unless (skroad--renamer-active-p)
+      (skroad--update-stub-status))
+    )
   (skroad--post-cmd-refresh-tail)
   (unless (skroad--renamer-active-p)
     (unless (and isearch-mode (not (use-region-p)))
@@ -3337,7 +3347,9 @@ If ALLOW-INDEX is false, do not track changes or maintain indices for the node."
   (when (skroad--node-special-p node)
     (skroad--with-node node t
       (skroad--change-internal-title node)
-      (skroad--clear-current-node))))
+      (skroad--clear-current-node)
+      (skroad--tail-jump-after)
+      )))
 
 (defun skroad--connected-p (origin &optional node)
   "Test whether NODE (if given; else the current node) is linked from ORIGIN.
