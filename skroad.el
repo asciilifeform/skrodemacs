@@ -444,7 +444,8 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
     (cond (skroad--idle-work-queue
            (skroad--idle-report)
            (run-at-time 0 nil #'skroad--idle-ensure-timer))
-          (t (skroad--info nil)))))
+          (t (skroad--info nil)
+             (skroad--maybe-refontify-now)))))
 
 (defmacro skroad--defer (&rest body)
   "Schedule BODY to run later."
@@ -848,6 +849,20 @@ Return t when we were actually in the mode and the refontification happened."
 (defun skroad--refontify-open-nodes ()
   "Refresh fontification in all currently-open nodes."
   (skroad--visit-open-nodes (skroad--refontify-current-buffer)))
+
+(defvar skroad--refontify-pending nil
+  "When true, a refontification has been requested.")
+
+(defun skroad--request-refontify ()
+  "Request a refontification of currently-open nodes at the next idle point."
+  (setq skroad--refontify-pending t))
+
+(defun skroad--maybe-refontify-now (&optional and-later)
+  "Perform any pending request for the refontification of open nodes.
+If AND-LATER is true, don't clear the request flag."
+  (when skroad--refontify-pending
+    (skroad--refontify-open-nodes)
+    (setq skroad--refontify-pending and-later)))
 
 ;; Deferred replacement mechanism:
 ;;
@@ -2034,29 +2049,26 @@ Must be called from a buffer containing a node."
 
 ;; TODO: log entry
 ;; TODO: check if we have an unreachable that can be renamed and will correspond
-(defun skroad--action-connected-on-init (origin node)
-  "A live link to NODE was found for the first time in ORIGIN during indexing."
-  (when (and (skroad--cache-peek origin) ;; Check that origin still exists...
-             (skroad--connected-p origin node)) ;; and still connected to node.
-    (unless (and (skroad--cache-peek node) ;; Node doesn't exist?
-                 (skroad--connected-p node origin)) ;; ... or has no backlink?
-      (skroad--in-node origin #'skroad--disconnect-from node) ;; Disc. in origin
-      (message "Non-reciprocal link in '%s' to '%s' disabled." origin node)))
+(defun skroad--action-connected-on-init (origin target)
+  "A live link to TARGET was found to exist during the indexing of ORIGIN."
+  (when (skroad--cache-peek origin) ;; Check that origin still exists
+    (unless (and (skroad--cache-peek target) ;; Target doesn't exist?
+                 (skroad--connected-p target origin)) ;; ... or has no backlink?
+      (skroad--in-node origin #'skroad--disconnect-from target) ;; Disconnect
+      (message "Non-reciprocal link in '%s' to '%s' disabled." origin target)))
     )
 
-(defun skroad--action-connected (origin node)
-  "The first instance of a live link to NODE was introduced in ORIGIN.
-NODE will be created if it does not exist."
-  (when (and (skroad--cache-peek origin) ;; Check that origin still exists...
-             (skroad--connected-p origin node)) ;; and still connected to node.
-    (skroad--in-node node #'skroad--connect-to origin))) ;; Connect in node.
+(defun skroad--action-connected (origin target)
+  "A live link to TARGET was first introduced into an already-indexed ORIGIN.
+TARGET will be created if it does not exist."
+  (when (skroad--cache-peek origin) ;; Check that origin still exists
+    (skroad--in-node target #'skroad--connect-to origin))) ;; Connect in target.
 
-(defun skroad--action-disconnected (origin node)
-  "The last instance of a live link to NODE was removed from ORIGIN.
-If NODE does not exist, this is a no-op."
-  (when (and (skroad--cache-peek node) ;; Check that node still exists;
-             (not (skroad--connected-p origin node))) ;; And still not connected.
-    (skroad--in-node node #'skroad--disconnect-from origin))) ;; Disc. in node
+(defun skroad--action-disconnected (origin target)
+  "The last instance of a live link to TARGET was removed from ORIGIN.
+If TARGET does not exist, this is a no-op."
+  (when (skroad--cache-peek target) ;; Check that target still exists
+    (skroad--in-node target #'skroad--disconnect-from origin))) ;; Disconnect.
 
 ;; Yank (with optional ARGS) into a node when standing on a live link to it.
 (defun skroad--cmd-teleyank-at (&rest args)
@@ -2901,8 +2913,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (interactive)
   (let ((node (skroad--current-node)))
     (skroad--delete-node node)
-    (skroad--log-node-remove node))
-  (skroad--refontify-open-nodes))
+    (skroad--log-node-remove node)))
 
 (skroad--deftype skroad--text-node-title
   :doc "Node title."
@@ -3077,6 +3088,7 @@ If the tail did not previously exist in the current node, it is emplaced."
     (skroad--selector-update)
     (skroad--adjust-mark-if-present)
     (skroad--save-cache-point))
+  (skroad--maybe-refontify-now (skroad--idle-have-work-p))
   )
 
 (defun skroad--after-save-hook ()
@@ -3392,16 +3404,14 @@ not currently open in any buffer; but if it is, the user is prompted first.")
   (skroad--defer
    (when (and (skroad--node-orphan-p node) (skroad--node-stub-p node))
      (when (skroad--delete-node node)
-       (skroad--log-node-remove node)
-       (skroad--refontify-open-nodes))))) ;; TODO: agglomerate?
+       (skroad--log-node-remove node)))))
 
 (defun skroad--node-set-stub (node status)
   "Set the stub STATUS of NODE.  See also `skroad--node-set-orphan'."
   (when (skroad--set-special-status node skroad--special-node-stubs status)
     (when status
       (skroad--defer-orphan-stub-check node)) ;; Possible deletion
-    (unless skroad--lint-in-progress
-      (skroad--refontify-open-nodes)))) ;; Refontify links if status changed
+    (skroad--request-refontify))) ;; Schedule a refontification.
 
 (defun skroad--node-set-orphan (node status)
   "Set the orphan STATUS of NODE.  If it became an orphan stub, try deleting it.
@@ -3428,8 +3438,8 @@ Before deleting, clear the node to disconnect any remaining log links."
            (node-closed (null visiting-buffer)))
       (when (or node-closed ;; If node is closed, don't need to offer a veto
                 force ;; If force is t, just close the node silently right now
-                skroad--lint-in-progress ;; If linting, ditto;
-                (skroad--prompt-delete-node node)) ;; ... or user may veto:
+                skroad--lint-in-progress ;; ... or if we're linting;
+                (skroad--prompt-delete-node node)) ;; else, ask first.
         ;; TODO: report when we delete a node during lint!
         (let ((node-peers
                (skroad--with-node node t (skroad--link-get-all-live))))
@@ -3446,6 +3456,7 @@ Before deleting, clear the node to disconnect any remaining log links."
         (skroad--node-set-stub node nil) ;; Banish it from stubs
         (skroad--cache-evict node) ;; Banish it from the cache
         (delete-file node-path) ;; Permanently delete the node file!
+        (skroad--request-refontify) ;; Schedule a refontification.
         t)))) ;; Return t when actually deleted.
 
 ;; TODO: exclude lint log, as it has no indices?
@@ -3508,12 +3519,12 @@ After all of this, the VICTIM is permanently deleted."
            (skroad--with-node peer nil ;; Run index actions
              (skroad--link-merge victim this-node)
              (skroad--clear-buf-undo-info)))))
-      (skroad--defer (skroad--refontify-open-nodes))
       (skroad--save-current-node) ;; Save immediately
       (skroad--clear-buf-undo-info) ;; Zap undo info
       ;; TODO: defer deletion?
       (skroad--delete-node victim t) ;; Permanently delete the victim!
       (skroad--log-node-merge victim this-node)
+      (skroad--request-refontify) ;; Schedule a refontification.
       )))
 
 (defun skroad--rename-node (old new)
@@ -3534,7 +3545,7 @@ Warning: undo info is lost in all affected buffers!"
                (skroad--link-replace old new)
                (skroad--clear-buf-undo-info))))
           (skroad--log-node-rename old new)
-          (skroad--defer (skroad--refontify-open-nodes))
+          (skroad--request-refontify) ;; Schedule a refontification.
           (skroad--clear-buf-undo-info)) ;; Zap undo info
       (error "Could not rename node '%s' to '%s'!" old new))))
 
@@ -3551,7 +3562,6 @@ Warning: undo info is lost in all affected buffers!"
       (skroad--change-internal-title external-title)
       )))
 
-;; TODO: detect actual completion
 (defun skroad--lint ()
   "Perform a full rescan of all known nodes."
   (unless skroad--lint-in-progress
@@ -3577,8 +3587,8 @@ Warning: undo info is lost in all affected buffers!"
       (skroad--defer
        (skroad--lint-report
         (format "Complete, linted %s nodes." count) "Lint: ")
-       (setq skroad--lint-in-progress nil)
-       (skroad--refontify-open-nodes)))))
+       (skroad--request-refontify) ;; Schedule a refontification.
+       (setq skroad--lint-in-progress nil)))))
 
 ;; Autocomplete for live node links. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -3720,7 +3730,7 @@ Warning: undo info is lost in all affected buffers!"
   "Toggle non-match text hiding in atomics having a `visible-match-number'."
   (interactive)
   (setq skroad--atomic-show-payload-only (not skroad--atomic-show-payload-only))
-  (skroad--refontify-open-nodes))
+  (skroad--request-refontify)) ;; Schedule a refontification.
 
 (defvar skroad--mode-map
   (define-keymap
