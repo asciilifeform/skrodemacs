@@ -3496,13 +3496,13 @@ After all of this, the VICTIM is permanently deleted."
           (let (import-start import-end)
             (skroad--tail-do-before ;; Insert a demarcated copy of victim's body
              (skroad--atomic-comment-insert
-              (format "Start of merged node '%s'" victim))
+              (format "Start merged body of node '%s'" victim))
              (setq import-start (point))
              (insert victim-body)
              (setq import-end (point))
              (newline)
              (skroad--atomic-comment-insert
-              (format "End of merged node '%s'" victim)))
+              (format "End merged body of node '%s'" victim)))
             ;; Fix self-links of the victim in the imported body:
             (skroad--link-replace victim this-node import-start import-end)
             (goto-char import-start) ;; Jump to the start indicator
