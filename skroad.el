@@ -463,9 +463,13 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
   (when skroad--idle-work-queue
     (skroad--idle-work-run-slice t)))
 
+(defun skroad--idle-no-work-p ()
+  "Return t when the idle queue is empty."
+  (null skroad--idle-work-queue))
+
 (defun skroad--idle-have-work-p ()
   "Return t when the idle queue is not empty."
-  (not (null skroad--idle-work-queue)))
+  (not (skroad--idle-no-work-p)))
 
 ;; File and directory ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1597,9 +1601,8 @@ These may occur if ill-behaved minor modes are in use.")
               (setq buffer-read-only nil)
               (skroad--suspend-font-lock)
               (skroad--deactivate-mark)
-              (setq-local
-               inhibit-modification-hooks t
-               cursor-type t)
+              (setq-local inhibit-modification-hooks t)
+              (skroad--selector-deactivate)
               (let ((hider (make-overlay start end (current-buffer) t nil))
                     (snapshot (prepare-change-group)))
                 (activate-change-group snapshot)
@@ -3088,7 +3091,8 @@ If the tail did not previously exist in the current node, it is emplaced."
     (skroad--selector-update)
     (skroad--adjust-mark-if-present)
     (skroad--save-cache-point))
-  (skroad--maybe-refontify-now (skroad--idle-have-work-p))
+  (when (or (skroad--idle-no-work-p) skroad--lint-in-progress)
+    (skroad--maybe-refontify-now (skroad--idle-have-work-p)))
   )
 
 (defun skroad--after-save-hook ()
