@@ -2530,12 +2530,7 @@ See e.g. `skroad--merge-node-into-current'."
 (defun skroad--atomic-comment-insert (text)
   "Insert TEXT as an atomic comment at the current point."
   (insert (funcall (get 'skroad--text-atomic-comment 'generate) text))
-  (newline)
-  )
-
-;;;
-;; (skroad--atomic-comment-insert "xxx")
-;;;
+  (newline))
 
 ;; Timestamps. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
