@@ -141,6 +141,7 @@
 
 (defface skroad--atomic-comment-face
   '((t :inherit skroad--text-face
+       :extend t
        :inverse-video t))
   "Face used for atomic comments."
   :group 'skroad-faces)
@@ -2521,18 +2522,20 @@ See e.g. `skroad--merge-node-into-current'."
   :face 'skroad--atomic-comment-face
   :match-number 1
   :visible-match-number 1
-  :payload-regex (rx (or (seq (+? (or (not ?*)
-                                      (seq ?* (not ?$))
-                                      (seq "*$" (not ?*))))
-                              (?? ?*))
-                         (+? ?*)))
-  :begins "*$*" :ends "*$*"
+  :payload-regex (rx (+ print) "\n")
+  :begins "@Comment@" :ends ""
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-atomic-delimited)
 
 (defun skroad--atomic-comment-insert (text)
   "Insert TEXT as an atomic comment at the current point."
-  (insert (funcall (get 'skroad--text-atomic-comment 'generate) text)))
+  (insert (funcall (get 'skroad--text-atomic-comment 'generate) text))
+  (newline)
+  )
+
+;;;
+;; (skroad--atomic-comment-insert "xxx")
+;;;
 
 ;; Timestamps. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2810,10 +2813,11 @@ Any dead links found below the computed tail are deleted."
   `(save-mark-and-excursion
      (atomic-change-group
        (skroad--tail-jump-before)
-       (ensure-empty-lines 1)
+       (ensure-empty-lines)
        ,@body
-       (newline 2))
-     (skroad--update-stub-status)))
+       (ensure-empty-lines)
+       (skroad--update-stub-status)
+       (skroad--selector-update))))
 
 (defun skroad--update-stub-status ()
   "Determine whether the current node is a stub, and update Stubs if necessary.
@@ -2886,7 +2890,6 @@ If the tail did not previously exist in the current node, it is emplaced."
   "Return the body of the current node."
   (save-mark-and-excursion
     (skroad--goto-node-body-start)
-    (skip-syntax-forward " ")
     (string-trim
      (buffer-substring-no-properties (point) (skroad--tail-pos)))))
 
@@ -3482,8 +3485,7 @@ After all of this, the VICTIM is permanently deleted."
                 (format "Permanently merge node '%s' into this node ?" victim)))
       (skroad--buf-indices-sync) ;; Make sure current indices are up to date
       (skroad--complete-all-deferred) ;; Ensure that there are no pending ops
-      ;; TODO: instead of zapping old links to victim, transform to self-links?
-      (skroad--disconnect-from victim t) ;; Delete this node's links to victim
+      (skroad--disconnect-from victim) ;; Break this node's links to victim
       (let (victim-is-stub victim-body victim-peers)
         (skroad--with-node victim t ;; Get all relevant info from the victim
           (setq victim-body (skroad--current-node-extract-body))
@@ -3491,21 +3493,20 @@ After all of this, the VICTIM is permanently deleted."
                 (delete this-node (skroad--current-node-linked-from)))
           (setq victim-is-stub (skroad--node-stub-p)))
         (unless victim-is-stub ;; Don't insert anything if victim is a stub
-          (skroad--tail-do-before ;; Insert a demarcated copy of victim's body
-           (let (import-start import-end)
+          (let (import-start import-end)
+            (skroad--tail-do-before ;; Insert a demarcated copy of victim's body
              (skroad--atomic-comment-insert
               (format "Start of merged node '%s'" victim))
-             (newline)
              (setq import-start (point))
              (insert victim-body)
              (setq import-end (point))
              (newline)
              (skroad--atomic-comment-insert
-              (format "End of merged node '%s'" victim))
-             (newline)
-             (goto-char import-start) ;; Jump to the start indicator
-             ;; Fix self-links of the victim in the imported body:
-             (skroad--link-replace victim this-node import-start import-end))))
+              (format "End of merged node '%s'" victim)))
+            ;; Fix self-links of the victim in the imported body:
+            (skroad--link-replace victim this-node import-start import-end)
+            (goto-char import-start) ;; Jump to the start indicator
+            ))
         (skroad--buf-indices-sync t) ;; Sync indices, but don't run actions
         ;; Nodes that linked to the victim will now link to this node instead:
         (dolist (peer victim-peers)
@@ -3816,6 +3817,3 @@ Warning: undo info is lost in all affected buffers!"
 (provide 'skroad)
 
 ;;; skroad.el ends here
-
-@@@
-
