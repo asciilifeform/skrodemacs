@@ -3484,6 +3484,7 @@ After all of this, the VICTIM is permanently deleted."
                (not (or buffer-read-only ;; Destination must be writable
                         (skroad--node-self-p victim) ;; May not merge self
                         (skroad--node-log-p victim) ;; May not merge log nodes
+                        (skroad--node-log-p this-node) ;; ... or into one
                         (skroad--node-special-p victim))) ;; ... or special node
                (y-or-n-p ;; Ask first, because the victim will be perma-deleted!
                 (format "Permanently merge node '%s' into this node ?" victim)))
@@ -3514,7 +3515,7 @@ After all of this, the VICTIM is permanently deleted."
         ;; Nodes that linked to the victim will now link to this node instead:
         (dolist (peer victim-peers)
           (skroad--defer
-           (skroad--with-node peer nil ;; Run index actions
+           (skroad--with-node peer nil ;; Run index actions, so tails get merged
              (skroad--link-merge victim this-node)
              (skroad--clear-buf-undo-info)))))
       (skroad--save-current-node) ;; Save immediately
