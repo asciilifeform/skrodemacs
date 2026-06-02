@@ -867,8 +867,8 @@ Return t when we were actually in the mode and the refontification happened."
   "Perform any pending request for the refontification of open nodes.
 If AND-LATER is true, don't clear the request flag."
   (when skroad--refontify-pending
-    (skroad--refontify-open-nodes)
-    (setq skroad--refontify-pending and-later)))
+    (setq skroad--refontify-pending and-later)
+    (skroad--refontify-open-nodes)))
 
 ;; Deferred replacement mechanism:
 ;;
