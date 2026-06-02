@@ -2043,7 +2043,6 @@ Must be called from a buffer containing a node."
 (defun skroad--current-node-check-orphan ()
   "Unless the current node is a special or log, determine its orphan status."
   (unless (or (skroad--node-special-p) (skroad--node-log-p))
-    (message "orphan check: '%s'" (skroad--current-node))
     (skroad--node-set-orphan
      (skroad--current-node)
      (let ((live-link-count ;; Note that this includes live log links!
