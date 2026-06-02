@@ -444,8 +444,9 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
     (cond (skroad--idle-work-queue
            (skroad--idle-report)
            (run-at-time 0 nil #'skroad--idle-ensure-timer))
-          (t (skroad--info nil)
-             (skroad--maybe-refontify-now)))))
+          (t ;; The work queue has emptied:
+           (skroad--info nil) ;; Zap the progress indicator, if active
+           (skroad--maybe-refontify-now))))) ;; If refontify is pending, do it
 
 (defmacro skroad--defer (&rest body)
   "Schedule BODY to run later."
