@@ -3427,7 +3427,7 @@ unless the node stops being an orphan stub and then later becomes one again."
 (defun skroad--delete-node (node &optional force)
   "Request deletion of NODE.  No-op if NODE does not exist or is special.
 If NODE is open in a buffer, prompt to ask permission (unless FORCE is t).
-Before deleting, clear the node to disconnect any remaining log links."
+Before deleting, disconnect any remaining live links."
   (when (and (skroad--cache-peek node)
              (not (or (skroad--node-special-p node)
                       (skroad--node-log-p node))))
