@@ -182,13 +182,6 @@
       (when (current-message)
         (message nil)))))
 
-(defmacro skroad--buf-was-modified (counter)
-  "Detect whether the buffer was modified since the last call using COUNTER."
-  `(let ((tick (buffer-chars-modified-tick))) ;; Detect changes, including undo
-     (when (or (null ,counter) (/= tick ,counter))
-       (setq-local ,counter tick)
-       t)))
-
 (defun skroad--last-ev-was-mouse-p ()
   "Return t when the last input event was a mouse event."
   (listp last-input-event))
@@ -837,21 +830,17 @@ No refontification is triggered; existing properties are untouched."
      font-lock-fontify-region-function skroad--font-lock-fontify-region
      skroad--font-lock-suspended nil)))
 
-(defun skroad--refontify-current-line ()
-  "Refresh fontification of the current line in a skroad buffer.
+(defun skroad--fontify-current-line ()
+  "Ensure fontification of the current line in a skroad buffer.
 Return t when we were actually in the mode and the refontification happened."
   (when (skroad--mode-p)
     (save-mark-and-excursion
       (font-lock-ensure (line-beginning-position) (line-end-position)))
     t))
 
-(defvar-local skroad--buf-last-fontification-ticks nil
-  "Count of the current buffer's modification ticks at the last refontify.")
-
 (defun skroad--refontify-current-buffer ()
   "Refresh fontification in the visible portion of the current buffer."
-  (when (and (skroad--mode-p)
-             (skroad--buf-was-modified skroad--buf-last-fontification-ticks))
+  (when (skroad--mode-p)
     ;; (message "refontifying %s" (skroad--current-node))
     (font-lock-flush) ;; Flush all fontification, will get refontified on demand
     (let ((windows (get-buffer-window-list (current-buffer) nil t)))
@@ -1862,7 +1851,7 @@ DISPLAY-MODE controls what happens when this results in opening a buffer."
 (defun skroad--mouse-warp-to-current ()
   "Warp mouse to the middle of the current zone, if possible; else, to point."
   (let ((warp-pos
-         (if (and (skroad--refontify-current-line) ;; We're in-mode
+         (if (and (skroad--fontify-current-line) ;; We're in-mode
                   (skroad--prop-at 'zone)) ;; There's a zone at point
              (skroad--with-current-visible-zone
                (if (< vis-start vis-end) ;; Valid zone?
@@ -2054,6 +2043,7 @@ Must be called from a buffer containing a node."
 (defun skroad--current-node-check-orphan ()
   "Unless the current node is a special or log, determine its orphan status."
   (unless (or (skroad--node-special-p) (skroad--node-log-p))
+    (message "orphan check: '%s'" (skroad--current-node))
     (skroad--node-set-orphan
      (skroad--current-node)
      (let ((live-link-count ;; Note that this includes live log links!
@@ -2066,6 +2056,7 @@ Must be called from a buffer containing a node."
 ;; TODO: check if we have an unreachable that can be renamed and will correspond
 (defun skroad--action-connected-on-init (origin target)
   "A live link to TARGET was found to exist during the indexing of ORIGIN."
+  ;; (message "connected-on-init: origin=%s target=%s" origin target)
   (when (skroad--cache-peek origin) ;; Check that origin still exists
     (unless (and (skroad--cache-peek target) ;; Target doesn't exist?
                  (skroad--connected-p target origin)) ;; ... or has no backlink?
@@ -2076,12 +2067,14 @@ Must be called from a buffer containing a node."
 (defun skroad--action-connected (origin target)
   "A live link to TARGET was first introduced into an already-indexed ORIGIN.
 TARGET will be created if it does not exist."
+  ;; (message "connected: origin=%s target=%s" origin target)
   (when (skroad--cache-peek origin) ;; Check that origin still exists
     (skroad--in-node target #'skroad--connect-to origin))) ;; Connect in target.
 
 (defun skroad--action-disconnected (origin target)
   "The last instance of a live link to TARGET was removed from ORIGIN.
 If TARGET does not exist, this is a no-op."
+  ;; (message "disconnected: origin=%s target=%s" origin target)
   (when (skroad--cache-peek target) ;; Check that target still exists
     (skroad--in-node target #'skroad--disconnect-from origin))) ;; Disconnect.
 
@@ -2648,6 +2641,7 @@ REASON, if given, is a comment describing the cause of the operation."
                  (or (and (stringp reason) (concat " (" reason ")")) "")
                  ".")))
     (skroad--defer
+     (message (concat "Skroad Log: " entry))
      (skroad--with-node skroad--special-node-log nil ;; Run actions!
        (skroad--emplace-log-entry entry unique)))))
 
@@ -2662,13 +2656,15 @@ REASON, if given, is a comment describing the cause of the operation."
 (defun skroad--log-node-remove (node &optional reason)
   "Record the removal of NODE to the current log, with optional REASON."
   (skroad--log-node-op node nil "Deleted" nil reason) ;; May duplicate
-  (skroad--lint-deaden node)) ;; Deaden any old links in the lint log
+  (skroad--lint-deaden node) ;; Deaden any old links in the lint log
+  )
 
 (defun skroad--log-node-rename (old node)
   "Record the renaming of OLD to NODE to the current log."
   (skroad--log-node-op ;; May duplicate
    node t "Renamed" nil (concat "Was: " (skroad--link-generate-dead old)))
-  (skroad--lint-deaden old)) ;; Deaden any old links in the lint log
+  (skroad--lint-deaden old) ;; Deaden any old links in the lint log
+  )
 
 (defun skroad--log-node-merge (victim target)
   "Record the merging of VICTIM into TARGET to the current log."
@@ -2693,8 +2689,8 @@ REASON, if given, is a comment describing the cause of the operation."
 (defvar-local skroad--buf-tail-marker nil
   "Marker which points after the current node's tail, if known.")
 
-(defvar-local skroad--buf-tail-needs-refresh nil
-  "If true, the tail needs to be set in the current buffer.")
+;; (defvar-local skroad--buf-tail-needs-refresh nil
+;;   "If true, the tail needs to be set in the current buffer.")
 
 (defun skroad--set-tail-marker (pos)
   "Use POS (which may be nil) as a possibly-new position of the tail marker."
@@ -2761,15 +2757,15 @@ REASON, if given, is a comment describing the cause of the operation."
   ;; :use 'skroad--text-mixin-indexed
   )
 
-(defun skroad--post-cmd-refresh-tail ()
-  "Called from post-command hook.  Set a new tail, if required."
-  (when skroad--buf-tail-needs-refresh
-    (save-mark-and-excursion
-      (skroad--tail-jump-after)
-      (let ((inhibit-modification-hooks t))
-        (replace-regexp-in-region skroad--node-tail-regexp ""))) ;; Zap any old
-    (skroad--refontify-current-buffer)
-    (setq-local skroad--buf-tail-needs-refresh nil)))
+;; (defun skroad--post-cmd-refresh-tail ()
+;;   "Called from post-command hook.  Set a new tail, if required."
+;;   (when skroad--buf-tail-needs-refresh
+;;     (save-mark-and-excursion
+;;       (skroad--tail-jump-after)
+;;       (let ((inhibit-modification-hooks t))
+;;         (replace-regexp-in-region skroad--node-tail-regexp ""))) ;; Zap any old
+;;     (skroad--refontify-current-buffer)
+;;     (setq-local skroad--buf-tail-needs-refresh nil)))
 
 (defun skroad--jump-to-computed-tail ()
   "Determine where the tail ought to be per the tail heuristic, and go there.
@@ -2845,7 +2841,7 @@ Any dead links found below the computed tail are deleted."
   "Determine whether the current node is a stub, and update Stubs if necessary.
 A stub is a node where only whitespace is found between the title and the tail.
 If the tail did not previously exist in the current node, it is emplaced."
-  (unless (skroad--node-special-p)
+  (unless (or (skroad--node-special-p) (skroad--renamer-active-p))
     (skroad--node-set-stub (skroad--current-node)
                            (save-mark-and-excursion
                              (skroad--tail-jump-before)
@@ -2904,7 +2900,7 @@ If the tail did not previously exist in the current node, it is emplaced."
       (goto-char (point-min))
       (insert new-title)
       (newline)
-      (skroad--refontify-current-line)
+      (skroad--fontify-current-line)
       (delete-region (point) (progn (forward-line 1) (point))))))
 
 ;; TODO: what if there's no tail?
@@ -3082,19 +3078,12 @@ If the tail did not previously exist in the current node, it is emplaced."
   "Triggers prior to every user-interactive command."
   (setq-local skroad--buf-pre-command-point-state (skroad--get-point-state)))
 
-(defvar-local skroad--buf-modification-ticks nil
-  "Character modification count for the current buffer.")
-
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
   (skroad--do-deferred-replacements)
-  (when (skroad--buf-was-modified skroad--buf-modification-ticks)
-    (skroad--refontify-current-line)
-    (skroad--buf-indices-sync)
-    (unless (skroad--renamer-active-p)
-      (skroad--update-stub-status))
-    )
-  (skroad--post-cmd-refresh-tail)
+  (skroad--buf-indices-sync)
+  (skroad--fontify-current-line)
+  (skroad--update-stub-status)
   (unless (skroad--renamer-active-p)
     (unless (and isearch-mode (not (use-region-p)))
       (skroad--point-zone-handler skroad--buf-pre-command-point-state))
@@ -3336,19 +3325,13 @@ If ALLOW-INDEX is false, do not track changes or maintain indices for the node."
      (unless ,allow-index
        (add-to-list 'skroad--special-nodes-no-index ,node))))
 
-(defun skroad--clear-current-node ()
-  "Jettison the entire contents (body and tail) of the current node."
-  (skroad--goto-node-body-start)
-  (delete-region (point) (point-max))
-  t)
-
 (defun skroad--reset-special-node (node)
   "Hollow out the given special NODE."
   (when (skroad--node-special-p node)
     (skroad--with-node node t
       (skroad--change-internal-title node)
-      (skroad--clear-current-node)
       (skroad--tail-jump-after)
+      (delete-region (point) (point-max))
       )))
 
 (defun skroad--connected-p (origin &optional node)
@@ -3549,21 +3532,23 @@ Warning: undo info is lost in all affected buffers!"
   (skroad--complete-all-deferred) ;; Ensure no ops are pending
   (let ((old-peers (skroad--with-node old t
                      (skroad--current-node-linked-from t))))
-    (if (and (skroad--cache-rename old new)
-             (skroad--mv-file (skroad--node-path old) (skroad--node-path new)))
-        (skroad--with-node new t
-          (skroad--change-internal-title new)
-          (setq-local skroad--current-node-title nil) ;; Zap cached title
-          (skroad--link-replace old new) ;; Update any self-links
-          (dolist (peer old-peers)
-            (skroad--defer
-             (skroad--with-node peer t ;; Don't perform actions
-               (skroad--link-replace old new)
-               (skroad--clear-buf-undo-info))))
-          (skroad--log-node-rename old new)
-          (skroad--request-refontify) ;; Schedule a refontification.
-          (skroad--clear-buf-undo-info)) ;; Zap undo info
-      (error "Could not rename node '%s' to '%s'!" old new))))
+    (cond
+     ((and (skroad--cache-rename old new)
+           (skroad--mv-file (skroad--node-path old) (skroad--node-path new)))
+      (dolist (peer old-peers)
+        (skroad--defer
+         (skroad--with-node peer t ;; Don't perform actions
+           (skroad--link-replace old new)
+           (skroad--clear-buf-undo-info))))
+      (skroad--with-node new t
+        (skroad--change-internal-title new)
+        (setq-local skroad--current-node-title nil) ;; Zap cached title
+        (let ((inhibit-modification-hooks t))
+          (skroad--link-replace old new)) ;; Update any self-links
+        (skroad--log-node-rename old new)
+        (skroad--request-refontify) ;; Schedule a refontification.
+        (skroad--clear-buf-undo-info))) ;; Zap undo info
+     (t (error "Could not rename node '%s' to '%s'!" old new)))))
 
 ;; TODO: write log entry if changing
 (defun skroad--rectify-node-title ()
