@@ -2203,7 +2203,7 @@ and equal to each other.  Never signals an error."
   "Emplace a link to NODE in the tail of the current node.
 If NODE is a log, and the first such link in the tail, it goes at the bottom;
 If there were other log links in the tail, it goes in chronological order.
-Otherwise, the link is emplaced at the top, just below the tail indicator."
+A non-log link is always emplaced at the top, just below the tail indicator."
   (save-mark-and-excursion
     (let ((tail (save-mark-and-excursion
                   (skroad--tail-jump-after)
