@@ -339,6 +339,17 @@ Return t if there were any matches, otherwise nil."
   "Remove excess whitespace from S."
   (save-match-data (string-clean-whitespace s)))
 
+(defconst skroad--whitespace-chars " \t\n\r\f"
+  "Denotes characters which are classified as whitespace.")
+
+(defun skroad--skip-whitespace-forward (&optional limit)
+  "Skip any whitespace characters in the forward direction, up to LIMIT."
+  (skip-chars-forward skroad--whitespace-chars limit))
+
+(defun skroad--skip-whitespace-backward (&optional limit)
+  "Skip any whitespace characters in the backward direction, down to LIMIT."
+  (skip-chars-backward skroad--whitespace-chars limit))
+
 (defun skroad--abbrev-string (string lim)
   "If STRING is LIM or more characters long, truncate it with an ellipsis."
   (if (< (length string) lim)
@@ -841,16 +852,14 @@ Return t when we were actually in the mode and the refontification happened."
 
 (defun skroad--refontify-current-buffer ()
   "Refresh fontification in the visible portion of the current buffer."
-  (when (skroad--mode-p)
-    ;; (message "refontifying %s" (skroad--current-node))
-    (font-lock-flush) ;; Flush all fontification, will get refontified on demand
-    (let ((windows (get-buffer-window-list (current-buffer) nil t)))
-      (when windows
-        (let ((start (apply #'min (mapcar #'window-start windows)))
-              (end (apply #'max
-                          (mapcar #'(lambda (w) (window-end w t)) windows))))
-          (font-lock-ensure start end)
-          (skroad--selector-update))))))
+  (font-lock-flush) ;; Flush all fontification, will get refontified on demand
+  (let ((windows (get-buffer-window-list (current-buffer) nil t)))
+    (when windows
+      (let ((start (apply #'min (mapcar #'window-start windows)))
+            (end (apply #'max
+                        (mapcar #'(lambda (w) (window-end w t)) windows))))
+        (font-lock-ensure start end)
+        (skroad--selector-update)))))
 
 (defun skroad--refontify-open-nodes ()
   "Refresh fontification in all currently-open nodes."
@@ -1061,7 +1070,7 @@ Return the new position if the jump actually happened; otherwise nil."
          last-face)
     (goto-char beg)
     (while (< (point) end)
-      (skip-syntax-forward " " end)
+      (skroad--skip-whitespace-forward end)
       (when (eq (char-after) ?>)
         (forward-char 1)
         (setq depth (1+ depth))
@@ -1450,7 +1459,7 @@ called to finalize all pending changes when no further ones are expected."
     (save-match-data
       (save-mark-and-excursion
         (goto-char start-expanded)
-        (skip-chars-forward " \t\n\r\f\v" end-expanded)
+        (skroad--skip-whitespace-forward end-expanded)
         (let ((start-trimmed (point)))
           (when (< start-trimmed end-expanded)
             (dolist (text-type skroad--text-types-indexed)
@@ -1586,7 +1595,7 @@ These may occur if ill-behaved minor modes are in use.")
   "Jump to the start of the text in the renamer (presumed to be active)."
   (goto-char (overlay-start skroad--renamer))
   (unless (string-empty-p (skroad--get-renamer-text))
-    (skip-syntax-forward " ")))
+    (skroad--skip-whitespace-forward)))
 
 ;; Try to activate the renamer in the current zone.
 (defun skroad--cmd-renamer-activate-here ()
@@ -1702,7 +1711,7 @@ disable the renamer and return nil."
     "<remap> <end-of-line>" ;; END jumps to the end of the text
     #'(lambda () (interactive)
         (goto-char (1- (field-end)))
-        (skip-syntax-backward " " (field-beginning)))
+        (skroad--skip-whitespace-backward (field-beginning)))
     "<backspace>" ;; backspace must not change preceding text
     #'(lambda () (interactive)
         (cond ((use-region-p)
@@ -2201,7 +2210,7 @@ Otherwise, the link is emplaced at the top, just below the tail indicator."
                   (point))))
       (cond ((skroad--node-log-p node)
              (goto-char (point-max))
-             (skip-syntax-backward " " tail)
+             (skroad--skip-whitespace-backward tail)
              (while (and
                      (funcall
                       (get 'skroad--text-link-node-live 'find-any-backward)
@@ -2619,7 +2628,7 @@ If UNIQUE is true, TEXT found to be a duplicate is simply moved to the end."
     (when (and unique (search-forward log-line day-bottom t))
       (delete-region (match-beginning 0) (match-end 0)))
     (goto-char day-bottom)
-    (skip-syntax-backward " ")
+    (skroad--skip-whitespace-backward)
     (forward-line)
     (insert log-line)))
 
@@ -2777,7 +2786,7 @@ Any dead links found below the computed tail are deleted."
                (save-mark-and-excursion
                  (when (funcall (get type 'find-any-backward))
                    (goto-char (match-end 0))
-                   (skip-syntax-forward " ")
+                   (skroad--skip-whitespace-forward)
                    (when (= prev-pos (point))
                      (let ((new-pos (match-beginning 0)))
                        (when delete (delete-region new-pos prev-pos))
@@ -2847,7 +2856,7 @@ If the tail did not previously exist in the current node, it is emplaced."
                              (skroad--tail-jump-before)
                              (let ((before-tail (point)))
                                (skroad--goto-node-body-start)
-                               (skip-syntax-forward " ")
+                               (skroad--skip-whitespace-forward)
                                (eq (point) before-tail))))))
 
 ;; Tail text highlighting. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -3083,7 +3092,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--do-deferred-replacements)
   (skroad--buf-indices-sync)
   (skroad--fontify-current-line)
-  (skroad--update-stub-status)
+  ;; (skroad--update-stub-status)
   (unless (skroad--renamer-active-p)
     (unless (and isearch-mode (not (use-region-p)))
       (skroad--point-zone-handler skroad--buf-pre-command-point-state))
@@ -3195,7 +3204,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--cache-intern (skroad--current-node)) ;; TODO?
   (skroad--update-stub-status) ;; TODO: do we want this here?
   (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
-  (skip-syntax-forward " ")
+  (skroad--skip-whitespace-forward)
   (skroad--init-font-lock)
   )
 
@@ -3496,7 +3505,7 @@ After all of this, the VICTIM is permanently deleted."
         (skroad--with-node victim t ;; Get all relevant info from the victim
           (setq victim-body (skroad--current-node-extract-body))
           (setq victim-peers ;; Nodes (except for this one) linking to it
-                (delete this-node (skroad--current-node-linked-from)))
+                (delete this-node (skroad--current-node-linked-from))) ;; TODO?
           (setq victim-is-stub (skroad--node-stub-p)))
         (unless victim-is-stub ;; Don't insert anything if victim is a stub
           (let (import-start import-end)
