@@ -2323,13 +2323,18 @@ If START/END are given, constrain the replacement to that range."
         (skroad--link-delete target tail) ;; ... then delete target in tail;
       (skroad--connect-to target)))) ;; ... if not, ensure a link to target.
 
+(defun skroad--revive-to (node)
+  "If the current node has at least one dead link to NODE, revive that link.
+Return true if any such links were in fact revived."
+  (and (skroad--link-has-dead-p node) ;; Any dead links to node?
+       (skroad--link-revive node))) ;; Liven the dead links.
+
 (defun skroad--connect-to (node)
   "Ensure that the current node has at least one live link to NODE.
 If it had dead links to NODE, liven them; if not, insert a link under the tail."
   (unless (skroad--node-self-p node) ;; May not connect to self
     (or (skroad--link-has-live-p node) ;; Already has a live link to node?
-        (and (skroad--link-has-dead-p node) ;; If not, any dead links to it?
-             (skroad--link-revive node)) ;; Liven the dead links.
+        (skroad--revive-to node) ;; Try reviving any dead links to node
         (skroad--link-emplace-in-tail node)))) ;; ... Or emplace a new link.
 
 (defun skroad--disconnect-from (node &optional delete-all)
@@ -2931,9 +2936,10 @@ If the tail did not previously exist in the current node, it is emplaced."
 (defun skroad--cmd-title-delete-current-node ()
   "Delete"
   (interactive)
+  (skroad--complete-all-deferred) ;; Pending ops must complete first
   (let ((node (skroad--current-node)))
-    (skroad--delete-node node)
-    (skroad--log-node-remove node)))
+    (when (skroad--delete-node node)
+      (skroad--log-node-remove node))))
 
 (skroad--deftype skroad--text-node-title
   :doc "Node title."
@@ -3735,7 +3741,7 @@ Warning: undo info is lost in all affected buffers!"
 (defun skroad--cmd-top-goto-tail ()
   "Top-level jump-to-tail."
   (interactive)
-  (skroad--tail-jump-before))
+  (skroad--tail-jump-after))
 
 (defun skroad--cmd-top-toggle-atomic-text-hiding ()
   "Toggle non-match text hiding in atomics having a `visible-match-number'."
@@ -3751,7 +3757,7 @@ Warning: undo info is lost in all affected buffers!"
     "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
     "C-<tab>" #'skroad--cmd-top-jump-to-prev-atomic
     "M-t" #'skroad--cmd-top-goto-tail
-    "C-M-l" #'skroad--cmd-top-toggle-atomic-text-hiding
+    "C-M-l" #'skroad--cmd-top-toggle-atomic-text-hiding ;; TODO: do we need it?
     )
   "Top-level keymap for the skroad major mode.")
 
