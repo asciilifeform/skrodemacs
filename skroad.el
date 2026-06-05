@@ -26,6 +26,8 @@
 (defconst skroad--max-file-name-bytes 253
   "Max bytes permitted in file name.  (Leaves room for lock file suffixes).")
 
+(defconst skroad--log-node-prefix "@" "Prefix character denoting a log node.")
+
 ;;; Fonts. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--floating-title-enable t
@@ -968,7 +970,7 @@ touched lines are marked stale via `fontified' so redisplay refreshes them."
      (let ((start (match-beginning 0))
            (end (match-end 0))
            (payload (funcall get-unescaped-payload)))
-       (if (funcall validate payload) ;; If there's a validator, validate it
+       (if (funcall validate payload) ;; If there's a validator, use it
            (let* ((zone (gensym))
                   (props
                    (list 'category type-name
@@ -991,7 +993,7 @@ touched lines are marked stale via `fontified' so redisplay refreshes them."
              (when hide-escapes
                (skroad--hide-escape-slashes start end))
              (add-face-text-property start end add-face))
-         ;; Not valid per the validator:
+         ;; Invalid: highlight with the invalidity face
          (add-face-text-property start end 'skroad--invalid-text-face)
          )))
   :use 'skroad--text-mixin-regexp-rendered
@@ -1315,7 +1317,7 @@ Also execute the following text type actions (unless NO-ACTIONS) :
                         (skroad--index-delta type-index payload count
                                              t create-action 'on-destroy)))
                    (unless (or (null action) no-actions)
-                     (skroad--defer
+                     (skroad--defer ;; TODO!!!
                       (skroad--type-action text-type action origin payload)))))
              type-changes)
             (clrhash type-changes) ;; Empty the type's pending change index
@@ -1550,6 +1552,15 @@ If there are any, return the count; otherwise return nil."
   (let ((index (alist-get text-type (skroad--buf-indices))))
     (or (and index (hash-table-count index)) 0)))
 
+(defun skroad--current-indices-any-p (text-type pred)
+  "Determine whether PRED is true on some indexed payload of TEXT-TYPE."
+  (when-let* ((index (alist-get text-type (skroad--buf-indices))))
+    (catch 'found
+      (maphash (lambda (k _v)
+                 (when (funcall pred k)
+                   (throw 'found k)))
+               index))))
+
 ;;; Atomic Text Type. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Insert a space immediately behind the atomic currently under the point.
@@ -1765,10 +1776,10 @@ disable the renamer and return nil."
 (defun skroad--node-renamer-permit (current)
   "Determine whether a node titled CURRENT is renameable."
   (cond ((skroad--node-special-p current)
-         (skroad--info "Special nodes cannot be renamed!")
+         (skroad--info "A special node cannot be renamed!")
          nil)
         ((skroad--node-log-p current)
-         (skroad--info "Log nodes cannot be renamed!")
+         (skroad--info "A log node cannot be renamed!")
          nil)
         (t t)))
 
@@ -1784,7 +1795,9 @@ disable the renamer and return nil."
          (skroad--info "'%s' is an existing node!" proposed)
          nil)
         ((skroad--node-log-p proposed)
-         (skroad--info "Cannot rename a node to a log node!")
+         (skroad--info
+          (format "The prefix '%s' is reserved for auto-created log nodes!"
+                  skroad--log-node-prefix))
          nil)
         (t
          (skroad--info
@@ -2081,18 +2094,7 @@ Must be called from a buffer containing a node."
 
 (defun skroad--buf-indices-finalize ()
   "Perform actions required after updating the current node's indices."
-  (skroad--current-node-check-orphan))
-
-(defun skroad--current-node-check-orphan ()
-  "Unless the current node is a special or log, determine its orphan status."
-  (unless (or (skroad--node-special-p) (skroad--node-log-p))
-    (skroad--node-set-orphan
-     (skroad--current-node)
-     (let ((live-link-count ;; Note that this includes live log links!
-            (skroad--current-indices-count 'skroad--text-link-node-live)))
-       (or (zerop live-link-count) ;; Is an orphan if there are no live links;
-           (= live-link-count ;; ... or if the only live links are log links.
-              (skroad--current-indices-count 'skroad--text-link-node-log)))))))
+  (skroad--current-node-check-orphaned))
 
 ;; TODO: log entry
 ;; TODO: check if we have an unreachable that can be renamed and will correspond
@@ -2120,16 +2122,16 @@ If TARGET does not exist, this is a no-op."
   (when (skroad--cache-peek target) ;; Check that target still exists
     (skroad--in-node target #'skroad--disconnect-from origin))) ;; Disconnect.
 
-(defun skroad--action-check-dead-link (origin target)
-  "Revive, if necessary, a dead link found in ORIGIN to TARGET."
-  ;; (message "dead init: origin=%s target=%s" origin target)
-  (when (and (skroad--cache-peek origin) (skroad--cache-peek target))
-    (when (or (skroad--connected-p origin target)
-              (and (skroad--connected-p target origin)
-                   (message "lint")))
-      (message "dead link in '%s' to '%s' should be revived!" origin target))
-    )
-  )
+;; (defun skroad--action-check-dead-link (origin target)
+;;   "Revive, if necessary, a dead link found in ORIGIN to TARGET."
+;;   ;; (message "dead init: origin=%s target=%s" origin target)
+;;   (when (and (skroad--cache-peek origin) (skroad--cache-peek target))
+;;     (when (or (skroad--connected-p origin target)
+;;               (and (skroad--connected-p target origin)
+;;                    (message "lint")))
+;;       (message "dead link in '%s' to '%s' should be revived!" origin target))
+;;     )
+;;   )
 
 (defun skroad--action-dead-link-init (origin target)
   "A dead link to TARGET was found to exist during the indexing of ORIGIN."
@@ -2139,6 +2141,9 @@ If TARGET does not exist, this is a no-op."
     (message "dead link in '%s' to '%s' should be revived!" origin target)
     )
   )
+
+;; [-[zoolag]-]
+;; [-[xyz]-]
 
 (defun skroad--action-dead-link-create (origin target)
   "A dead link to TARGET was first introduced into an already-indexed ORIGIN."
@@ -2200,8 +2205,9 @@ If TARGET does not exist, this is a no-op."
   :face-function
   '(lambda (payload)
      (list (cond ((skroad--node-self-p payload) 'skroad--self-link-face)
-                 ((skroad--node-stub-p payload) 'skroad--stub-link-face)
                  ((skroad--node-special-p payload) 'skroad--special-link-face)
+                 ((skroad--node-log-p payload) 'skroad--log-link-face)
+                 ((skroad--node-stub-p payload) 'skroad--stub-link-face)
                  (t 'skroad--live-link-face))
            'skroad--node-link-decor-face))
   :begins skroad--link-node-live-start-delim
@@ -2219,30 +2225,6 @@ If TARGET does not exist, this is a no-op."
   :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-atomic-delimited
   :use 'skroad--text-mixin-renameable
-  :use 'skroad--text-mixin-indexed)
-
-(defun skroad--node-log-link-filter ()
-  "Filter for live links to log nodes."
-  (and (skroad--in-node-body-p)
-       (let ((node (match-string-no-properties 1)))
-         (skroad--node-log-p node)))) ;; Must have the node log prefix
-
-(skroad--deftype skroad--text-link-node-log
-  :doc "Live link to a log node."
-  :order 101 ;; Overwrite skroad--text-link-node-live during font-lock!
-  :use 'skroad--text-atomic
-  :face 'skroad--log-link-face
-  :mouse-face 'skroad--highlight-link-face
-  :help-echo 'skroad--mouseover-node-preview ;; TODO: filter log lines for this node?
-  :payload-regex skroad--regexp-text-in-brackets
-  :visible-match-number 1
-  :on-activate #'skroad--maybe-show-node
-  :begins skroad--link-node-live-start-delim
-  :ends skroad--link-node-live-end-delim
-  :finder-filter #'skroad--node-log-link-filter
-  :validator #'skroad--link-validate
-  :use 'skroad--text-mixin-link-navigable
-  :use 'skroad--text-mixin-atomic-delimited
   :use 'skroad--text-mixin-indexed)
 
 (defun skroad--log-earlier-p (a b)
@@ -2409,13 +2391,15 @@ If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
 ;; TODO: allow teleyank into log nodes?
 (defun skroad--yank-into (node &rest yank-args)
   "Ensure that NODE exists, and yank into it.  YANK-ARGS are passed to yank."
-  (unless (or (skroad--node-special-p node) ;; Don't teleyank into special nodes
-              (skroad--node-log-p node)) ;; ... or into log nodes
+  (if (or (skroad--node-special-p node) ;; Don't teleyank into special nodes
+          (skroad--node-log-p node)) ;; ... or into log nodes
+      (skroad--info (format "Cannot teleyank to node '%s' !" node))
     (skroad--with-node node nil ;; Yank could contain links, so actions must run
       (skroad--install-yank-transformer) ;; Ensure that transformer is present
       (skroad--tail-do-before
        (apply #'yank yank-args)))
-    (skroad--log-node-revise node)))
+    (skroad--log-node-revise node)
+    (skroad--info (format "Teleyanked to node '%s'." node))))
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2701,7 +2685,7 @@ If UNIQUE is true, TEXT found to be a duplicate is simply moved to the end."
 (defun skroad--node-log-p (&optional node)
   "Return t when NODE (if not given: the current node) is a log node."
   (let ((n (or node (skroad--current-node))))
-    (and (stringp n) (string-prefix-p "@" n))))
+    (and (stringp n) (string-prefix-p skroad--log-node-prefix n))))
 
 ;; TODO: ensure current month log
 (defun skroad--log-node-op (node live op &optional unique reason)
@@ -3462,7 +3446,7 @@ will be queued for auto-deletion (see `skroad--node-set-orphan' below.)")
 
 (skroad--define-special-node skroad--special-node-orphans "#Orphans" t
   "A node with links to all known orphans (non-special nodes that have no live
-links other than to special nodes and/or to themselves.)  A node found to be an
+links to nodes other than themselves, specials, and logs.)  A node found to be
 orphan becomes a candidate for deletion (and the only nodes that may be deleted
 are orphan nodes.) A node found to be an orphan stub is auto-deleted if it is
 not currently open in any buffer; but if it is, the user is prompted first.")
@@ -3497,6 +3481,19 @@ unless the node stops being an orphan stub and then later becomes one again."
          (skroad--set-special-status node skroad--special-node-orphans status)
          status)
     (skroad--defer-orphan-stub-check node))) ;; Possible deletion
+
+(defun skroad--current-node-orphaned-p ()
+  "Determine whether the current node has become an orphan.
+The current node's indices must exist."
+  (not (skroad--current-indices-any-p
+        'skroad--text-link-node-live
+        #'(lambda (l) (not (skroad--node-log-p l))))))
+
+(defun skroad--current-node-check-orphaned ()
+  "Unless the current node is a special or log, update its saved orphan status."
+  (unless (or (skroad--node-special-p) (skroad--node-log-p))
+    (skroad--node-set-orphan
+     (skroad--current-node) (skroad--current-node-orphaned-p))))
 
 (defun skroad--prompt-delete-node (node)
   "Prompt to confirm the deletion of NODE and return the answer."
@@ -3678,8 +3675,8 @@ Warning: undo info is lost in all affected buffers!"
             (list (propertize
                    c 'face
                    (cond ((skroad--node-log-p c) 'skroad--log-link-face)
-                         ((skroad--node-stub-p c) 'skroad--stub-link-face)
                          ((skroad--node-special-p c) 'skroad--special-link-face)
+                         ((skroad--node-stub-p c) 'skroad--stub-link-face)
                          (t 'skroad--live-link-face)))
                   ""
                   (if (skroad--node-orphan-p c) " (Orphan)" "")))
