@@ -2094,7 +2094,7 @@ Must be called from a buffer containing a node."
 
 (defun skroad--buf-indices-finalize ()
   "Perform actions required after updating the current node's indices."
-  (skroad--current-node-check-orphaned))
+  (skroad--current-node-update-orphan-status))
 
 ;; TODO: log entry
 ;; TODO: check if we have an unreachable that can be renamed and will correspond
@@ -3489,7 +3489,7 @@ The current node's indices must exist."
         'skroad--text-link-node-live
         #'(lambda (l) (not (skroad--node-log-p l))))))
 
-(defun skroad--current-node-check-orphaned ()
+(defun skroad--current-node-update-orphan-status ()
   "Unless the current node is a special or log, update its saved orphan status."
   (unless (or (skroad--node-special-p) (skroad--node-log-p))
     (skroad--node-set-orphan
