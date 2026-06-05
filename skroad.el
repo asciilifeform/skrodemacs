@@ -298,7 +298,8 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
 
 (defun skroad--delete-line-if-empty ()
   "If the point is currently on an empty line, delete the line."
-  (when (and (bolp) (eolp)) (delete-line)))
+  (when (and (bolp) (eolp))
+    (delete-line)))
 
 (defun skroad--zap-match ()
   "Delete the current match, as well as the empty line which may result."
@@ -324,15 +325,18 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
     (funcall finder regexp limit t)))
 
 (defun skroad--re-foreach (regexp fn &optional filter start end)
-  "Execute FN for each match of REGEXP; optionally filtered by FILTER.
-If START and/or END are given, search only in that range.
-Return t if there were any matches, otherwise nil."
+  "Execute FN for each match of REGEXP, scanning from END (or point-max)
+back to START (or point-min); optionally filtered by FILTER.  FN must
+confine its edits to the matched text.  Return t if there were any matches."
   (save-mark-and-excursion
-    (goto-char (or start (point-min)))
-    (let (did-any)
-      (while (skroad--re-search #'re-search-forward regexp end filter)
+    (goto-char (or end (point-max)))
+    (let ((limit (or start (point-min)))
+          did-any)
+      (while (skroad--re-search #'re-search-backward regexp limit filter)
         (setq did-any t)
-        (funcall fn))
+        (let ((beg (match-beginning 0)))
+          (funcall fn)
+          (goto-char beg)))
       did-any)))
 
 (defun skroad--clean-whitespace (s)
@@ -696,6 +700,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :display-function t
   :rear-nonsticky t
   :finder-filter t
+  :validator t
   :hide-escapes nil
   :escape #'identity
   :unescape #'identity
@@ -704,8 +709,11 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
 (skroad--deftype skroad--text-mixin-findable
   :doc "Mixin for all findable text types. (Internal use only.)"
   :mixin t
-  :require '(regex-any finder-filter escape unescape)
+  :require '(regex-any finder-filter escape unescape validator)
   :defaults '((visible-match-number nil))
+  :validate
+  '(lambda (payload)
+     (or (not (functionp validator)) (funcall validator payload)))
   :find
   '(lambda (method regex &optional lim)
      (skroad--re-search method regex lim finder-filter))
@@ -715,7 +723,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   :find-any-backward
   '(lambda (&optional lim)
      (funcall find #'re-search-backward regex-any lim))
-  :for-all-in-region-forward
+  :for-all-in-region
   '(lambda (start end fn)
      (skroad--re-foreach regex-any fn finder-filter start end))
   :get-match
@@ -747,7 +755,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   '(lambda (payload)
      (funcall make-regex (rx (literal (funcall escape payload)))))
   :regex-validator '(rx bos (regexp payload-regex) eos)
-  :validate
+  :regex-validate
   '(lambda (payload)
      (string-match-p regex-validator (funcall escape payload)))
   :search
@@ -954,34 +962,38 @@ touched lines are marked stale via `fontified' so redisplay refreshes them."
 (skroad--deftype skroad--text-mixin-rendered-zoned
   :doc "Mixin for zoned text types rendered by font-lock."
   :mixin t
-  :require '(face face-function get-unescaped-payload)
+  :require '(face face-function get-unescaped-payload validate)
   :render
   '(lambda ()
-     (let* ((start (match-beginning 0))
-            (end (match-end 0))
-            (payload (funcall get-unescaped-payload))
-            (zone (gensym))
-            (props
-             (list 'category type-name
-                   'zone zone
-                   'data payload))
-            (add-face
-             (if (functionp face-function)
-                 (funcall face-function payload)
-               face)))
-       (if (facep mouse-face)
-           (plist-put props 'mouse-face (list mouse-face)) props)
-       (add-text-properties start end props)
-       (when (and (numberp visible-match-number)
-                  skroad--atomic-show-payload-only)
-         (let ((vis-start (match-beginning visible-match-number))
-               (vis-end (match-end visible-match-number)))
-           (put-text-property start vis-start 'invisible t)
-           (put-text-property vis-end end 'invisible t)
-           (setq start vis-start end vis-end)))
-       (when hide-escapes
-         (skroad--hide-escape-slashes start end))
-       (add-face-text-property start end add-face)))
+     (let ((start (match-beginning 0))
+           (end (match-end 0))
+           (payload (funcall get-unescaped-payload)))
+       (if (funcall validate payload) ;; If there's a validator, validate it
+           (let* ((zone (gensym))
+                  (props
+                   (list 'category type-name
+                         'zone zone
+                         'data payload))
+                  (add-face
+                   (if (functionp face-function)
+                       (funcall face-function payload)
+                     face)))
+             (if (facep mouse-face)
+                 (plist-put props 'mouse-face (list mouse-face)) props)
+             (add-text-properties start end props)
+             (when (and (numberp visible-match-number)
+                        skroad--atomic-show-payload-only)
+               (let ((vis-start (match-beginning visible-match-number))
+                     (vis-end (match-end visible-match-number)))
+                 (put-text-property start vis-start 'invisible t)
+                 (put-text-property vis-end end 'invisible t)
+                 (setq start vis-start end vis-end)))
+             (when hide-escapes
+               (skroad--hide-escape-slashes start end))
+             (add-face-text-property start end add-face))
+         ;; Not valid per the validator:
+         (add-face-text-property start end 'skroad--invalid-text-face)
+         )))
   :use 'skroad--text-mixin-regexp-rendered
   :use 'skroad--text-mixin-rendered)
 
@@ -1287,8 +1299,12 @@ Also execute the following text type actions (unless NO-ACTIONS) :
 `on-create': a particular payload of this type first appeared in the buffer.
 `on-init': same as above, but during initial scan (INIT-SCAN is t).
 `on-destroy': a particular payload of this type no longer appears."
-  (let ((origin (skroad--current-node)))
-    (dolist (change changes)
+  (let ((origin (skroad--current-node))
+        (changes-ordered
+         (sort changes
+               #'(lambda (a b)
+                   (<= (get (car a) 'order) (get (car b) 'order))))))
+    (dolist (change changes-ordered)
       (let ((text-type (car change)) (type-changes (cdr change)))
         (when (or init-scan (not (skroad--hash-empty-p type-changes)))
           (let* ((type-index (skroad--ensure-index indices text-type))
@@ -1367,25 +1383,37 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
 
 (defvar skroad--text-types-indexed nil "Text types subject to indexing.")
 
+(defvar skroad--text-types-indexed-sorted nil
+  "Indexed text types, sorted by priority.  Do not access directly.")
+
+(defun skroad--get-indexed-text-types ()
+  "Get the indexed text types sorted by priority."
+  (or skroad--text-types-indexed-sorted
+      (setq skroad--text-types-indexed-sorted
+            (sort skroad--text-types-indexed
+                  #'(lambda (a b) (<= (get a 'order) (get b 'order)))))))
+
 (skroad--deftype skroad--text-mixin-indexed
   :doc "Mixin for indexed text types."
   :mixin t
-  :require '(for-all-in-region-forward get-match swap-match)
-  :defaults '((index-filter nil))
+  :require '(for-all-in-region get-match swap-match validate)
+  :defaults '((index-filter t))
   :scan-region
   '(lambda (start end delta)
      (let ((pending-index
             (skroad--ensure-index skroad--buf-indices-pending type-name))
            (skroad--scan-in-progress t))
        (funcall
-        for-all-in-region-forward start end
+        for-all-in-region start end
         #'(lambda ()
             (let* ((raw-match (funcall get-match))
                    (payload (funcall get-unescaped-payload))
                    (escaped-payload (funcall escape payload)))
-              (when (or (null index-filter) (funcall index-filter payload))
+              (when (and (funcall validate payload)
+                         (or (not (functionp index-filter))
+                             (funcall index-filter payload)))
                 (skroad--index-delta pending-index payload delta))
-              ;; Try to rectify, if not removing, undoing, or already canonical:
+              ;; Rectify, if not removing, undoing, or already canonical:
               (when (and (= delta 1) (not undo-in-progress)
                          (not (string-equal raw-match escaped-payload)))
                 (if skroad--change-hook-in-progress ;; Must defer if in chg hook
@@ -1401,13 +1429,13 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
 (skroad--deftype skroad--text-mixin-pin
   :doc "Mixin for pin text types."
   :mixin t
-  :require '(for-all-in-region-forward pin-pos-fn)
+  :require '(for-all-in-region pin-pos-fn)
   :scan-region
   '(lambda (start end delta)
      (let ((pin-pos (funcall pin-pos-fn))) ;; TODO: move this into the loop
        (if (= delta 1)
            (funcall
-            for-all-in-region-forward start end
+            for-all-in-region start end
             #'(lambda ()
                 (unless (and pin-pos
                              (= (match-beginning 0)
@@ -1462,7 +1490,7 @@ called to finalize all pending changes when no further ones are expected."
         (skroad--skip-whitespace-forward end-expanded)
         (let ((start-trimmed (point)))
           (when (< start-trimmed end-expanded)
-            (dolist (text-type skroad--text-types-indexed)
+            (dolist (text-type (skroad--get-indexed-text-types))
               (funcall (get text-type 'scan-region)
                        start-trimmed end-expanded delta))))))))
 
@@ -1500,13 +1528,15 @@ These may occur if ill-behaved minor modes are in use.")
     (setq-local skroad--buf-indices-change-tracker-installed t)))
 
 (defun skroad--indices-has-p (text-type payload indices)
-  "Test whether a PAYLOAD of TEXT-TYPE exists in INDICES."
+  "Test whether a PAYLOAD of TEXT-TYPE exists in INDICES.
+If there are any, return the count; otherwise return nil."
   (let* ((index (alist-get text-type indices))
          (count (or (and index (gethash payload index)) 0)))
-    (> count 0)))
+    (and (> count 0) count)))
 
 (defun skroad--current-indices-have-p (text-type payload)
-  "Test whether a PAYLOAD of TEXT-TYPE exists in the current payload's indices."
+  "Test whether a PAYLOAD of TEXT-TYPE exists in the current payload's indices.
+If there are any, return the count; otherwise return nil."
   (skroad--indices-has-p text-type payload (skroad--buf-indices)))
 
 (defun skroad--current-indices-foreach (text-type fn &rest other-args)
@@ -1524,7 +1554,7 @@ These may occur if ill-behaved minor modes are in use.")
 
 ;; Insert a space immediately behind the atomic currently under the point.
 (defun skroad--cmd-atomic-prepend-space ()
-  "Ins.Space"
+  "InsSp"
   (interactive)
   (save-mark-and-excursion (goto-char (skroad--zone-start)) (insert " ")))
 
@@ -1546,6 +1576,7 @@ These may occur if ill-behaved minor modes are in use.")
          (funcall #',wrap-command start end)))
      (skroad--deactivate-mark)))
 
+;; TODO: don't sync link disconnects until obvious that we won't yank them back
 (skroad--define-atomics-region-cmd delete-region)
 (skroad--define-atomics-region-cmd kill-region)
 (skroad--define-atomics-region-cmd kill-ring-save)
@@ -1897,7 +1928,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 
 ;; Transform the item under the point to plain text by removing delimiters.
 (defun skroad--cmd-atomic-delimited-textify ()
-  "Textify"
+  "Text"
   (interactive)
   (skroad--with-current-zone
     (let ((text (skroad--data-at)))
@@ -1967,6 +1998,16 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
               (not (any "[]\n")))))
   "Regexp matching text that could be delimited by square brackets.")
 
+(defun skroad--link-validate (payload)
+  "Validate a proposed PAYLOAD (unescaped) representing a node link.
+If an invalid link was seen during indexing, report it to the lint."
+  (let ((valid
+         (or (skroad--cache-peek payload) ;; Already in the cache? valid!
+             (skroad--validate-node-title payload)))) ;; or actually validate.
+    (when (and (not valid) skroad--scan-in-progress)
+      (skroad--lint-report (format "Invalid link: '%s'" payload)))
+    valid))
+
 (skroad--deftype skroad--text-link-node
   :doc "Fundamental type for skroad node links (live or dead)."
   :use 'skroad--text-atomic
@@ -1977,6 +2018,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   :hide-escapes t
   :escape #'skroad--link-escaper
   :unescape #'skroad--link-unescaper
+  :validator #'skroad--link-validate
   :index-filter ;; Do not index self-links or links to special nodes
   '(lambda (node)
      (not (or (skroad--node-self-p node)
@@ -2037,15 +2079,6 @@ Must be called from a buffer containing a node."
 ;;     (skroad--link-revive node)
 ;;     (skroad--lint-report (format "Auto-revived dead link to '%s'" node))))
 
-;; (defun skroad--lint-dead-links ()
-;;   "Liven any wrongly-dead links found in the current node."
-;;   (let ((current-node (skroad--current-node)))
-;;     (skroad--current-indices-foreach
-;;      'skroad--text-link-node-dead ;; For each dead link in the current node:
-;;      #'(lambda (l)
-;;          )))
-;;     (skroad--buf-indices-sync)))
-
 (defun skroad--buf-indices-finalize ()
   "Perform actions required after updating the current node's indices."
   (skroad--current-node-check-orphan))
@@ -2063,9 +2096,9 @@ Must be called from a buffer containing a node."
 
 ;; TODO: log entry
 ;; TODO: check if we have an unreachable that can be renamed and will correspond
-(defun skroad--action-connected-on-init (origin target)
+(defun skroad--action-live-link-init (origin target)
   "A live link to TARGET was found to exist during the indexing of ORIGIN."
-  ;; (message "connected-on-init: origin=%s target=%s" origin target)
+  (message "live init: origin=%s target=%s" origin target)
   (when (skroad--cache-peek origin) ;; Check that origin still exists
     (unless (and (skroad--cache-peek target) ;; Target doesn't exist?
                  (skroad--connected-p target origin)) ;; ... or has no backlink?
@@ -2073,19 +2106,49 @@ Must be called from a buffer containing a node."
       (message "Non-reciprocal link in '%s' to '%s' disabled." origin target)))
     )
 
-(defun skroad--action-connected (origin target)
+(defun skroad--action-live-link-create (origin target)
   "A live link to TARGET was first introduced into an already-indexed ORIGIN.
 TARGET will be created if it does not exist."
-  ;; (message "connected: origin=%s target=%s" origin target)
+  (message "connected: origin=%s target=%s" origin target)
   (when (skroad--cache-peek origin) ;; Check that origin still exists
     (skroad--in-node target #'skroad--connect-to origin))) ;; Connect in target.
 
-(defun skroad--action-disconnected (origin target)
+(defun skroad--action-live-link-destroy (origin target)
   "The last instance of a live link to TARGET was removed from ORIGIN.
 If TARGET does not exist, this is a no-op."
-  ;; (message "disconnected: origin=%s target=%s" origin target)
+  (message "disconnected: origin=%s target=%s" origin target)
   (when (skroad--cache-peek target) ;; Check that target still exists
     (skroad--in-node target #'skroad--disconnect-from origin))) ;; Disconnect.
+
+(defun skroad--action-check-dead-link (origin target)
+  "Revive, if necessary, a dead link found in ORIGIN to TARGET."
+  ;; (message "dead init: origin=%s target=%s" origin target)
+  (when (and (skroad--cache-peek origin) (skroad--cache-peek target))
+    (when (or (skroad--connected-p origin target)
+              (and (skroad--connected-p target origin)
+                   (message "lint")))
+      (message "dead link in '%s' to '%s' should be revived!" origin target))
+    )
+  )
+
+(defun skroad--action-dead-link-init (origin target)
+  "A dead link to TARGET was found to exist during the indexing of ORIGIN."
+  (message "dead init: origin=%s target=%s" origin target)
+  (when (and (skroad--cache-peek origin) (skroad--cache-peek target)
+             (skroad--connected-p target origin))
+    (message "dead link in '%s' to '%s' should be revived!" origin target)
+    )
+  )
+
+(defun skroad--action-dead-link-create (origin target)
+  "A dead link to TARGET was first introduced into an already-indexed ORIGIN."
+  (message "dead create: origin=%s target=%s dist=%s" origin target
+           skroad--at-a-distance)
+  (when (and (skroad--cache-peek origin) (skroad--cache-peek target)
+             (skroad--connected-p origin target))
+    (message "new dead link in '%s' to '%s' should be revived!" origin target)
+    )
+  )
 
 ;; Yank (with optional ARGS) into a node when standing on a live link to it.
 (defun skroad--cmd-teleyank-at (&rest args)
@@ -2103,44 +2166,36 @@ If TARGET does not exist, this is a no-op."
   (interactive)
   (skroad--merge-node-into-current (skroad--data-at)))
 
+;; TODO: deleting tail links should zap any resulting empty line?
+;; TODO: make this work for selections?
+(defun skroad--cmd-banish-at (&rest _args)
+  "Banish" ;; If live link is a duplicate, self-link, or special: delete it.
+  (interactive) ;; ... but if none of the above, move it to the node's tail.
+  (skroad--buf-indices-sync) ;; Make sure this node's indices are up to date
+  (let* ((node (skroad--data-at)) ;; The live link being banished
+         (single ;; Is this the last remaining copy of an indexed live link?
+          (eq (skroad--link-has-live-p node) 1)) ;; nil for self/specials/dupes
+         (in-tail (>= (point) (skroad--after-tail-pos)))) ;; Is it in the tail?
+    (if (and single in-tail) ;; No-op if it's a single and already in the tail
+        (skroad--info "'%s' is already in the tail and has no duplicates!" node)
+      (when single ;; About to delete a single from the body?
+        (skroad--link-emplace-in-tail node) ;; ... copy it to the tail first;
+        (skroad--info "'%s' is now in the tail." node))
+      (delete-region (skroad--zone-start) (skroad--zone-end))))) ;; now delete.
+
 (defconst skroad--link-node-live-start-delim "[["
   "Delimiter indicating the start of a live Skroad link.")
 
 (defconst skroad--link-node-live-end-delim "]]"
   "Delimiter indicating the end of a live Skroad link.")
 
-(defun skroad--highlight-invalid-match (number)
-  "If in font lock, highlight match NUMBER with the `invalid' face."
-  (unless skroad--scan-in-progress ;; Only colour during fontlock
-    (with-silent-modifications
-      (add-face-text-property
-       (match-beginning number) (match-end number)
-       'skroad--invalid-text-face))))
-
-;; TODO: escapes?
-(defun skroad--node-link-filter ()
-  "Filter for all node links.  Return t when link is valid; highlight invalids."
-  (when (skroad--in-node-body-p) ;; Entirely ignore (do nothing!) when in title.
-    (or (skroad--node-special-p) ;; In specials, presume all links to be valid.
-        (let* ((node (skroad--clean-whitespace
-                      (match-string-no-properties 1))) ;; Rectify link first.
-               (valid (or (and (listp (skroad--buf-indices)) ;; Have indices?
-                               (skroad--link-has-live-p node)) ;; they have it?
-                          (skroad--cache-peek node) ;; or how about the cache?
-                          (skroad--validate-node-title node)))) ;; or validate.
-          (unless valid
-            (skroad--highlight-invalid-match 1)
-            (when skroad--scan-in-progress
-              (skroad--lint-report (format "Invalid link: '%s'" node))))
-          valid))))
-
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :order 100
   :use 'skroad--text-link-node
-  :on-init #'skroad--action-connected-on-init
-  :on-create #'skroad--action-connected
-  :on-destroy #'skroad--action-disconnected
+  :on-init #'skroad--action-live-link-init
+  :on-create #'skroad--action-live-link-create
+  :on-destroy #'skroad--action-live-link-destroy
   :on-activate #'skroad--ensure-and-show-node
   :face-function
   '(lambda (payload)
@@ -2153,13 +2208,14 @@ If TARGET does not exist, this is a no-op."
   :ends skroad--link-node-live-end-delim
   :keymap (define-keymap
             "t" #'skroad--cmd-atomic-delimited-textify
+            "b" #'skroad--cmd-banish-at
             "m" #'skroad--cmd-merge-at
             "l" #'skroad--cmd-deaden-at
             "y" #'skroad--cmd-teleyank-at ;; Official teleyank trigger
             "<remap> <yank>" #'skroad--cmd-teleyank-at ;; Regular yank also
             )
   :renamer-overlay-type 'skroad--text-node-renamer-indirect
-  :finder-filter #'skroad--node-link-filter
+  :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-atomic-delimited
   :use 'skroad--text-mixin-renameable
@@ -2184,6 +2240,7 @@ If TARGET does not exist, this is a no-op."
   :begins skroad--link-node-live-start-delim
   :ends skroad--link-node-live-end-delim
   :finder-filter #'skroad--node-log-link-filter
+  :validator #'skroad--link-validate
   :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-atomic-delimited
   :use 'skroad--text-mixin-indexed)
@@ -2227,7 +2284,7 @@ A non-log link is always emplaced at the top, just below the tail indicator."
 ;; TODO: do this in title def?
 (defun skroad--link-valid-p (string)
   "Determine whether STRING represents a valid link payload."
-  (funcall (get 'skroad--text-link-node-live 'validate) string))
+  (funcall (get 'skroad--text-link-node-live 'regex-validate) string))
 
 (defun skroad--link-maybe-jump-to-live (node)
   "Try to jump to the next live link to NODE after the point, if one exists."
@@ -2259,10 +2316,12 @@ A non-log link is always emplaced at the top, just below the tail indicator."
   (interactive)
   (skroad--link-revive (skroad--data-at)))
 
-;; TODO: on-init and on-create to verify target is gone or non-reciprocating?
 (skroad--deftype skroad--text-link-node-dead
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
+  :order 102
   :use 'skroad--text-link-node
+  :on-init #'skroad--action-dead-link-init
+  :on-create #'skroad--action-dead-link-create
   :begins "[-[" :ends "]-]"
   :face-function
   '(lambda (payload)
@@ -2275,7 +2334,7 @@ A non-log link is always emplaced at the top, just below the tail indicator."
             "<return>" #'ignore
             "l" #'skroad--cmd-liven-at
             "<mouse-1>" #'skroad--cmd-link-mouse-activate) ;; Only move point
-  :finder-filter #'skroad--node-link-filter
+  :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-atomic-delimited
   :use 'skroad--text-mixin-indexed)
 
@@ -2296,6 +2355,7 @@ A non-log link is always emplaced at the top, just below the tail indicator."
   "Remove live links to NODE (optionally, in START...END) in the current node."
   (funcall (get 'skroad--text-link-node-live 'zap) node start end))
 
+;; TODO: tail as marker?
 (defun skroad--link-unlink (node)
   "Transform all live links to NODE above the current node's tail to dead links;
 and entirely remove all live links to NODE found below the current node's tail."
@@ -2315,6 +2375,7 @@ If START/END are given, constrain the replacement to that range."
    (get 'skroad--text-link-node-live 'regen)
    node 'skroad--text-link-node-live target start end))
 
+;; TODO: tail as marker?
 (defun skroad--link-merge (victim target)
   "Merge live links to VICTIM in the current node into links to TARGET."
   (let* ((tail (skroad--tail-pos)))
@@ -2413,7 +2474,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 
 ;; Turn the URL at point into plain text by placing a space after the prefix.
 (defun skroad--cmd-bare-url-comment ()
-  "Textify"
+  "Text"
   (interactive)
   (skroad--with-current-zone
     (save-mark-and-excursion
@@ -2515,7 +2576,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 
 ;; Turn the MD URL at point into plain text by breaking it with a space
 (defun skroad--cmd-md-url-comment ()
-  "Textify"
+  "Text"
   (interactive)
   (skroad--with-current-zone
     (save-mark-and-excursion
@@ -3021,6 +3082,7 @@ If the tail did not previously exist in the current node, it is emplaced."
     (skroad--info))
   (skroad--toggle-cursor-state t))
 
+;; TODO: bug during undo of delete-line?
 (defun skroad--selector-update ()
   "Enable the selector if point is on an atomic zone; otherwise disable it."
   (let ((zone (skroad--prop-at 'zone)))
@@ -3312,7 +3374,7 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
   "Ensure that NODE (created if required) has been indexed; return its indices."
   (if (skroad--cache-indexed-p node)
       (skroad--cache-fetch node)
-    (skroad--with-node node nil (skroad--buf-indices))))
+    (skroad--with-node node nil (skroad--buf-indices)))) ;; Runs actions!
 
 (defvar skroad--special-nodes nil
   "List of all defined special nodes.  These nodes are created automatically;
@@ -3486,6 +3548,7 @@ The current node itself is not included, even if it contains self-links."
          (candidates (append outgoing-links possible-specials)))
     (seq-filter #'(lambda (n) (skroad--connected-p n node)) candidates)))
 
+;; TODO: smarter merge that preserves un-tail-ish chunks in victim's tail?
 (defun skroad--merge-node-into-current (victim)
   "Permanently merge the node VICTIM (which must exist) into the current node.
 Prompts for confirmation, since this op wipes undo info in all affected buffers!
