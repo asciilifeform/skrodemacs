@@ -2341,7 +2341,7 @@ A non-log link is always emplaced at the top, just below the tail indicator."
 (defun skroad--link-unlink (node)
   "Transform all live links to NODE above the current node's tail to dead links;
 and entirely remove all live links to NODE found below the current node's tail."
-  (let ((tail (skroad--tail-pos)))
+  (let ((tail (skroad--before-tail-pos)))
     (skroad--link-deaden node nil tail)
     (skroad--link-delete node tail)))
 
@@ -2360,7 +2360,7 @@ If START/END are given, constrain the replacement to that range."
 ;; TODO: tail as marker?
 (defun skroad--link-merge (victim target)
   "Merge live links to VICTIM in the current node into links to TARGET."
-  (let* ((tail (skroad--tail-pos)))
+  (let* ((tail (skroad--before-tail-pos)))
     (skroad--link-delete victim tail) ;; Always remove victim from tail.
     (if (skroad--link-replace victim target nil tail) ;; Replaced in body?
         (skroad--link-delete target tail) ;; ... then delete target in tail;
@@ -2877,7 +2877,7 @@ Any dead links found below the computed tail are deleted."
   (skroad--tail-jump-after)
   (goto-char (line-beginning-position)))
 
-(defun skroad--tail-pos ()
+(defun skroad--before-tail-pos ()
   "Return the position at the start of the tail."
   (save-mark-and-excursion (skroad--tail-jump-before) (point)))
 
@@ -2893,21 +2893,8 @@ Any dead links found below the computed tail are deleted."
        (ensure-empty-lines)
        ,@body
        (ensure-empty-lines)
-       (skroad--update-stub-status)
+       (skroad--current-node-update-stub-status)
        (skroad--selector-update))))
-
-(defun skroad--update-stub-status ()
-  "Determine whether the current node is a stub, and update Stubs if necessary.
-A stub is a node where only whitespace is found between the title and the tail.
-If the tail did not previously exist in the current node, it is emplaced."
-  (unless (or (skroad--node-special-p) (skroad--renamer-active-p))
-    (skroad--node-set-stub (skroad--current-node)
-                           (save-mark-and-excursion
-                             (skroad--tail-jump-before)
-                             (let ((before-tail (point)))
-                               (skroad--goto-node-body-start)
-                               (skroad--skip-whitespace-forward)
-                               (eq (point) before-tail))))))
 
 ;; Tail text highlighting. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2968,7 +2955,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (save-mark-and-excursion
     (skroad--goto-node-body-start)
     (string-trim
-     (buffer-substring-no-properties (point) (skroad--tail-pos)))))
+     (buffer-substring-no-properties (point) (skroad--before-tail-pos)))))
 
 (defun skroad--cmd-title-kill-ring-save ()
   "Save the current node's title, transformed to a live link, to the kill ring."
@@ -3093,8 +3080,8 @@ If the tail did not previously exist in the current node, it is emplaced."
   "If mark is inactive, return point P; otherwise, return a constrained P."
   (if mark-active
     (let ((m (mark)))
-      (if (< m (skroad--tail-pos)) ;; Mark is above the tail
-          (min (max p (skroad--node-body-start)) (skroad--tail-pos))
+      (if (< m (skroad--before-tail-pos)) ;; Mark is above the tail
+          (min (max p (skroad--node-body-start)) (skroad--before-tail-pos))
         (max p (skroad--after-tail-pos)))) ;; Mark is below the tail
     p)) ;; No mark
 
@@ -3144,7 +3131,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--do-deferred-replacements)
   (skroad--buf-indices-sync)
   (skroad--fontify-current-line)
-  ;; (skroad--update-stub-status)
+  ;; (skroad--current-node-update-stub-status)
   (unless (skroad--renamer-active-p)
     (unless (and isearch-mode (not (use-region-p)))
       (skroad--point-zone-handler skroad--buf-pre-command-point-state))
@@ -3254,7 +3241,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (skroad--deactivate-mark) ;; Zap spurious mark from opening links via mouse
   (skroad--set-writability) ;; If special node, open it as read-only
   (skroad--cache-intern (skroad--current-node)) ;; TODO?
-  (skroad--update-stub-status) ;; TODO: do we want this here?
+  (skroad--current-node-update-stub-status) ;; TODO: do we want this here?
   (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
   (skroad--skip-whitespace-forward)
   (skroad--init-font-lock)
@@ -3473,6 +3460,21 @@ not currently open in any buffer; but if it is, the user is prompted first.")
       (skroad--defer-orphan-stub-check node)) ;; Possible deletion
     (skroad--request-refontify))) ;; Schedule a refontification.
 
+(defun skroad--current-node-stubbed-p ()
+  "Determine whether the current node is presently a stub.
+A stub is a node where only whitespace is found between the title and the tail.
+If the tail did not previously exist in the current node, it is emplaced."
+  (save-mark-and-excursion
+    (skroad--goto-node-body-start)
+    (skroad--skip-whitespace-forward)
+    (= (point) (skroad--before-tail-pos))))
+
+(defun skroad--current-node-update-stub-status ()
+  "Update the current node's saved stub status.  No-op when renamer is active."
+  (unless (skroad--renamer-active-p)
+    (skroad--node-set-stub
+     (skroad--current-node) (skroad--current-node-stubbed-p))))
+
 (defun skroad--node-set-orphan (node status)
   "Set the orphan STATUS of NODE.  If it became an orphan stub, try deleting it.
 If deletion is blocked, no new auto-deletion attempt will be made until and
@@ -3483,7 +3485,7 @@ unless the node stops being an orphan stub and then later becomes one again."
     (skroad--defer-orphan-stub-check node))) ;; Possible deletion
 
 (defun skroad--current-node-orphaned-p ()
-  "Determine whether the current node has become an orphan.
+  "Determine whether the current node is presently an orphan.
 The current node's indices must exist."
   (not (skroad--current-indices-any-p
         'skroad--text-link-node-live
@@ -3658,7 +3660,7 @@ Warning: undo info is lost in all affected buffers!"
               (skroad--cache-invalidate node) ;; Zap existing indices
               (skroad--with-node node t ;; TODO: permit actions???
                 (skroad--rectify-node-title)
-                (skroad--update-stub-status)
+                (skroad--current-node-update-stub-status)
                 (skroad--clear-buf-undo-info)
                 )))))
       (skroad--defer
