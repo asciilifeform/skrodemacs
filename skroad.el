@@ -1547,10 +1547,10 @@ If there are any, return the count; otherwise return nil."
     (when index
       (maphash #'(lambda (key _val) (apply fn (cons key other-args))) index))))
 
-(defun skroad--current-indices-count (text-type)
-  "Return the number of unique payloads of TEXT-TYPE in the current indices."
-  (let ((index (alist-get text-type (skroad--buf-indices))))
-    (or (and index (hash-table-count index)) 0)))
+;; (defun skroad--current-indices-count (text-type)
+;;   "Return the number of unique payloads of TEXT-TYPE in the current indices."
+;;   (let ((index (alist-get text-type (skroad--buf-indices))))
+;;     (or (and index (hash-table-count index)) 0)))
 
 (defun skroad--current-indices-any-p (text-type pred)
   "Determine whether PRED is true on some indexed payload of TEXT-TYPE."
@@ -2300,7 +2300,7 @@ A non-log link is always emplaced at the top, just below the tail indicator."
 
 (skroad--deftype skroad--text-link-node-dead
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
-  :order 102
+  :order 101
   :use 'skroad--text-link-node
   :on-init #'skroad--action-dead-link-init
   :on-create #'skroad--action-dead-link-create
