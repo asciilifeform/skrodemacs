@@ -2727,20 +2727,6 @@ REASON, if given, is a comment describing the cause of the operation."
     (setq-local skroad--buf-tail-marker (and pos (copy-marker pos)))
     ))
 
-;; TODO: any insert of tail indicator should supercede the old?
-(defun skroad--node-tail-filter ()
-  "Finder filter for the node tail."
-  (let ((p (point)))
-    (when (skroad--in-node-body-p p)
-      t
-      ;; (cond ((or (null skroad--buf-tail-marker)
-      ;;            (<= p skroad--buf-tail-marker))
-      ;;        (skroad--set-tail-marker p)
-      ;;        t)
-      ;;       (t (skroad--highlight-invalid-match 0)
-      ;;          nil))
-      )))
-
 (skroad--deftype skroad--text-node-tail
   :doc "Node tail indicator."
   :use 'skroad--text-atomic
@@ -2748,7 +2734,7 @@ REASON, if given, is a comment describing the cause of the operation."
   :help-echo "Node tail."
   :match-number 0
   :regex-any skroad--node-tail-regexp
-  :finder-filter #'skroad--node-tail-filter
+  :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-rendered-zoned
   )
