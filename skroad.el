@@ -2301,7 +2301,7 @@ If TARGET does not exist, this is a no-op."
   "Remove live links to NODE (optionally, in START...END) in the current node."
   (funcall (get 'skroad--text-link-node-live 'zap) node start end))
 
-(defun skroad--link-delete-from-tail (node)
+(defun skroad--link-delete-in-tail (node)
   "Delete all instances of the link to NODE from the current node's tail."
   (skroad--link-delete node (skroad--after-tail-pos)))
 
@@ -2309,29 +2309,29 @@ If TARGET does not exist, this is a no-op."
   "Transform all live links to NODE above the current node's tail to dead links;
 and entirely remove all live links to NODE found below the current node's tail."
   (skroad--link-deaden node nil (skroad--before-tail-pos))
-  (skroad--link-delete-from-tail node)
+  (skroad--link-delete-in-tail node))
 
 (defun skroad--link-revive (node)
   "Transform all dead links to NODE in the current node to live links."
   (funcall
    (get 'skroad--text-link-node-dead 'regen) node 'skroad--text-link-node-live))
 
-(defun skroad--link-replace (node target &optional start end)
-  "Replace live links to NODE in the current node with links to TARGET.
+(defun skroad--link-replace (old new &optional start end)
+  "Replace live links to OLD in the current node with live links to NEW.
 If START/END are given, constrain the replacement to that range."
   (funcall
    (get 'skroad--text-link-node-live 'regen)
-   node 'skroad--text-link-node-live target start end))
+   old 'skroad--text-link-node-live new start end))
 
-(defun skroad--link-replace-in-body (node target)
-  "Replace live links to NODE in the current node's body with links to TARGET."
-  (skroad--link-replace node target nil (skroad--before-tail-pos)))
+(defun skroad--link-replace-in-body (old new)
+  "Replace live links to OLD in the current node's body with live links to NEW."
+  (skroad--link-replace old new nil (skroad--before-tail-pos)))
 
 (defun skroad--link-merge (victim target)
   "Merge live links to VICTIM in the current node into links to TARGET."
-  (skroad--link-delete-from-tail victim) ;; Always remove victim from tail.
+  (skroad--link-delete-in-tail victim) ;; Always remove victim from tail.
   (if (skroad--link-replace-in-body victim target) ;; Replaced in body?
-      (skroad--link-delete-from-tail target) ;; ... delete target in tail;
+      (skroad--link-delete-in-tail target) ;; ... delete target in tail;
     (skroad--connect-to target))) ;; ... if not, ensure a link to target.
 
 (defun skroad--revive-to (node)
