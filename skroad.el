@@ -3479,7 +3479,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   "Set the orphan STATUS of NODE.  If it became an orphan stub, try deleting it.
 If deletion is blocked, no new auto-deletion attempt will be made until and
 unless the node stops being an orphan stub and then later becomes one again,
-or until a lint is performed while the node is not visible in a buffer."
+or until a lint is performed (node will be silently deleted unless open.)"
   (when (and
          (skroad--set-special-status node skroad--special-node-orphans status)
          status)
