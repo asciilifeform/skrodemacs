@@ -2228,40 +2228,6 @@ If TARGET does not exist, this is a no-op."
   :use 'skroad--text-mixin-renameable
   :use 'skroad--text-mixin-indexed)
 
-(defun skroad--log-earlier-p (a b)
-  "Return non-nil if date string A represents an earlier date than B.
-Unparseable strings are treated as earlier than parseable ones,
-and equal to each other.  Never signals an error."
-  (let ((da (ignore-errors (date-to-day a)))
-        (db (ignore-errors (date-to-day b))))
-    (cond
-     ((and da db) (< da db))
-     (db t)
-     (t nil))))
-
-(defun skroad--link-emplace-in-tail (node)
-  "Emplace a link to NODE in the tail of the current node.
-If NODE is a log, and the first such link in the tail, it goes at the bottom;
-If there were other log links in the tail, it goes in chronological order.
-A non-log link is always emplaced at the top, just below the tail indicator."
-  (save-mark-and-excursion
-    (let ((tail (skroad--after-tail-pos)))
-      (cond ((skroad--node-log-p node)
-             (goto-char (point-max))
-             (skroad--skip-whitespace-backward tail)
-             (while (and
-                     (funcall
-                      (get 'skroad--text-link-node-live 'find-any-backward)
-                      tail)
-                     (if (skroad--log-earlier-p
-                          node (match-string-no-properties 1))
-                         (goto-char (match-beginning 0))
-                       (goto-char (match-end 0))
-                       nil))))
-            (t (goto-char tail)))
-      (insert "\n")
-      (skroad--link-insert-live node))))
-
 ;; TODO: do this in title def?
 (defun skroad--link-valid-p (string)
   "Determine whether STRING represents a valid link payload."
@@ -2686,6 +2652,17 @@ If UNIQUE is true, TEXT found to be a duplicate is simply moved to the end."
   (let ((n (or node (skroad--current-node))))
     (and (stringp n) (string-prefix-p skroad--log-node-prefix n))))
 
+(defun skroad--log-earlier-p (a b)
+  "Return non-nil if date string A represents an earlier date than B.
+Unparseable strings are treated as earlier than parseable ones,
+and equal to each other.  Never signals an error."
+  (let ((da (ignore-errors (date-to-day a)))
+        (db (ignore-errors (date-to-day b))))
+    (cond
+     ((and da db) (< da db))
+     (db t)
+     (t nil))))
+
 ;; TODO: ensure current month log
 (defun skroad--log-node-op (node live op &optional unique reason)
   "Record an OP on NODE (if LIVE: emplace live link) to the current log.
@@ -2849,6 +2826,29 @@ Any dead links found below the computed tail are deleted."
        (ensure-empty-lines)
        (skroad--current-node-update-stub-status)
        (skroad--selector-update))))
+
+(defun skroad--link-emplace-in-tail (node)
+  "Emplace a link to NODE in the tail of the current node.
+If NODE is a log, and the first such link in the tail, it goes at the bottom;
+If there were other log links in the tail, it goes in chronological order.
+A non-log link is always emplaced at the top, just below the tail indicator."
+  (save-mark-and-excursion
+    (let ((tail-start (skroad--after-tail-pos)))
+      (cond ((skroad--node-log-p node) ;; A log link?
+             (goto-char (point-max))
+             (skroad--skip-whitespace-backward tail-start)
+             (while (and
+                     (funcall
+                      (get 'skroad--text-link-node-live 'find-any-backward)
+                      tail-start)
+                     (if (skroad--log-earlier-p
+                          node (match-string-no-properties 1))
+                         (goto-char (match-beginning 0))
+                       (goto-char (match-end 0))
+                       nil))))
+            (t (goto-char tail-start))) ;; An ordinary link?
+      (insert "\n")
+      (skroad--link-insert-live node))))
 
 ;; Tail text highlighting. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
