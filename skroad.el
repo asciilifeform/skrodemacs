@@ -2180,9 +2180,8 @@ If TARGET does not exist, this is a no-op."
   (skroad--buf-indices-sync) ;; Make sure this node's indices are up to date
   (let* ((node (skroad--data-at)) ;; The live link being banished
          (single ;; Is this the last remaining copy of an indexed live link?
-          (eq (skroad--link-has-live-p node) 1)) ;; nil for self/specials/dupes
-         (in-tail (>= (point) (skroad--after-tail-pos)))) ;; Is it in the tail?
-    (if (and single in-tail) ;; No-op if it's a single and already in the tail
+          (eq (skroad--link-has-live-p node) 1))) ;; nil for self/specials/dupes
+    (if (and single (skroad--in-tail-p)) ;; No-op if it's a single in the tail
         (skroad--info "'%s' is already in the tail and has no duplicates!" node)
       (when single ;; About to delete a single from the body?
         (skroad--link-emplace-in-tail node) ;; ... copy it to the tail first;
@@ -2302,13 +2301,15 @@ If TARGET does not exist, this is a no-op."
   "Remove live links to NODE (optionally, in START...END) in the current node."
   (funcall (get 'skroad--text-link-node-live 'zap) node start end))
 
-;; TODO: tail as marker?
+(defun skroad--link-delete-from-tail (node)
+  "Delete all instances of the link to NODE from the current node's tail."
+  (skroad--link-delete node (skroad--after-tail-pos)))
+
 (defun skroad--link-unlink (node)
   "Transform all live links to NODE above the current node's tail to dead links;
 and entirely remove all live links to NODE found below the current node's tail."
-  (let ((tail (skroad--before-tail-pos)))
-    (skroad--link-deaden node nil tail)
-    (skroad--link-delete node tail)))
+  (skroad--link-deaden node nil (skroad--before-tail-pos))
+  (skroad--link-delete-from-tail node)
 
 (defun skroad--link-revive (node)
   "Transform all dead links to NODE in the current node to live links."
@@ -2322,14 +2323,16 @@ If START/END are given, constrain the replacement to that range."
    (get 'skroad--text-link-node-live 'regen)
    node 'skroad--text-link-node-live target start end))
 
-;; TODO: tail as marker?
+(defun skroad--link-replace-in-body (node target)
+  "Replace live links to NODE in the current node's body with links to TARGET."
+  (skroad--link-replace node target nil (skroad--before-tail-pos)))
+
 (defun skroad--link-merge (victim target)
   "Merge live links to VICTIM in the current node into links to TARGET."
-  (let* ((tail (skroad--before-tail-pos)))
-    (skroad--link-delete victim tail) ;; Always remove victim from tail.
-    (if (skroad--link-replace victim target nil tail) ;; Replaced in body?
-        (skroad--link-delete target tail) ;; ... then delete target in tail;
-      (skroad--connect-to target)))) ;; ... if not, ensure a link to target.
+  (skroad--link-delete-from-tail victim) ;; Always remove victim from tail.
+  (if (skroad--link-replace-in-body victim target) ;; Replaced in body?
+      (skroad--link-delete-from-tail target) ;; ... delete target in tail;
+    (skroad--connect-to target))) ;; ... if not, ensure a link to target.
 
 (defun skroad--revive-to (node)
   "If the current node has at least one dead link to NODE, revive that link.
@@ -2815,6 +2818,10 @@ Any dead links found below the computed tail are deleted."
 (defun skroad--after-tail-pos ()
   "Return the position immediately below the tail."
   (save-mark-and-excursion (skroad--tail-jump-after) (point)))
+
+(defun skroad--in-tail-p ()
+  "Determine whether the point is currently inside the tail."
+  (>= (point) (skroad--after-tail-pos)))
 
 (defmacro skroad--tail-do-before (&rest body)
   "Run BODY in a space created above the tail."
