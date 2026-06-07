@@ -2245,9 +2245,7 @@ If NODE is a log, and the first such link in the tail, it goes at the bottom;
 If there were other log links in the tail, it goes in chronological order.
 A non-log link is always emplaced at the top, just below the tail indicator."
   (save-mark-and-excursion
-    (let ((tail (save-mark-and-excursion
-                  (skroad--tail-jump-after)
-                  (point))))
+    (let ((tail (skroad--after-tail-pos)))
       (cond ((skroad--node-log-p node)
              (goto-char (point-max))
              (skroad--skip-whitespace-backward tail)
@@ -2261,7 +2259,7 @@ A non-log link is always emplaced at the top, just below the tail indicator."
                        (goto-char (match-end 0))
                        nil))))
             (t (goto-char tail)))
-      (newline)
+      (insert "\n")
       (skroad--link-insert-live node))))
 
 ;; TODO: do this in title def?
@@ -2610,7 +2608,7 @@ See e.g. `skroad--merge-node-into-current'."
 (defun skroad--atomic-comment-insert (text)
   "Insert TEXT as an atomic comment at the current point."
   (insert (funcall (get 'skroad--text-atomic-comment 'generate) text))
-  (newline))
+  (insert "\n"))
 
 ;; Timestamps. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2670,9 +2668,9 @@ If UNIQUE is true, TEXT found to be a duplicate is simply moved to the end."
   (skroad--goto-node-body-start)
   (let ((now (skroad--current-date-string)))
     (unless (funcall (get 'skroad--text-timestamp 'search) now)
-      (newline)
+      (insert "\n")
       (insert (funcall (get 'skroad--text-timestamp 'generate) now))
-      (newline)))
+      (insert "\n")))
   (let ((day-bottom
          (copy-marker (or (skroad--timestamp-find-forward) (point-max))))
         (log-line (concat text "\n")))
@@ -2901,7 +2899,7 @@ Any dead links found below the computed tail are deleted."
     (save-mark-and-excursion
       (goto-char (point-min))
       (insert new-title)
-      (newline)
+      (insert "\n")
       (skroad--fontify-current-line)
       (delete-region (point) (progn (forward-line 1) (point))))))
 
@@ -3541,7 +3539,7 @@ After all of this, the VICTIM is permanently deleted."
              (setq import-start (point))
              (insert victim-body)
              (setq import-end (point))
-             (newline)
+             (insert "\n")
              (skroad--atomic-comment-insert
               (format "End merged body of node '%s'" victim)))
             ;; Fix self-links of the victim in the imported body:
