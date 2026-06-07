@@ -3720,16 +3720,18 @@ Warning: undo info is lost in all affected buffers!"
 (defun skroad--cmd-top-gt ()
   "If there is a region, increase its quote level; otherwise insert `>'."
   (interactive)
-  (if (use-region-p)
-      (skroad--quote-region (region-beginning) (region-end))
-    (insert ">")))
+  (unless (skroad--in-node-title-p)
+    (if (use-region-p)
+        (skroad--quote-region (region-beginning) (region-end))
+      (insert ">"))))
 
 (defun skroad--cmd-top-lt ()
   "If there is a region, decrease its quote level; otherwise insert `<'."
   (interactive)
-  (if (use-region-p)
-      (skroad--unquote-region (region-beginning) (region-end))
-    (insert "<")))
+  (unless (skroad--in-node-title-p)
+    (if (use-region-p)
+        (skroad--unquote-region (region-beginning) (region-end))
+      (insert "<"))))
 
 (defun skroad--cmd-top-find-node ()
   "Find and open a Skroad node using the minibuffer."
