@@ -382,7 +382,7 @@ confine its edits to the matched text.  Return t if there were any matches."
   (goto-char (point-min))
   (forward-line 1))
 
-(defun skroad--node-body-start () ;; TODO: memoize
+(defun skroad--node-body-start-pos () ;; TODO: memoize
   "Return the position where the current node's body begins."
   (save-mark-and-excursion (skroad--goto-node-body-start) (point)))
 
@@ -2179,7 +2179,7 @@ If TARGET does not exist, this is a no-op."
     (if (and single (skroad--in-tail-p)) ;; No-op if it's a single in the tail
         (skroad--info "'%s' is already in the tail and has no duplicates!" node)
       (when single ;; About to delete a single from the body?
-        (skroad--link-emplace-in-tail node) ;; ... copy it to the tail first;
+        (skroad--link-insert-live-in-tail node) ;; ... copy to the tail first;
         (skroad--info "'%s' is now in the tail." node))
       (delete-region (skroad--zone-start) (skroad--zone-end))))) ;; now delete.
 
@@ -2298,12 +2298,12 @@ If TARGET does not exist, this is a no-op."
 
 (defun skroad--link-delete-in-tail (node)
   "Delete all live links to NODE from the current node's tail."
-  (skroad--link-delete node (skroad--after-tail-pos)))
+  (skroad--link-delete node (skroad--node-tail-start-pos)))
 
 (defun skroad--link-unlink (node)
   "Live links to NODE in the current node's body are deadened;
 Any such links found in its tail are simply deleted."
-  (skroad--link-deaden node nil (skroad--before-tail-pos))
+  (skroad--link-deaden node nil (skroad--node-body-end-pos))
   (skroad--link-delete-in-tail node))
 
 (defun skroad--link-revive (node)
@@ -2320,7 +2320,7 @@ If START/END are given, constrain the replacement to that range."
 
 (defun skroad--link-replace-in-body (old new)
   "Replace live links to OLD in the current node's body with live links to NEW."
-  (skroad--link-replace old new nil (skroad--before-tail-pos)))
+  (skroad--link-replace old new nil (skroad--node-body-end-pos)))
 
 (defun skroad--link-merge (victim target)
   "Merge live links to VICTIM in the current node into links to TARGET."
@@ -2341,7 +2341,7 @@ If it had dead links to NODE, liven them; else, emplace a link in the tail."
   (unless (skroad--node-self-p node) ;; May not connect to self
     (or (skroad--link-has-live-p node) ;; Already has a live link to node?
         (skroad--revive-to node) ;; Try reviving any dead links to node
-        (skroad--link-emplace-in-tail node)))) ;; ... Or emplace a new link.
+        (skroad--link-insert-live-in-tail node)))) ;; ... Or emplace a new link.
 
 (defun skroad--disconnect-from (node &optional delete-all)
   "Ensure that the current node does NOT have any live links to NODE.
@@ -2804,17 +2804,17 @@ Any dead links found below the computed tail are deleted."
   (skroad--tail-jump-after)
   (goto-char (line-beginning-position)))
 
-(defun skroad--before-tail-pos ()
-  "Return the position at the start of the tail."
+(defun skroad--node-body-end-pos ()
+  "Return the end position of the current node's body (the tail indicator)."
   (save-mark-and-excursion (skroad--tail-jump-before) (point)))
 
-(defun skroad--after-tail-pos ()
-  "Return the position immediately below the tail."
+(defun skroad--node-tail-start-pos ()
+  "Return the start position of the current node's tail (after tail indicator)."
   (save-mark-and-excursion (skroad--tail-jump-after) (point)))
 
 (defun skroad--in-tail-p ()
   "Determine whether the point is currently inside the tail."
-  (>= (point) (skroad--after-tail-pos)))
+  (>= (point) (skroad--node-tail-start-pos)))
 
 (defmacro skroad--tail-do-before (&rest body)
   "Run BODY in a space created above the tail."
@@ -2827,13 +2827,13 @@ Any dead links found below the computed tail are deleted."
        (skroad--current-node-update-stub-status)
        (skroad--selector-update))))
 
-(defun skroad--link-emplace-in-tail (node)
+(defun skroad--link-insert-live-in-tail (node)
   "Emplace a link to NODE in the tail of the current node.
-If NODE is a log, and the first such link in the tail, it goes at the bottom;
+If NODE is a log, and the tail has no other log links, it goes at the bottom;
 If there were other log links in the tail, it goes in chronological order.
 A non-log link is always emplaced at the top, just below the tail indicator."
   (save-mark-and-excursion
-    (let ((tail-start (skroad--after-tail-pos)))
+    (let ((tail-start (skroad--node-tail-start-pos)))
       (cond ((skroad--node-log-p node) ;; A log link?
              (goto-char (point-max))
              (skroad--skip-whitespace-backward tail-start)
@@ -2909,7 +2909,7 @@ A non-log link is always emplaced at the top, just below the tail indicator."
   (save-mark-and-excursion
     (skroad--goto-node-body-start)
     (string-trim
-     (buffer-substring-no-properties (point) (skroad--before-tail-pos)))))
+     (buffer-substring-no-properties (point) (skroad--node-body-end-pos)))))
 
 (defun skroad--cmd-title-kill-ring-save ()
   "Save the current node's title, transformed to a live link, to the kill ring."
@@ -3034,9 +3034,10 @@ A non-log link is always emplaced at the top, just below the tail indicator."
   "If mark is inactive, return point P; otherwise, return a constrained P."
   (if mark-active
     (let ((m (mark)))
-      (if (< m (skroad--before-tail-pos)) ;; Mark is above the tail
-          (min (max p (skroad--node-body-start)) (skroad--before-tail-pos))
-        (max p (skroad--after-tail-pos)))) ;; Mark is below the tail
+      (if (< m (skroad--node-body-end-pos)) ;; Mark is above the tail
+          (min (max p (skroad--node-body-start-pos))
+               (skroad--node-body-end-pos))
+        (max p (skroad--node-tail-start-pos)))) ;; Mark is below the tail
     p)) ;; No mark
 
 (defun skroad--point-zone-handler (prev)
@@ -3333,7 +3334,7 @@ If ALLOW-INDEX is false, do not track changes or maintain indices for the node."
   (when (skroad--node-special-p node)
     (skroad--with-node node t
       (skroad--change-internal-title node)
-      (delete-region (skroad--after-tail-pos) (point-max))
+      (delete-region (skroad--node-tail-start-pos) (point-max))
       )))
 
 (defun skroad--connected-p (origin &optional node)
@@ -3421,7 +3422,7 @@ If the tail did not previously exist in the current node, it is emplaced."
   (save-mark-and-excursion
     (skroad--goto-node-body-start)
     (skroad--skip-whitespace-forward)
-    (= (point) (skroad--before-tail-pos))))
+    (= (point) (skroad--node-body-end-pos))))
 
 (defun skroad--current-node-update-stub-status ()
   "Update the current node's saved stub status.  No-op when renamer is active."
@@ -3760,7 +3761,7 @@ Warning: undo info is lost in all affected buffers!"
 (defun skroad--cmd-top-goto-tail ()
   "Top-level jump-to-tail."
   (interactive)
-  (goto-char (skroad--after-tail-pos)))
+  (goto-char (skroad--node-tail-start-pos)))
 
 (defun skroad--cmd-top-toggle-atomic-text-hiding ()
   "Toggle non-match text hiding in atomics having a `visible-match-number'."
