@@ -3478,7 +3478,8 @@ If the tail did not previously exist in the current node, it is emplaced."
 (defun skroad--node-set-orphan (node status)
   "Set the orphan STATUS of NODE.  If it became an orphan stub, try deleting it.
 If deletion is blocked, no new auto-deletion attempt will be made until and
-unless the node stops being an orphan stub and then later becomes one again."
+unless the node stops being an orphan stub and then later becomes one again,
+or until lint is performed (orphan stubs are silently deleted during a lint.)"
   (when (and
          (skroad--set-special-status node skroad--special-node-orphans status)
          status)
@@ -3488,8 +3489,8 @@ unless the node stops being an orphan stub and then later becomes one again."
   "Determine whether the current node is presently an orphan.
 The current node's indices must exist."
   (not (skroad--current-indices-any-p
-        'skroad--text-link-node-live
-        #'(lambda (l) (not (skroad--node-log-p l))))))
+        'skroad--text-link-node-live ;; If indices have live links: not orphan
+        #'(lambda (l) (not (skroad--node-log-p l)))))) ;; Log links don't count
 
 (defun skroad--current-node-update-orphan-status ()
   "Unless the current node is a special or log, update its saved orphan status."
