@@ -2637,9 +2637,7 @@ If UNIQUE is true, TEXT found to be a duplicate is simply moved to the end."
   (skroad--goto-node-body-start)
   (let ((now (skroad--current-date-string)))
     (unless (funcall (get 'skroad--text-timestamp 'search) now)
-      (insert "\n")
-      (insert (funcall (get 'skroad--text-timestamp 'generate) now))
-      (insert "\n")))
+      (insert "\n" (funcall (get 'skroad--text-timestamp 'generate) now) "\n")))
   (let ((day-bottom
          (copy-marker (or (skroad--timestamp-find-forward) (point-max))))
         (log-line (concat text "\n")))
