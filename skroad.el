@@ -496,6 +496,7 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
   "Save the current node."
   (when (and buffer-file-name
              (not (skroad--renamer-active-p)))
+    (setq-local require-final-newline t) ;; Insert final newline if absent
     (save-buffer)))
 
 (defun skroad--mv-file (old-file new-file &optional overwrite)
@@ -2748,15 +2749,11 @@ REASON, if given, is a comment describing the cause of the operation."
 (defvar-local skroad--buf-tail-marker nil
   "Marker which points after the current node's tail, if known.")
 
-;; (defvar-local skroad--buf-tail-needs-refresh nil
-;;   "If true, the tail needs to be set in the current buffer.")
-
 (defun skroad--set-tail-marker (pos)
   "Use POS (which may be nil) as a possibly-new position of the tail marker."
   (unless (eq skroad--buf-tail-marker pos)
     ;; (message "setting new tail: %s" pos)
     (setq-local skroad--buf-tail-marker (and pos (copy-marker pos)))
-    ;; (setq-local skroad--buf-tail-needs-refresh t)
     ))
 
 ;; TODO: any insert of tail indicator should supercede the old?
@@ -2773,28 +2770,6 @@ REASON, if given, is a comment describing the cause of the operation."
       ;;          nil))
       )))
 
-;; (defun skroad--tail-indicator-breaking (&rest _args)
-;;   "Triggered when an active tail indicator may have been disturbed."
-;;   (unless (and (markerp skroad--buf-tail-marker)
-;;                (save-excursion
-;;                  (goto-char skroad--buf-tail-marker)
-;;                  (beginning-of-line)
-;;                  (looking-at-p skroad--node-tail-regexp)))
-;;     (message "breaking tail")
-;;     (skroad--set-tail-marker nil)))
-
-;; (defun skroad--action-tail-create (origin _tail)
-;;   (message "tail found in '%s'" origin)
-;;   (message "possible pos: %s" (match-beginning 0))
-;;   )
-
-;; (defun skroad--action-tail-destroy (origin _tail)
-;;   (message "tail destroyed in '%s'" origin)
-;;   )
-
-;; skroad--text-mixin-pin
-
-
 (skroad--deftype skroad--text-node-tail
   :doc "Node tail indicator."
   :use 'skroad--text-atomic
@@ -2802,29 +2777,10 @@ REASON, if given, is a comment describing the cause of the operation."
   :help-echo "Node tail."
   :match-number 0
   :regex-any skroad--node-tail-regexp
-
-  ;; :on-init #'skroad--action-tail-create
-  ;; :on-create #'skroad--action-tail-create
-  ;; :on-destroy #'skroad--action-tail-destroy
-  
-  ;; :modification-hooks '(list 'skroad--tail-indicator-breaking)
-  ;; :insert-in-front-hooks '(list 'skroad--tail-indicator-breaking)
-  ;; :insert-behind-hooks '(list 'skroad--tail-indicator-breaking)
   :finder-filter #'skroad--node-tail-filter
   :use 'skroad--text-mixin-findable
   :use 'skroad--text-mixin-rendered-zoned
-  ;; :use 'skroad--text-mixin-indexed
   )
-
-;; (defun skroad--post-cmd-refresh-tail ()
-;;   "Called from post-command hook.  Set a new tail, if required."
-;;   (when skroad--buf-tail-needs-refresh
-;;     (save-mark-and-excursion
-;;       (skroad--tail-jump-after)
-;;       (let ((inhibit-modification-hooks t))
-;;         (replace-regexp-in-region skroad--node-tail-regexp ""))) ;; Zap any old
-;;     (skroad--refontify-current-buffer)
-;;     (setq-local skroad--buf-tail-needs-refresh nil)))
 
 (defun skroad--jump-to-computed-tail ()
   "Determine where the tail ought to be per the tail heuristic, and go there.
@@ -3152,7 +3108,8 @@ Any dead links found below the computed tail are deleted."
 (defun skroad--before-save-hook ()
   "Triggers prior to a skroad buffer save."
   (skroad--renamer-deactivate)
-  (skroad--do-deferred-replacements))
+  (skroad--do-deferred-replacements)
+  )
 
 (when skroad--debug
   (defadvice skroad--post-command-hook (around intercept activate)
@@ -3850,50 +3807,41 @@ Warning: undo info is lost in all affected buffers!"
 ;; TODO: do NOT set the mode if file is not in the data dir
 (define-derived-mode skroad-mode text-mode "Skroad"
   (skroad--ensure-global-init)
-  
+  (setq-local require-final-newline t) ;; Insert final newline if absent
   ;; Disable default auto-save:
   (add-hook 'auto-save-mode-hook
             (lambda () (setq buffer-auto-save-file-name nil))
             nil t)
   (setq-local buffer-auto-save-file-name nil)
-  
   ;; Prevent text properties from infesting the kill ring (emacs 28+) :
   (setq-local kill-transform-function #'substring-no-properties)
-  
   ;; Modified isearch which ignores escaped brackets:
   (setq-local isearch-search-fun-function #'skroad--isearch-search-fun)
-  
   ;; Install handler for Emacs help URLs:
   (setq-local browse-url-handlers
               '(("\\`help:" . skroad--emacs-help-url-handler)))
-  
   ;; Buffer-local hooks (other than change tracker: installed on first sync)
-  (add-hook 'pre-command-hook 'skroad--pre-command-hook nil t)
-  (add-hook 'post-command-hook 'skroad--post-command-hook nil t)
-  (add-hook 'before-save-hook 'skroad--before-save-hook nil t)
+  (add-hook 'pre-command-hook #'skroad--pre-command-hook nil t)
+  (add-hook 'post-command-hook #'skroad--post-command-hook nil t)
+  (add-hook 'before-save-hook #'skroad--before-save-hook nil t)
   (add-hook 'after-save-hook #'skroad--after-save-hook nil t)
-  (add-hook 'kill-buffer-hook 'skroad--before-kill-buffer-hook nil t)
+  (add-hook 'kill-buffer-hook #'skroad--before-kill-buffer-hook nil t)
   (add-hook 'window-scroll-functions #'skroad--update-window-state nil t)
   (add-hook 'window-state-change-functions #'skroad--update-window-state nil t)
   (add-hook 'window-buffer-change-functions #'skroad--update-window-state nil t)
-  (add-hook 'after-change-functions 'skroad--quote-after-change-hook nil t)
+  (add-hook 'after-change-functions #'skroad--quote-after-change-hook nil t)
   (skroad--install-yank-transformer)
   ;; (add-hook 'auto-save-hook #'skroad--autosave-hook nil t)
-  
   ;; Selector for atomics:
   (skroad--selector-init)
-
   ;; Keymap:
   (use-local-map skroad--mode-map)
-
   ;; Handle word boundaries correctly (atomics are treated as unitary words) :
   (setq-local find-word-boundary-function-table
               skroad--find-word-boundary-function-table)
-
   ;; Initialize autocomplete support.
   (setq-local completion-at-point-functions '(skroad--autocomplete-in-buf-capf))
   (skroad--autocomplete-buf-init)
-  
   ;; Buffer-local hooks:
   (add-hook 'skroad-mode-hook 'skroad--open-node 0 t)
   )
