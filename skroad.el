@@ -3333,8 +3333,7 @@ If ALLOW-INDEX is false, do not track changes or maintain indices for the node."
   (when (skroad--node-special-p node)
     (skroad--with-node node t
       (skroad--change-internal-title node)
-      (skroad--tail-jump-after)
-      (delete-region (point) (point-max))
+      (delete-region (skroad--after-tail-pos) (point-max))
       )))
 
 (defun skroad--connected-p (origin &optional node)
@@ -3761,7 +3760,7 @@ Warning: undo info is lost in all affected buffers!"
 (defun skroad--cmd-top-goto-tail ()
   "Top-level jump-to-tail."
   (interactive)
-  (skroad--tail-jump-after))
+  (goto-char (skroad--after-tail-pos)))
 
 (defun skroad--cmd-top-toggle-atomic-text-hiding ()
   "Toggle non-match text hiding in atomics having a `visible-match-number'."
