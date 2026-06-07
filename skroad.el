@@ -382,7 +382,7 @@ confine its edits to the matched text.  Return t if there were any matches."
   (goto-char (point-min))
   (forward-line 1))
 
-(defun skroad--node-body-start ()
+(defun skroad--node-body-start () ;; TODO: memoize
   "Return the position where the current node's body begins."
   (save-mark-and-excursion (skroad--goto-node-body-start) (point)))
 
@@ -2776,7 +2776,7 @@ Any dead links found below the computed tail are deleted."
   "Search for the tail and jump to its position if found; otherwise nil."
   (let ((pos
          (save-mark-and-excursion
-           (goto-char (point-min))
+           (skroad--goto-node-body-start)
            (when (funcall (get 'skroad--text-node-tail 'find-any-forward))
              (point)))))
     (when pos (goto-char pos))))
