@@ -1548,11 +1548,6 @@ If there are any, return the count; otherwise return nil."
     (when index
       (maphash #'(lambda (key _val) (apply fn (cons key other-args))) index))))
 
-;; (defun skroad--current-indices-count (text-type)
-;;   "Return the number of unique payloads of TEXT-TYPE in the current indices."
-;;   (let ((index (alist-get text-type (skroad--buf-indices))))
-;;     (or (and index (hash-table-count index)) 0)))
-
 (defun skroad--current-indices-any-p (text-type pred)
   "Determine whether PRED is true on some indexed payload of TEXT-TYPE."
   (when-let* ((index (alist-get text-type (skroad--buf-indices))))
@@ -3720,7 +3715,7 @@ Warning: undo info is lost in all affected buffers!"
              (unless (skroad--in-node-title-p left) ;; Never bite into the title
                (if (skroad--data-at left) ;; If in front of an atomic:
                    (delete-region (skroad--zone-start left) p) ;; ... delete it;
-                 (delete-backward-char 1))))))) ;; ... if not: normal backspace.
+                 (delete-char -1))))))) ;; ... if not: normal backspace.
 
 (defun skroad--cmd-top-gt ()
   "If there is a region, increase its quote level; otherwise insert `>'."
