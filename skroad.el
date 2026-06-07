@@ -2302,12 +2302,12 @@ If TARGET does not exist, this is a no-op."
   (funcall (get 'skroad--text-link-node-live 'zap) node start end))
 
 (defun skroad--link-delete-in-tail (node)
-  "Delete all instances of the link to NODE from the current node's tail."
+  "Delete all live links to NODE from the current node's tail."
   (skroad--link-delete node (skroad--after-tail-pos)))
 
 (defun skroad--link-unlink (node)
-  "Transform all live links to NODE above the current node's tail to dead links;
-and entirely remove all live links to NODE found below the current node's tail."
+  "Live links to NODE in the current node's body are deadened;
+Any such links found in its tail are simply deleted."
   (skroad--link-deaden node nil (skroad--before-tail-pos))
   (skroad--link-delete-in-tail node))
 
@@ -2342,7 +2342,7 @@ Return true if any such links were in fact revived."
 
 (defun skroad--connect-to (node)
   "Ensure that the current node has at least one live link to NODE.
-If it had dead links to NODE, liven them; if not, insert a link under the tail."
+If it had dead links to NODE, liven them; else, emplace a link in the tail."
   (unless (skroad--node-self-p node) ;; May not connect to self
     (or (skroad--link-has-live-p node) ;; Already has a live link to node?
         (skroad--revive-to node) ;; Try reviving any dead links to node
@@ -2350,7 +2350,7 @@ If it had dead links to NODE, liven them; if not, insert a link under the tail."
 
 (defun skroad--disconnect-from (node &optional delete-all)
   "Ensure that the current node does NOT have any live links to NODE.
-If DELETE-ALL is t, delete (rather than deaden) links found above the tail."
+If DELETE-ALL is t, delete rather than deaden in the body as well as the tail."
   (when (skroad--link-has-live-p node)
     (if delete-all
         (skroad--link-delete node)
