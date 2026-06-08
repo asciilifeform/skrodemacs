@@ -1429,59 +1429,6 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
                     (funcall swap-match escaped-payload t)))))))))
   :register 'skroad--text-types-indexed)
 
-(skroad--deftype skroad--text-mixin-pin
-  :doc "Mixin for pin text types."
-  :mixin t
-  :require '(for-all-in-region pin-pos-fn)
-  :scan-region
-  '(lambda (start end delta)
-     (let ((pin-pos (funcall pin-pos-fn))) ;; TODO: move this into the loop
-       (if (= delta 1)
-           (funcall
-            for-all-in-region start end
-            #'(lambda ()
-                (unless (and pin-pos
-                             (= (match-beginning 0)
-                                (marker-position (car pin-pos))))
-                  (let ((new-start (copy-marker (match-beginning 0) t))
-                        (new-end (copy-marker (match-end 0) nil)))
-                    (when pin-pos
-                      (message "old pos: %s" pin-pos)
-                      (skroad--deferred-replace (car pin-pos) (cdr pin-pos) "")
-                      )
-                    (funcall pin-pos-fn t (cons new-start new-end))
-                    (message "new pos: %s" (funcall pin-pos-fn))
-                    )
-                  ))
-            )
-         (let ((old (and pin-pos (marker-position (car pin-pos)))))
-           (when (and old (<= start old) (> end old))
-             (funcall pin-pos-fn t nil)))
-         )
-       ))
-  :register 'skroad--text-types-indexed)
-
-(defvar-local skroad--buf-tail-pin nil
-  "Stores the current tail pin position (or nil).")
-
-(defun skroad--buf-pin-pos-fn (&optional set val)
-  "Get the tail pin position, or set it if SET is t and VAL is given."
-  (if set (setq-local skroad--buf-tail-pin val) skroad--buf-tail-pin))
-
-(skroad--deftype skroad--text-node-pin
-  :doc "Node tail indicator."
-  :use 'skroad--text-atomic
-  :face 'skroad--node-tail-face
-  :help-echo "Node tail pin."
-  :match-number 0
-  :regex-any (rx line-start (literal "$$$"))
-  :finder-filter #'skroad--in-node-body-p
-  :pin-pos-fn #'skroad--buf-pin-pos-fn
-  :use 'skroad--text-mixin-findable
-  :use 'skroad--text-mixin-rendered-zoned
-  :use 'skroad--text-mixin-pin
-  )
-
 (defun skroad--scan-region (start end delta)
   "Find indexable items in the current buffer between START and END;
 Apply count DELTA to each item found.  `skroad--buf-indices-sync' must be
