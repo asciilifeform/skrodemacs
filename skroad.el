@@ -1318,7 +1318,7 @@ Also execute the following text type actions (unless NO-ACTIONS) :
                         (skroad--index-delta type-index payload count
                                              t create-action 'on-destroy)))
                    (unless (or (null action) no-actions)
-                     (skroad--defer ;; TODO!!!
+                     (skroad--defer
                       (skroad--type-action text-type action origin payload)))))
              type-changes)
             (clrhash type-changes) ;; Empty the type's pending change index
@@ -2306,12 +2306,11 @@ If DELETE-ALL is t, delete rather than deaden in the body as well as the tail."
       (skroad--info (format "Cannot teleyank to node '%s' !" node))
     (skroad--with-node node nil ;; Yank could contain links, so actions must run
       (skroad--install-yank-transformer) ;; Ensure that transformer is present
-      (save-mark-and-excursion
-        (atomic-change-group
-          (goto-char (skroad--node-body-end-pos))
-          (ensure-empty-lines)
-          (apply #'yank yank-args)
-          (insert "\n"))))
+      (atomic-change-group
+        (goto-char (skroad--node-body-end-pos))
+        (ensure-empty-lines)
+        (apply #'yank yank-args)
+        (insert "\n")))
     (skroad--log-node-revise node)
     (skroad--info (format "Teleyanked to node '%s'." node))))
 
