@@ -2679,7 +2679,13 @@ REASON, if given, is a comment describing the cause of the operation."
 (defun skroad--move-tail-indicator-here ()
   "Move the current node tail indicator to the point."
   (let ((inhibit-read-only t))
-    (delete-region (skroad--node-body-end-pos) (skroad--node-tail-start-pos))
+    (save-mark-and-excursion
+      (skroad--delete-line-if-empty)
+      (let ((old-tail-start (skroad--node-body-end-pos))
+            (old-tail-end (skroad--node-tail-start-pos)))
+        (delete-region old-tail-start old-tail-end)
+        (goto-char old-tail-start)
+        (ensure-empty-lines)))
     (skroad--emplace-tail-indicator)))
 
 (defun skroad--jump-to-suggested-node-tail ()
