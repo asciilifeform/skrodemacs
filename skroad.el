@@ -252,7 +252,9 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
             `(unwind-protect ,@body
                (when (buffer-modified-p)
                  (skroad--buf-indices-sync ,no-actions)
-                 (skroad--save-current-node)))
+                 (skroad--save-current-node))
+               (when (skroad--mode-p)
+                 (skroad--selector-update)))
           t))))
 
 (defmacro skroad--visit-open-nodes (&rest body)
