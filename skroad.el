@@ -808,7 +808,7 @@ call the action with ARGS."
   :register 'skroad--text-types-rendered)
 
 (defconst skroad--font-lock-properties
-  '(category face mouse-face zone data
+  '(category face mouse-face zone data rear-nonsticky read-only
              display line-prefix wrap-prefix invisible quote-depth)
   "Let font lock know what props we use in renderers, so it will clean them.")
 
@@ -2123,7 +2123,7 @@ If TARGET does not exist, this is a no-op."
   (let* ((node (skroad--data-at)) ;; The live link being banished
          (single ;; Is this the last remaining copy of an indexed live link?
           (eq (skroad--link-has-live-p node) 1))) ;; nil for self/specials/dupes
-    (if (and single (skroad--in-tail-p)) ;; No-op if it's a single in the tail
+    (if (and single (skroad--in-node-tail-p)) ;; No-op if a single in the tail
         (skroad--info "'%s' is already in the tail and has no duplicates!" node)
       (when single ;; About to delete a single from the body?
         (skroad--link-insert-live-in-tail node) ;; ... copy to the tail first;
@@ -2306,8 +2306,12 @@ If DELETE-ALL is t, delete rather than deaden in the body as well as the tail."
       (skroad--info (format "Cannot teleyank to node '%s' !" node))
     (skroad--with-node node nil ;; Yank could contain links, so actions must run
       (skroad--install-yank-transformer) ;; Ensure that transformer is present
-      (skroad--tail-do-before
-       (apply #'yank yank-args)))
+      (save-mark-and-excursion
+        (atomic-change-group
+          (goto-char (skroad--node-body-end-pos))
+          (ensure-empty-lines)
+          (apply #'yank yank-args)
+          (insert "\n"))))
     (skroad--log-node-revise node)
     (skroad--info (format "Teleyanked to node '%s'." node))))
 
@@ -2652,43 +2656,29 @@ REASON, if given, is a comment describing the cause of the operation."
 
 ;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defconst skroad--node-tail "@@@" "Node tail indicator.")
+(defconst skroad--node-tail-indicator "\n@@@\n" "Node tail indicator.")
 
-;; (defconst skroad--node-tail-regexp
-;;   (rx line-start (literal skroad--node-tail) "\n")
-;;   "Regexp for the node tail indicator.")
+(defvar-local skroad--buf-tail-overlay nil
+  "Overlay which covers the current node's tail indicator.")
 
-;; (rx line-start (literal "@@@") "\n")
+(defun skroad--buf-have-tail-indicator-p ()
+  "Determine whether the current buffer has a registered tail indicator."
+  (skroad--buf-overlay-active-p skroad--buf-tail-overlay))
 
-(defconst skroad--node-tail-regexp
-  (rx line-start (literal skroad--node-tail) line-end)
-  "Regexp for the node tail indicator.")
+(defun skroad--buf-register-tail-indicator (start end)
+  "Register the tail indicator for the current buffer from START to END."
+  (setq-local skroad--buf-tail-overlay (make-overlay start end nil t nil))
+  (when (skroad--mode-p) (skroad--refontify-current-buffer)))
 
-(defvar-local skroad--buf-tail-marker nil
-  "Marker which points after the current node's tail, if known.")
+(defun skroad--emplace-tail-indicator ()
+  "Insert the tail indicator at the current point and register its location."
+  (skroad--buf-register-tail-indicator
+   (prog1 (point) (insert skroad--node-tail-indicator)) (point)))
 
-(defun skroad--set-tail-marker (pos)
-  "Use POS (which may be nil) as a possibly-new position of the tail marker."
-  (unless (eq skroad--buf-tail-marker pos)
-    ;; (message "setting new tail: %s" pos)
-    (setq-local skroad--buf-tail-marker (and pos (copy-marker pos)))
-    ))
-
-(skroad--deftype skroad--text-node-tail
-  :doc "Node tail indicator."
-  :use 'skroad--text-atomic
-  :face 'skroad--node-tail-face
-  :help-echo "Node tail."
-  :match-number 0
-  :regex-any skroad--node-tail-regexp
-  :finder-filter #'skroad--in-node-body-p
-  :use 'skroad--text-mixin-findable
-  :use 'skroad--text-mixin-rendered-zoned
-  )
-
-(defun skroad--jump-to-computed-tail ()
-  "Determine where the tail ought to be per the tail heuristic, and go there.
-Any dead links found below the computed tail are deleted."
+(defun skroad--jump-to-suggested-node-tail ()
+  "Find where the node tail ought to be per the tail heuristic, and go there:
+immediately after the last thing in the buffer that is neither a node link --
+live or dead -- nor whitespace.  All dead links after that point are deleted."
   (goto-char (point-max))
   (let ((climb
          #'(lambda (type &optional delete)
@@ -2705,68 +2695,47 @@ Any dead links found below the computed tail are deleted."
                            (funcall climb 'skroad--text-link-node-dead t))))
              (when prev (goto-char prev))))))
 
-(defun skroad--tail-search ()
-  "Search for the tail and jump to its position if found; otherwise nil."
-  (let ((pos
-         (save-mark-and-excursion
+(defun skroad--node-tail-ensure ()
+  "Ensure that the tail indicator exists in the current node, and register it.
+Return true when an existing one was not found and a new one was inserted."
+  (cond ((skroad--buf-have-tail-indicator-p) nil) ;; Already registered?
+        ((save-mark-and-excursion ;; ... if not, look for an existing one:
            (skroad--goto-node-body-start)
-           (when (funcall (get 'skroad--text-node-tail 'find-any-forward))
-             (point)))))
-    (when pos (goto-char pos))))
-
-(defun skroad--tail-find-or-emplace ()
-  "Find or emplace the tail in the current node, and store its location."
-  (unless (skroad--tail-search)
-    (skroad--jump-to-computed-tail)
-    (ensure-empty-lines 1)
-    (save-mark-and-excursion
-      (insert skroad--node-tail)
-      (ensure-empty-lines 1))
-    (goto-char (line-end-position)))
-  (skroad--set-tail-marker (point)))
-
-;; TODO: update stub status every time we obtain the tail, when it is cheap
-(defun skroad--tail-jump-after ()
-  "Find or create the tail in the current node; set point after it."
-  (or (and skroad--buf-tail-marker
-           (goto-char (marker-position skroad--buf-tail-marker)))
-      (skroad--tail-find-or-emplace)))
-
-(defun skroad--tail-jump-before ()
-  "Find or create the tail in the current node; set point before it."
-  (skroad--tail-jump-after)
-  (goto-char (line-beginning-position)))
+           (search-forward skroad--node-tail-indicator nil t))
+         (skroad--buf-register-tail-indicator (match-beginning 0) (match-end 0))
+         nil)
+        (t ;; Looked but did not find? Insert a new tail indicator:
+         (save-mark-and-excursion
+           (let ((inhibit-read-only t))
+             (skroad--jump-to-suggested-node-tail)
+             (skroad--emplace-tail-indicator)))
+         t)))
 
 (defun skroad--node-body-end-pos ()
-  "Return the end position of the current node's body (the tail indicator)."
-  (save-mark-and-excursion (skroad--tail-jump-before) (point)))
+  "Return the end position of the current node's body (tail indicator start).
+If this node did not have a tail indicator, a new one is emplaced."
+  (skroad--node-tail-ensure)
+  (overlay-start skroad--buf-tail-overlay))
 
 (defun skroad--node-tail-start-pos ()
-  "Return the start position of the current node's tail (after tail indicator)."
-  (save-mark-and-excursion (skroad--tail-jump-after) (point)))
+  "Return the start position of the current node's tail (tail indicator end).
+If this node did not have a tail indicator, a new one is emplaced."
+  (skroad--node-tail-ensure)
+  (overlay-end skroad--buf-tail-overlay))
 
-(defun skroad--in-tail-p ()
+(defun skroad--in-node-tail-p ()
   "Determine whether the point is currently inside the tail."
   (>= (point) (skroad--node-tail-start-pos)))
 
-(defmacro skroad--tail-do-before (&rest body)
-  "Run BODY in a space created above the tail."
-  `(save-mark-and-excursion
-     (atomic-change-group
-       (skroad--tail-jump-before)
-       (ensure-empty-lines)
-       ,@body
-       (ensure-empty-lines)
-       (skroad--current-node-update-stub-status)
-       (skroad--selector-update))))
-
 (defun skroad--link-insert-live-in-tail (node)
   "Emplace a link to NODE in the tail of the current node.
+If this node did not have a tail indicator, a new one is emplaced.
 If NODE is a log, and the tail has no other log links, it goes at the bottom;
 If there were other log links in the tail, it goes in chronological order.
 A non-log link is always emplaced at the top, just below the tail indicator."
   (save-mark-and-excursion
-    (let ((tail-start (skroad--node-tail-start-pos)))
+    (let ((tail-start (skroad--node-tail-start-pos))
+          (link (skroad--link-generate-live node)))
       (cond ((skroad--node-log-p node) ;; A log link?
              (goto-char (point-max))
              (skroad--skip-whitespace-backward tail-start)
@@ -2778,26 +2747,34 @@ A non-log link is always emplaced at the top, just below the tail indicator."
                           node (match-string-no-properties 1))
                          (goto-char (match-beginning 0))
                        (goto-char (match-end 0))
+                       (insert "\n" link)
                        nil))))
-            (t (goto-char tail-start))) ;; An ordinary link?
-      (insert "\n")
-      (skroad--link-insert-live node))))
+            (t (goto-char tail-start) ;; An ordinary link?
+               (insert link "\n"))))))
 
 ;; Tail text highlighting. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--render-tail-text (limit)
-  "Find and render all tail text between current point and LIMIT."
-  (when-let* ((tail skroad--buf-tail-marker)
-              (start (max (point) tail)))
-    (when (and (< start limit) (> limit tail))
-      (with-silent-modifications
-        (add-face-text-property start limit 'skroad--tail-text-face t))
-      (goto-char limit))
-    nil))
+(defun skroad--render-tail-indicator (limit)
+  "Render the tail indicator when its overlay exists between point and LIMIT.
+Also highlight any visible portion of the tail text itself.
+If this node did not have a tail indicator, this is a no-op."
+  (when (skroad--buf-have-tail-indicator-p)
+    (let ((s (overlay-start skroad--buf-tail-overlay))
+          (e (overlay-end skroad--buf-tail-overlay)))
+      (when (and (< (point) e) (< s limit)) ;; Overlay overlaps the region?
+        (put-text-property s e 'read-only "Tail indicator may not be modified!")
+        (put-text-property s e 'inhibit-isearch t)
+        (put-text-property (1+ s) (1- e) 'invisible t)
+        (put-text-property (1- e) e 'rear-nonsticky t)
+        (put-text-property (1+ s) e 'face 'skroad--node-tail-face))
+      (when (< e limit) ;; Render any tail text overlapping the region:
+        (add-face-text-property
+         (max e (point)) limit 'skroad--tail-text-face t))))
+  nil)
 
-(skroad--deftype skroad--text-tail-text
-  :doc "Text type for tail text rendered by font lock."
-  :render-next #'skroad--render-tail-text
+(skroad--deftype skroad--text-tail-indicator
+  :doc "Text type for rendering the tail indicator."
+  :render-next #'skroad--render-tail-indicator
   :use 'skroad--text-mixin-rendered)
 
 ;; Node title and body. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -2967,10 +2944,10 @@ A non-log link is always emplaced at the top, just below the tail indicator."
   "If mark is inactive, return point P; otherwise, return a constrained P."
   (if mark-active
     (let ((m (mark)))
-      (if (< m (skroad--node-body-end-pos)) ;; Mark is above the tail
+      (if (< m (skroad--node-body-end-pos)) ;; Mark is in the node body
           (min (max p (skroad--node-body-start-pos))
                (skroad--node-body-end-pos))
-        (max p (skroad--node-tail-start-pos)))) ;; Mark is below the tail
+        (max p (skroad--node-tail-start-pos)))) ;; Mark is in the node tail
     p)) ;; No mark
 
 (defun skroad--point-zone-handler (prev)
@@ -3130,10 +3107,11 @@ A non-log link is always emplaced at the top, just below the tail indicator."
   (skroad--deactivate-mark) ;; Zap spurious mark from opening links via mouse
   (skroad--set-writability) ;; If special node, open it as read-only
   (skroad--cache-intern (skroad--current-node)) ;; TODO?
+  (skroad--init-font-lock)
+  (skroad--node-tail-ensure)
   (skroad--current-node-update-stub-status) ;; TODO: do we want this here?
   (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
   (skroad--skip-whitespace-forward)
-  (skroad--init-font-lock)
   )
 
 ;; Floating header line. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -3354,8 +3332,9 @@ A stub is a node where only whitespace is found between the title and the tail.
 If the tail did not previously exist in the current node, it is emplaced."
   (save-mark-and-excursion
     (skroad--goto-node-body-start)
-    (skroad--skip-whitespace-forward)
-    (= (point) (skroad--node-body-end-pos))))
+    (let ((body-end (skroad--node-body-end-pos)))
+      (skroad--skip-whitespace-forward body-end)
+      (= (point) body-end))))
 
 (defun skroad--current-node-update-stub-status ()
   "Update the current node's saved stub status.  No-op when renamer is active."
@@ -3466,15 +3445,18 @@ After all of this, the VICTIM is permanently deleted."
           (setq victim-is-stub (skroad--node-stub-p)))
         (unless victim-is-stub ;; Don't insert anything if victim is a stub
           (let (import-start import-end)
-            (skroad--tail-do-before ;; Insert a demarcated copy of victim's body
-             (skroad--atomic-comment-insert
-              (format "Start merged body of node '%s'" victim))
-             (setq import-start (point))
-             (insert victim-body)
-             (setq import-end (point))
-             (insert "\n")
-             (skroad--atomic-comment-insert
-              (format "End merged body of node '%s'" victim)))
+            (atomic-change-group ;; Insert a demarcated copy of victim's body
+              (goto-char (skroad--node-body-end-pos))
+              (ensure-empty-lines)
+              (skroad--atomic-comment-insert
+               (format "Start merged body of node '%s'" victim))
+              (setq import-start (point))
+              (insert victim-body)
+              (setq import-end (point))
+              (insert "\n")
+              (skroad--atomic-comment-insert
+               (format "End merged body of node '%s'" victim))
+              (insert "\n"))
             ;; Fix self-links of the victim in the imported body:
             (skroad--link-replace victim this-node import-start import-end)
             (goto-char import-start))) ;; Jump to the start indicator
@@ -3654,7 +3636,7 @@ Warning: undo info is lost in all affected buffers!"
   "If there is a region, increase its quote level; otherwise insert `>'."
   (interactive)
   (unless (skroad--in-node-title-p)
-    (if (use-region-p)
+    (if (and (use-region-p) (not (skroad--renamer-active-p)))
         (skroad--quote-region (region-beginning) (region-end))
       (insert ">"))))
 
@@ -3662,7 +3644,7 @@ Warning: undo info is lost in all affected buffers!"
   "If there is a region, decrease its quote level; otherwise insert `<'."
   (interactive)
   (unless (skroad--in-node-title-p)
-    (if (use-region-p)
+    (if (and (use-region-p) (not (skroad--renamer-active-p)))
         (skroad--unquote-region (region-beginning) (region-end))
       (insert "<"))))
 
