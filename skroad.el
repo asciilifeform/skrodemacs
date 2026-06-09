@@ -2673,7 +2673,14 @@ REASON, if given, is a comment describing the cause of the operation."
 (defun skroad--emplace-tail-indicator ()
   "Insert the tail indicator at the current point and register its location."
   (skroad--buf-register-tail-indicator
-   (prog1 (point) (insert skroad--node-tail-indicator)) (point)))
+   (prog1 (point) (insert skroad--node-tail-indicator)) (point))
+  (skroad--clear-buf-undo-info)) ;; Cannot be undone!
+
+(defun skroad--move-node-tail-indicator-here ()
+  "Move the current node tail indicator to the point."
+  (let ((inhibit-read-only t))
+    (delete-region (skroad--node-body-end-pos) (skroad--node-tail-start-pos))
+    (skroad--emplace-tail-indicator)))
 
 (defun skroad--jump-to-suggested-node-tail ()
   "Find where the node tail ought to be per the tail heuristic, and go there:
@@ -3678,6 +3685,12 @@ Warning: undo info is lost in all affected buffers!"
   (interactive)
   (goto-char (skroad--node-tail-start-pos)))
 
+(defun skroad--cmd-top-move-tail-here ()
+  "Move the current node tail indicator to the point.  Cannot be undone."
+  (interactive)
+  (unless buffer-read-only
+    (skroad--move-node-tail-indicator-here)))
+
 (defun skroad--cmd-top-toggle-atomic-text-hiding ()
   "Toggle non-match text hiding in atomics having a `visible-match-number'."
   (interactive)
@@ -3691,6 +3704,7 @@ Warning: undo info is lost in all affected buffers!"
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
     "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
     "C-<tab>" #'skroad--cmd-top-jump-to-prev-atomic
+    "M-T" #'skroad--cmd-top-move-tail-here
     "M-t" #'skroad--cmd-top-goto-tail
     "C-M-l" #'skroad--cmd-top-toggle-atomic-text-hiding ;; TODO: do we need it?
     )
