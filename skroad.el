@@ -2837,10 +2837,14 @@ If this node did not have a tail indicator, this is a no-op."
 (defun skroad--cmd-title-delete-current-node ()
   "Delete"
   (interactive)
-  (skroad--complete-all-deferred) ;; Pending ops must complete first
   (let ((node (skroad--current-node)))
-    (when (skroad--delete-node node)
-      (skroad--log-node-remove node))))
+    (if (or buffer-read-only
+            (skroad--node-special-p node)
+            (skroad--node-log-p node))
+        (skroad--info "Node '%s' cannot be deleted!" node)
+      (skroad--complete-all-deferred) ;; Pending ops must complete first
+      (when (skroad--delete-node node)
+        (skroad--log-node-remove node)))))
 
 (skroad--deftype skroad--text-node-title
   :doc "Node title."
