@@ -2676,7 +2676,7 @@ REASON, if given, is a comment describing the cause of the operation."
    (prog1 (point) (insert skroad--node-tail-indicator)) (point))
   (skroad--clear-buf-undo-info)) ;; Cannot be undone!
 
-(defun skroad--move-node-tail-indicator-here ()
+(defun skroad--move-tail-indicator-here ()
   "Move the current node tail indicator to the point."
   (let ((inhibit-read-only t))
     (delete-region (skroad--node-body-end-pos) (skroad--node-tail-start-pos))
@@ -3689,7 +3689,7 @@ Warning: undo info is lost in all affected buffers!"
   "Move the current node tail indicator to the point.  Cannot be undone."
   (interactive)
   (unless buffer-read-only
-    (skroad--move-node-tail-indicator-here)))
+    (skroad--move-tail-indicator-here)))
 
 (defun skroad--cmd-top-toggle-atomic-text-hiding ()
   "Toggle non-match text hiding in atomics having a `visible-match-number'."
