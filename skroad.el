@@ -2944,7 +2944,7 @@ If this node did not have a tail indicator, this is a no-op."
   "If mark is inactive, return point P; otherwise, return a constrained P."
   (if mark-active
     (let ((m (mark)))
-      (if (< m (skroad--node-body-end-pos)) ;; Mark is in the node body
+      (if (<= m (skroad--node-body-end-pos)) ;; Mark is in the node body
           (min (max p (skroad--node-body-start-pos))
                (skroad--node-body-end-pos))
         (max p (skroad--node-tail-start-pos)))) ;; Mark is in the node tail
