@@ -2681,17 +2681,14 @@ REASON, if given, is a comment describing the cause of the operation."
   "Move (and reregister) the tail indicator of the current node to the point.
 Let the user know whether the tail had actually moved (or was already here.)
 For use in interactive commands only."
-  (if (= (point) (skroad--node-tail-start-pos))
-      (skroad--info "The tail did not move!")
-    (let ((inhibit-read-only t))
-      (save-mark-and-excursion
-        (skroad--delete-line-if-empty)
-        (let ((old-tail-start (skroad--node-body-end-pos))
-              (old-tail-end (skroad--node-tail-start-pos)))
-          (delete-region old-tail-start old-tail-end)
-          (goto-char old-tail-start)
-          (ensure-empty-lines)))
-      (skroad--emplace-tail-indicator)
+  (skroad--node-tail-ensure)
+  (let ((old-start (overlay-start skroad--buf-tail-overlay))
+        (old-end (overlay-end skroad--buf-tail-overlay)))
+    (if (and (>= (point) old-start) (<= (point) old-end))
+        (skroad--info "The tail did not move!")
+      (let ((inhibit-read-only t))
+        (delete-region old-start old-end)
+        (skroad--emplace-tail-indicator))
       (skroad--info "The tail has been moved."))))
 
 (defun skroad--jump-to-suggested-node-tail (&optional delete-dead)
