@@ -3236,7 +3236,9 @@ Return the path where the node is found on disk."
        ((file-exists-p node-path) ;; Found on disk, but needs internment
         (skroad--cache-intern-unindexed node)) ;; Intern, index on demand
        ((file-writable-p node-path) ;; Not found on disk, but can be made:
-        (write-region (concat node "\n") nil node-path nil 0) ;; Insert title
+        (write-region
+         (concat node "\n" skroad--node-tail-indicator)
+         nil node-path nil 0) ;; Insert title and tail.
         (skroad--cache-write node nil) ;; Intern the node with an empty index
         (skroad--node-set-stub node t) ;; It starts as a stub (unless special)
         (skroad--log-node-create node)) ;; Report creation to log.
