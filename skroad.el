@@ -2666,16 +2666,24 @@ REASON, if given, is a comment describing the cause of the operation."
   "Determine whether the current buffer has a registered tail indicator."
   (skroad--buf-overlay-active-p skroad--buf-tail-overlay))
 
+(defun skroad--tail-indicator-modified (_ov after-p _beg _end &optional _len)
+  "Called if the tail indicator was unexpectedly modified (by e.g. undo)."
+  (when after-p
+    (delete-overlay skroad--buf-tail-overlay)
+    (run-with-idle-timer 0 nil #'skroad--node-tail-ensure)))
+
 (defun skroad--buf-register-tail-indicator (start end)
   "Register the tail indicator for the current buffer from START to END."
   (setq-local skroad--buf-tail-overlay (make-overlay start end nil t nil))
-  (when (skroad--mode-p) (skroad--refontify-current-buffer)))
+  (when (skroad--mode-p) ;; Only do these when in an interactive buffer:
+    (overlay-put skroad--buf-tail-overlay
+               'modification-hooks '(skroad--tail-indicator-modified))
+    (skroad--refontify-current-buffer)))
 
 (defun skroad--emplace-tail-indicator ()
   "Insert the tail indicator at the current point and register its location."
   (skroad--buf-register-tail-indicator
-   (prog1 (point) (insert skroad--node-tail-indicator)) (point))
-  (skroad--clear-buf-undo-info)) ;; Cannot be undone!
+   (prog1 (point) (insert skroad--node-tail-indicator)) (point)))
 
 (defun skroad--move-tail-indicator-here ()
   "Move (and reregister) the tail indicator of the current node to the point.
@@ -2687,6 +2695,7 @@ For use in interactive commands only."
     (if (and (>= (point) old-start) (<= (point) old-end))
         (skroad--info "The tail did not move!")
       (let ((inhibit-read-only t))
+        (delete-overlay skroad--buf-tail-overlay)
         (delete-region old-start old-end)
         (skroad--emplace-tail-indicator))
       (skroad--info "The tail has been moved."))))
