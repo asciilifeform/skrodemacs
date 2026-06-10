@@ -2679,15 +2679,18 @@ REASON, if given, is a comment describing the cause of the operation."
 
 (defun skroad--move-tail-indicator-here ()
   "Move (and reregister) the tail indicator of the current node to the point."
-  (let ((inhibit-read-only t))
-    (save-mark-and-excursion
-      (skroad--delete-line-if-empty)
-      (let ((old-tail-start (skroad--node-body-end-pos))
-            (old-tail-end (skroad--node-tail-start-pos)))
-        (delete-region old-tail-start old-tail-end)
-        (goto-char old-tail-start)
-        (ensure-empty-lines)))
-    (skroad--emplace-tail-indicator)))
+  (if (= (point) (skroad--node-tail-start-pos))
+      (skroad--info "The tail did not move!")
+    (let ((inhibit-read-only t))
+      (save-mark-and-excursion
+        (skroad--delete-line-if-empty)
+        (let ((old-tail-start (skroad--node-body-end-pos))
+              (old-tail-end (skroad--node-tail-start-pos)))
+          (delete-region old-tail-start old-tail-end)
+          (goto-char old-tail-start)
+          (ensure-empty-lines)))
+      (skroad--emplace-tail-indicator)
+      (skroad--info "The tail has been moved."))))
 
 ;; TODO: flag to turn off dead link deletion?
 (defun skroad--jump-to-suggested-node-tail ()
@@ -2869,10 +2872,7 @@ If this node did not have a tail indicator, this is a no-op."
         (skroad--node-tail-ensure)
         (save-mark-and-excursion
           (skroad--jump-to-suggested-node-tail)
-          (if (= (point) (skroad--node-tail-start-pos))
-              (skroad--info "The tail was already at its heuristic position!")
-            (skroad--move-tail-indicator-here)
-            (skroad--info "The tail has been moved.")))))))
+          (skroad--move-tail-indicator-here))))))
 
 (skroad--deftype skroad--text-node-title
   :doc "Node title."
@@ -3721,8 +3721,7 @@ Warning: undo info is lost in all affected buffers!"
   (interactive)
   (if buffer-read-only
       (skroad--info "This node's tail cannot be moved!")
-    (skroad--move-tail-indicator-here)
-    (skroad--info "The tail has been moved.")))
+    (skroad--move-tail-indicator-here)))
 
 (defun skroad--cmd-top-toggle-atomic-text-hiding ()
   "Toggle non-match text hiding in atomics having a `visible-match-number'."
