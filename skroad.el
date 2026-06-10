@@ -2700,7 +2700,7 @@ For use in interactive commands only."
         (skroad--emplace-tail-indicator)
         (save-mark-and-excursion
           (goto-char old-start)
-          (unless (= (point) (line-end-position))
+          (unless (bolp)
             (insert "\n"))))
       (skroad--info "The tail has been moved."))))
 
