@@ -2855,7 +2855,8 @@ If this node did not have a tail indicator, this is a no-op."
         (skroad--info "Node '%s' cannot be deleted!" node)
       (skroad--complete-all-deferred) ;; Pending ops must complete first
       (when (skroad--delete-node node)
-        (skroad--log-node-remove node)))))
+        (skroad--log-node-remove node)
+        (skroad--info "Node '%s' was permanently deleted!" node)))))
 
 ;; Move the tail indicator to the position suggested by the tail heuristic.
 (defun skroad--cmd-title-reset-tail ()
