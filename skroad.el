@@ -810,7 +810,7 @@ call the action with ARGS."
   :register 'skroad--text-types-rendered)
 
 (defconst skroad--font-lock-properties
-  '(category face mouse-face zone data rear-nonsticky read-only
+  '(category face mouse-face zone data rear-nonsticky read-only inhibit-isearch
              display line-prefix wrap-prefix invisible quote-depth)
   "Let font lock know what props we use in renderers, so it will clean them.")
 
@@ -2755,6 +2755,16 @@ If this node did not have a tail indicator, a new one is emplaced."
   "Determine whether the point is currently inside the tail."
   (>= (point) (skroad--node-tail-start-pos)))
 
+(defun skroad--tail-indicator-jail (p-old p-new)
+  "Constrain a point motion from P-OLD to P-NEW to avoid the tail indicator.
+Return the constrained point.  For use with `skroad--point-zone-handler'."
+  (or (and (skroad--buf-have-tail-indicator-p)
+           (let ((s (overlay-start skroad--buf-tail-overlay))
+                 (e (overlay-end skroad--buf-tail-overlay)))
+             (when (and (> p-new s) (< p-new e))
+               (if (< p-new p-old) s e))))
+      p-new))
+
 (defun skroad--link-insert-live-in-tail (node)
   "Emplace a link to NODE in the tail of the current node.
 If this node did not have a tail indicator, a new one is emplaced.
@@ -3004,7 +3014,9 @@ If this node did not have a tail indicator, this is a no-op."
       (let ((current (skroad--get-point-state)))
         (seq-let (old-p old-zone p zone) (append prev current)
           (setq done (or (= old-p p)
-                         (let ((detent (skroad--mark-jail p)))
+                         (let ((detent
+                                (skroad--mark-jail
+                                 (skroad--tail-indicator-jail old-p p))))
                            (when (/= p detent)
                              (goto-char detent)))))
           (unless done
