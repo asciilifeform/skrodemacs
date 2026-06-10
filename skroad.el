@@ -3238,7 +3238,7 @@ Return the path where the node is found on disk."
        ((file-writable-p node-path) ;; Not found on disk, but can be made:
         (write-region
          (concat node "\n" skroad--node-tail-indicator)
-         nil node-path nil 0) ;; Insert title and tail.
+         nil node-path nil 0) ;; Insert title and tail indicator.
         (skroad--cache-write node nil) ;; Intern the node with an empty index
         (skroad--node-set-stub node t) ;; It starts as a stub (unless special)
         (skroad--log-node-create node)) ;; Report creation to log.
