@@ -2678,7 +2678,8 @@ REASON, if given, is a comment describing the cause of the operation."
   (skroad--clear-buf-undo-info)) ;; Cannot be undone!
 
 (defun skroad--move-tail-indicator-here ()
-  "Move (and reregister) the tail indicator of the current node to the point."
+  "Move (and reregister) the tail indicator of the current node to the point.
+Let the user know whether the tail had actually moved (or was already here.)"
   (if (= (point) (skroad--node-tail-start-pos))
       (skroad--info "The tail did not move!")
     (let ((inhibit-read-only t))
