@@ -2656,7 +2656,8 @@ REASON, if given, is a comment describing the cause of the operation."
 
 ;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defconst skroad--node-tail-indicator "\n@@@\n" "Node tail indicator.")
+(defconst skroad--node-tail-indicator "\n@@@\n"
+  "Node tail indicator.  The newlines must NOT be removed.")
 
 (defvar-local skroad--buf-tail-overlay nil
   "Overlay which covers the current node's tail indicator.")
@@ -2677,7 +2678,7 @@ REASON, if given, is a comment describing the cause of the operation."
   (skroad--clear-buf-undo-info)) ;; Cannot be undone!
 
 (defun skroad--move-tail-indicator-here ()
-  "Move the current node tail indicator to the point."
+  "Move (and reregister) the tail indicator of the current node to the point."
   (let ((inhibit-read-only t))
     (save-mark-and-excursion
       (skroad--delete-line-if-empty)
@@ -2690,8 +2691,9 @@ REASON, if given, is a comment describing the cause of the operation."
 
 (defun skroad--jump-to-suggested-node-tail ()
   "Find where the node tail ought to be per the tail heuristic, and go there:
-immediately after the last thing in the buffer that is neither a node link --
-live or dead -- nor whitespace.  All dead links after that point are deleted."
+Starting at the end of the buffer, move up, deleting dead links and skipping
+live links and whitespace, until something that is neither a node link nor
+whitespace is encountered.  The proposed tail will start just below that point."
   (goto-char (point-max))
   (let ((climb
          #'(lambda (type &optional delete)
@@ -2711,13 +2713,13 @@ live or dead -- nor whitespace.  All dead links after that point are deleted."
 (defun skroad--node-tail-ensure ()
   "Ensure that the tail indicator exists in the current node, and register it.
 Return true when an existing one was not found and a new one was inserted."
-  (cond ((skroad--buf-have-tail-indicator-p) nil) ;; Already registered?
-        ((save-mark-and-excursion ;; ... if not, look for an existing one:
+  (cond ((skroad--buf-have-tail-indicator-p) nil) ;; Already registered? No-op.
+        ((save-mark-and-excursion ;; Not registered? Look for an existing one:
            (skroad--goto-node-body-start)
            (search-forward skroad--node-tail-indicator nil t))
          (skroad--buf-register-tail-indicator (match-beginning 0) (match-end 0))
          nil)
-        (t ;; Looked but did not find? Insert a new tail indicator:
+        (t ;; Looked but did not find? Emplace a new tail indicator:
          (save-mark-and-excursion
            (let ((inhibit-read-only t))
              (skroad--jump-to-suggested-node-tail)
@@ -2769,7 +2771,7 @@ A non-log link is always emplaced at the top, just below the tail indicator."
 
 (defun skroad--render-tail-indicator (limit)
   "Render the tail indicator when its overlay exists between point and LIMIT.
-Also highlight any visible portion of the tail text itself.
+Also highlight any included portion of the tail text itself.
 If this node did not have a tail indicator, this is a no-op."
   (when (skroad--buf-have-tail-indicator-p)
     (let ((s (overlay-start skroad--buf-tail-overlay))
