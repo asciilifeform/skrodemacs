@@ -2864,7 +2864,7 @@ If this node did not have a tail indicator, this is a no-op."
   (interactive)
   (let ((node (skroad--current-node)))
     (if buffer-read-only
-        (skroad--info "Tail of node '%s' cannot be reset!" node)
+        (skroad--info "This node's tail cannot be moved!")
       (when (y-or-n-p (format "Auto-reposition the tail of node '%s' ?" node))
         (skroad--node-tail-ensure)
         (save-mark-and-excursion
@@ -3719,7 +3719,8 @@ Warning: undo info is lost in all affected buffers!"
 (defun skroad--cmd-top-move-tail-here ()
   "Move the current node tail indicator to the point.  Cannot be undone."
   (interactive)
-  (unless buffer-read-only
+  (if buffer-read-only
+      (skroad--info "This node's tail cannot be moved!")
     (skroad--move-tail-indicator-here)
     (skroad--info "The tail has been moved.")))
 
