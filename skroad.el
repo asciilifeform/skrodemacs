@@ -2729,7 +2729,8 @@ Return true when an existing one was not found and a new one was inserted."
          (save-mark-and-excursion
            (let ((inhibit-read-only t))
              (skroad--jump-to-suggested-node-tail t)
-             (skroad--emplace-tail-indicator)))
+             (skroad--emplace-tail-indicator)
+             (skroad--lint-report "Tail was auto-positioned.")))
          t)))
 
 (defun skroad--node-body-end-pos ()
