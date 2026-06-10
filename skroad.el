@@ -2694,10 +2694,9 @@ For use in interactive commands only."
       (skroad--emplace-tail-indicator)
       (skroad--info "The tail has been moved."))))
 
-;; TODO: flag to turn off dead link deletion?
-(defun skroad--jump-to-suggested-node-tail ()
+(defun skroad--jump-to-suggested-node-tail (&optional delete-dead)
   "Find where the node tail ought to be per the tail heuristic, and go there:
-Starting at the end of the buffer, move up, deleting dead links and skipping
+Starting at the end, move up, deleting dead links (if DELETE-DEAD) and skipping
 live links and whitespace, until something that is neither a node link nor
 whitespace is encountered.  The proposed tail will start just below that point."
   (goto-char (point-max))
@@ -2713,7 +2712,8 @@ whitespace is encountered.  The proposed tail will start just below that point."
                        (when delete (delete-region new-pos prev-pos))
                        new-pos))))))))
     (while (let ((prev (or (funcall climb 'skroad--text-link-node-live)
-                           (funcall climb 'skroad--text-link-node-dead t))))
+                           (funcall climb 'skroad--text-link-node-dead
+                                    delete-dead))))
              (when prev (goto-char prev))))))
 
 (defun skroad--node-tail-ensure ()
@@ -2728,7 +2728,7 @@ Return true when an existing one was not found and a new one was inserted."
         (t ;; Looked but did not find? Emplace a new tail indicator:
          (save-mark-and-excursion
            (let ((inhibit-read-only t))
-             (skroad--jump-to-suggested-node-tail)
+             (skroad--jump-to-suggested-node-tail t)
              (skroad--emplace-tail-indicator)))
          t)))
 
