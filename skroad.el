@@ -2690,14 +2690,18 @@ REASON, if given, is a comment describing the cause of the operation."
 Let the user know whether the tail had actually moved (or was already here.)
 For use in interactive commands only."
   (skroad--node-tail-ensure)
-  (let ((old-start (overlay-start skroad--buf-tail-overlay))
+  (let ((old-start (copy-marker (overlay-start skroad--buf-tail-overlay)))
         (old-end (overlay-end skroad--buf-tail-overlay)))
     (if (and (>= (point) old-start) (<= (point) old-end))
         (skroad--info "The tail did not move!")
       (let ((inhibit-read-only t))
         (delete-overlay skroad--buf-tail-overlay)
         (delete-region old-start old-end)
-        (skroad--emplace-tail-indicator))
+        (skroad--emplace-tail-indicator)
+        (save-mark-and-excursion
+          (goto-char old-start)
+          (unless (= (point) (line-end-position))
+            (insert "\n"))))
       (skroad--info "The tail has been moved."))))
 
 (defun skroad--jump-to-suggested-node-tail (&optional delete-dead)
