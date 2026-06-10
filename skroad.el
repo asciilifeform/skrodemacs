@@ -2696,8 +2696,8 @@ For use in interactive commands only."
 
 (defun skroad--jump-to-suggested-node-tail (&optional delete-dead)
   "Find where the node tail ought to be per the tail heuristic, and go there:
-Starting at the end, move up, deleting dead links (if DELETE-DEAD) and skipping
-live links and whitespace, until something that is neither a node link nor
+Starting at the end, move up, skipping dead links (if DELETE-DEAD is t: delete),
+live links, and whitespace until something that is neither a node link nor
 whitespace is encountered.  The proposed tail will start just below that point."
   (goto-char (point-max))
   (let ((climb
