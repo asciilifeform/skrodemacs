@@ -1614,7 +1614,7 @@ If there are any, return the count; otherwise return nil."
   (let ((renamer-type (skroad--prop-at 'renamer-overlay-type)))
     (when renamer-type
       (if (skroad--idle-have-work-p)
-          (skroad--info "Please wait until queued work completes!")
+          (user-error "Please wait until queued work completes!")
         (skroad--with-current-zone
           (let ((old-name (funcall (get renamer-type 'name-rename) start)))
             (when (skroad--fn-or-t (get renamer-type 'permit-rename) old-name)
@@ -1743,29 +1743,29 @@ disable the renamer and return nil."
 (defun skroad--node-renamer-permit (current)
   "Determine whether a node titled CURRENT is renameable."
   (cond ((skroad--node-special-p current)
-         (skroad--info "A special node cannot be renamed!")
+         (user-error "A special node cannot be renamed!")
          nil)
         ((skroad--node-log-p current)
-         (skroad--info "A log node cannot be renamed!")
+         (user-error "A log node cannot be renamed!")
          nil)
         ((not (skroad--cache-peek current))
-         (skroad--info "This is a temporary node and cannot be renamed!")
+         (user-error "This is a temporary node and cannot be renamed!")
          nil)
         (t t)))
 
 (defun skroad--node-renamer-validate (current proposed)
   "Determine whether a node titled CURRENT may be renamed to PROPOSED."
   (cond ((not (skroad--validate-node-title-for-rename proposed))
-         (skroad--info "'%s' is not a valid node title!" proposed)
+         (user-error "'%s' is not a valid node title!" proposed)
          nil)
         ((string-equal proposed current)
          (skroad--info "No change proposed")
          t)
         ((skroad--cache-peek proposed)
-         (skroad--info "'%s' is an existing node!" proposed)
+         (user-error "'%s' is an existing node!" proposed)
          nil)
         ((skroad--node-log-p proposed)
-         (skroad--info
+         (user-error
           (format "The prefix '%s' is reserved for auto-created log nodes!"
                   skroad--log-node-prefix))
          nil)
@@ -3053,7 +3053,7 @@ If this node did not have a tail indicator, this is a no-op."
     (if (or buffer-read-only
             (skroad--node-special-p node)
             (skroad--node-log-p node))
-        (skroad--info "Node '%s' cannot be deleted!" node)
+        (user-error "Node '%s' cannot be deleted!" node)
       (skroad--complete-all-deferred) ;; Pending ops must complete first
       (when (skroad--delete-node node)
         (skroad--log-node-remove node)
@@ -3065,7 +3065,7 @@ If this node did not have a tail indicator, this is a no-op."
   (interactive)
   (let ((node (skroad--current-node)))
     (if buffer-read-only
-        (skroad--info "This node's tail cannot be moved!")
+        (user-error "This node's tail cannot be moved!")
       (when (y-or-n-p (format "Auto-reposition the tail of node '%s' ?" node))
         (skroad--node-tail-ensure)
         (save-mark-and-excursion
@@ -3338,7 +3338,7 @@ If this node did not have a tail indicator, this is a no-op."
          (val    (and fn (intern-soft arg))))
     (if (and fn val)
         (ignore-errors (funcall fn val))
-      (skroad--info "Help page '%s' was not found!" url))))
+      (user-error "Help page '%s' was not found!" url))))
 
 (defun skroad--open-node ()
   "Open a skroad node."
