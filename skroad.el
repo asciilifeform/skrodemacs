@@ -2787,8 +2787,8 @@ and equal to each other.  Never signals an error."
 
 ;; TODO: ensure current month log
 (defun skroad--log-node-op (node live op &optional unique reason)
-  "Record an OP on NODE (if LIVE: emplace live link) to the current log.
-The current log is created if it did not previously exist.
+  "Record an OP on NODE (if LIVE: emplace live link) to the current log node.
+The current log node is created if it did not previously exist.
 If UNIQUE is true, an entry found to be a duplicate is moved to the day's end.
 REASON, if given, is a comment describing the cause of the operation."
   (let ((entry
@@ -2798,7 +2798,7 @@ REASON, if given, is a comment describing the cause of the operation."
                  (or (and (stringp reason) (concat " (" reason ")")) "")
                  ".")))
     (skroad--defer
-     (message (concat "Skroad Log: " entry))
+     (message (concat "Skroad Log Entry: " entry))
      (skroad--with-node skroad--special-node-log nil ;; Run actions!
        (skroad--emplace-log-entry entry unique)))))
 
@@ -2949,7 +2949,7 @@ Return the constrained point.  For use with `skroad--point-zone-handler'."
 If this node did not have a tail indicator, a new one is emplaced.
 If NODE is a log, and the tail has no other log links, it goes at the bottom;
 If there were other log links in the tail, it goes in chronological order.
-A non-log link is always emplaced at the top, just below the tail indicator."
+A non-log link is emplaced at the top of the tail, just below the indicator."
   (save-mark-and-excursion
     (let ((tail-start (skroad--node-tail-start-pos))
           (link (skroad--link-generate-live node)))
