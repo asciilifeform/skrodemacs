@@ -3031,7 +3031,6 @@ If this node did not have a tail indicator, this is a no-op."
       (skroad--fontify-current-line)
       (delete-region (point) (progn (forward-line 1) (point))))))
 
-;; TODO: what if there's no tail?
 (defun skroad--current-node-extract-body ()
   "Return the body of the current node."
   (save-mark-and-excursion
