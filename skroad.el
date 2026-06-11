@@ -38,7 +38,7 @@
   :group 'skroad-faces)
 
 (defface skroad--search-match-face
-  '((t :inherit match :bold t))
+  '((t :inherit match :weight bold))
   "Face for occurrences of the search string in search results.")
 
 (defface skroad--selector-face
@@ -73,16 +73,13 @@
   "Pool of quote backgrounds.")
 
 (defface skroad--node-link-face
-  '((t :inherit link :underline nil
-       ))
+  '((t :inherit link :underline nil))
   "Face used as a base for all node links."
   :group 'skroad-faces)
 
 (defface skroad--node-link-decor-face
   '((t :background "black"
-       :box t
-       ;; :box (:line-width (2 . 2))
-       ))
+       :box t))
   "Face inherited from by node link faces used outside of autocomplete."
   :group 'skroad-faces)
 
