@@ -3898,7 +3898,8 @@ Warning: undo info is lost in all affected buffers!"
   (let* ((display-buffer-overriding-action
           skroad--disp-mode-this-window-or-existing)
          (node (skroad--autocomplete-minibuffer-prompt "Find Skroad node: ")))
-    (skroad--maybe-show-node node)))
+    (when node
+      (skroad--maybe-show-node node))))
 
 (defun skroad--cmd-top-jump-to-next-atomic ()
   "Jump to the next atomic after the point; try to cycle to first if none."
