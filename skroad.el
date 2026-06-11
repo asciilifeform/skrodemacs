@@ -1756,16 +1756,16 @@ disable the renamer and return nil."
 (defun skroad--node-renamer-validate (current proposed)
   "Determine whether a node titled CURRENT may be renamed to PROPOSED."
   (cond ((not (skroad--validate-node-title-for-rename proposed))
-         (user-error "'%s' is not a valid node title!" proposed)
+         (skroad--info "'%s' is not a valid node title!" proposed)
          nil)
         ((string-equal proposed current)
          (skroad--info "No change proposed")
          t)
         ((skroad--cache-peek proposed)
-         (user-error "'%s' is an existing node!" proposed)
+         (skroad--info "'%s' is an existing node!" proposed)
          nil)
         ((skroad--node-log-p proposed)
-         (user-error
+         (skroad--info
           (format "The prefix '%s' is reserved for auto-created log nodes!"
                   skroad--log-node-prefix))
          nil)
