@@ -2617,7 +2617,7 @@ match data and returns non-nil on success."
             (replace-match "" t t))
           (skroad--goto-node-body-start)
           (insert
-           (format "\n%s matches in %s nodes (of %s searched) :\n"
+           (format "\n%s results in %s nodes (of %s searched) :\n"
                    match-count match-node-count node-count)))))))
 
 (defun skroad--search-buffer-name (string)
