@@ -37,6 +37,10 @@
   "Default face used for skrode text types."
   :group 'skroad-faces)
 
+(defface skroad--search-match-face
+  '((t :inherit match))
+  "Face for occurrences of the search string in search results.")
+
 (defface skroad--selector-face
   '((t :inherit highlight :extend t))
   "Face for use with atomic selections."
@@ -222,6 +226,14 @@
   "Determine whether skroad mode is currently active."
   (derived-mode-p 'skroad-mode))
 
+(defun skroad--search-results-p ()
+  "Determine whether skroad search results mode is currently active."
+  (derived-mode-p 'skroad-search-results-mode))
+
+(defun skroad--mode-or-search-results-p ()
+  "Determine whether skroad mode or search results mode is currently active."
+  (or (skroad--mode-p) (skroad--search-results-p)))
+
 (defmacro skroad--with-file (file &rest body)
   "Evaluate BODY, operating on FILE (must exist).  Use existing buffer, if any."
   (declare (indent defun))
@@ -263,7 +275,7 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
   (let ((visiting-buffer (make-symbol "visiting-buffer")))
     `(dolist (,visiting-buffer (buffer-list))
        (with-current-buffer ,visiting-buffer
-         (when (skroad--mode-p)
+         (when (skroad--mode-or-search-results-p)
            ,@body)))))
 
 (defun skroad--keyword-to-symbol (exp)
@@ -368,7 +380,7 @@ confine its edits to the matched text.  Return t if there were any matches."
   "Prevent FUNCTION from triggering modification hooks while in this mode."
   `(advice-add ,function :around
                (lambda (orig-fun &rest args)
-                 (if (skroad--mode-p)
+                 (if (skroad--mode-or-search-results-p)
                      (with-silent-modifications
                        (apply orig-fun args))
                    (apply orig-fun args)))))
@@ -496,7 +508,8 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
 ;; TODO: prevent backup files litter?
 (defun skroad--save-current-node ()
   "Save the current node."
-  (when (and buffer-file-name
+  (when (and (skroad--current-buffer-node-p)
+             buffer-file-name
              (not (skroad--renamer-active-p)))
     (setq-local require-final-newline t) ;; Insert final newline if absent
     (save-buffer)))
@@ -858,7 +871,7 @@ No refontification is triggered; existing properties are untouched."
 (defun skroad--fontify-current-line ()
   "Ensure fontification of the current line in a skroad buffer.
 Return t when we were actually in the mode and the refontification happened."
-  (when (skroad--mode-p)
+  (when (skroad--mode-or-search-results-p)
     (save-mark-and-excursion
       (font-lock-ensure (line-beginning-position) (line-end-position)))
     t))
@@ -1359,10 +1372,10 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
   (let* ((indices (skroad--buf-indices))
          (init (eq indices 'index-me))
          (have-changes (skroad--buf-indices-have-pending-p)))
-    (unless (skroad--node-special-no-index-p)
+    (unless (skroad--node-disable-index-p)
       (skroad--buf-indices-ensure-change-tracker)) ;; Init tracker if not yet
     (when init
-      (unless (skroad--node-special-no-index-p)
+      (unless (skroad--node-disable-index-p)
         (when have-changes
           (message "Tried to apply changes to unindexed node: '%s', rescanning!"
                    (skroad--current-node))
@@ -1726,6 +1739,9 @@ disable the renamer and return nil."
         ((skroad--node-log-p current)
          (skroad--info "A log node cannot be renamed!")
          nil)
+        ((not (skroad--cache-peek current))
+         (skroad--info "This is a temporary node and cannot be renamed!")
+         nil)
         (t t)))
 
 (defun skroad--node-renamer-validate (current proposed)
@@ -2006,7 +2022,7 @@ If NODE does not exist, this is a no-op.  On success, return t."
          (from-buf (current-buffer)))
     (when (skroad--foreground-node node) ;; Display the node, if exists
       (let ((restored-point (skroad--maybe-restore-cached-point)))
-        (unless (or (null from-node) ;; Did we come from minibuffer ?
+        (unless (or (null from-node) ;; Did we come from minibuffer or search?
                     (skroad--node-special-p from-node)) ;; ... from a special?
           ;; TODO: this should be configurable?
           (unless restored-point ;; If we don't have a cached pos:
@@ -2278,7 +2294,7 @@ If START/END are given, constrain the replacement to that range."
       (skroad--link-delete-in-tail target) ;; ... delete target in tail;
     (skroad--connect-to target))) ;; ... if not, ensure a link to target.
 
-(defun skroad--revive-to (node)
+(defun skroad--link-revive-to (node)
   "If the current node has at least one dead link to NODE, revive that link.
 Return true if any such links were in fact revived."
   (and (skroad--link-has-dead-p node) ;; Any dead links to node?
@@ -2286,11 +2302,12 @@ Return true if any such links were in fact revived."
 
 (defun skroad--connect-to (node)
   "Ensure that the current node has at least one live link to NODE.
-If it had dead links to NODE, liven them; else, emplace a link in the tail."
+If it had dead links to NODE, liven them; else, test for existing live links;
+failing either of the above, emplace a new live link in the tail."
   (unless (skroad--node-self-p node) ;; May not connect to self
-    (or (skroad--link-has-live-p node) ;; Already has a live link to node?
-        (skroad--revive-to node) ;; Try reviving any dead links to node
-        (skroad--link-insert-live-in-tail node)))) ;; ... Or emplace a new link.
+    (or (skroad--link-revive-to node) ;; Can we revive any dead links?
+        (skroad--link-has-live-p node) ;; ... else, had live links already?
+        (skroad--link-insert-live-in-tail node)))) ;; ... else, need a new one.
 
 (defun skroad--disconnect-from (node &optional delete-all)
   "Ensure that the current node does NOT have any live links to NODE.
@@ -2505,6 +2522,142 @@ Already-encoded URLs are left untouched to avoid double-encoding."
   :use 'skroad--text-mixin-renameable
   :use 'skroad--text-mixin-rendered-zoned
   )
+
+;; Text Search. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun skroad--search-current-buffer (string)
+  "Return the text of each line in the current buffer matching STRING.
+Matching is case-insensitive.  One entry per matching line, in
+reverse buffer order."
+  (let ((case-fold-search t)
+        (search-upper-case nil)
+        (matches nil))
+    (save-restriction
+      (widen)
+      (goto-char (point-min))
+      (while (search-forward string nil t)
+        (push (buffer-substring-no-properties
+               (line-beginning-position) (line-end-position))
+              matches)
+        (end-of-line)))
+    matches))
+
+(defun skroad--search-highlight-matcher (string limit)
+  "Find the next occurrence of STRING within a result line, up to LIMIT.
+Searches only inside text marked `skroad-search-result'.  Sets the
+match data and returns non-nil on success."
+  (let ((case-fold-search t))
+    (catch 'found
+      (while (< (point) limit)
+        (if (get-text-property (point) 'skroad-search-result)
+            ;; Inside a result line: search bounded by its end.
+            (let ((end (min limit
+                            (next-single-property-change
+                             (point) 'skroad-search-result nil limit))))
+              (if (search-forward string end t)
+                  (throw 'found t)
+                (goto-char end)))
+          ;; Outside: skip to the next result line.
+          (goto-char (next-single-property-change
+                      (point) 'skroad-search-result nil limit))))
+      nil)))
+
+(defun skroad--search-in-progress-p (buf)
+  "Return non-nil if BUF is a live results buffer still being filled."
+  (and (buffer-live-p buf)
+       (with-current-buffer buf
+         (save-excursion
+           (goto-char (point-min))
+           (re-search-forward "(searching\\.\\.\\.)"
+                              (line-end-position) t)))))
+
+(defun skroad--search-insert-group (buf node matches)
+  "Append MATCHES for NODE to results buffer BUF, if it still lives."
+  (when (and (buffer-live-p buf) matches)
+    (with-current-buffer buf
+      (let ((inhibit-read-only t))
+        (save-excursion
+          (goto-char (point-max))
+          (insert (skroad--link-generate-live node) "\n")
+          (dolist (text matches)
+            (insert ">" (propertize text 'skroad-search-result t)
+                    "\n"))
+          (insert "\n"))))))
+
+(defun skroad--search-finish (buf found-anything)
+  "Mark the search in BUF as complete, if it still lives."
+  (when (buffer-live-p buf)
+    (with-current-buffer buf
+      (let ((inhibit-read-only t))
+        (save-excursion
+          (goto-char (point-min))
+          (when (re-search-forward "(searching\\.\\.\\.)" nil t)
+            (replace-match "" t t))
+          (unless found-anything
+            (goto-char (point-max))
+            (insert "No matches.\n")))))))
+
+(defun skroad--search-buffer-name (string)
+  "Return the results buffer name for a search for STRING.
+Case-insensitive: strings differing only in case share a buffer."
+  (format "*skroad-search: %s*" (downcase string)))
+
+(defun skroad--search-render (string)
+  "Begin a full-text search for STRING across all known nodes.
+If a search for STRING is already in progress, do nothing except return its
+buffer.  Otherwise create (or reuse and reset) the results buffer immediately
+and return it; the per-file searches are deferred, and append their results,
+grouped by node, as they complete.  Occurrences of STRING within the matched
+lines are highlighted with `skroad--search-match'."
+  (let ((buf (get-buffer (skroad--search-buffer-name string))))
+    (if (skroad--search-in-progress-p buf)
+        buf ;; already searching: no-op
+      (setq buf (get-buffer-create (skroad--search-buffer-name string)))
+      (let ((nodes nil))
+        (maphash (lambda (node _) (push node nodes)) (skroad--cache))
+        (with-current-buffer buf
+          (let ((inhibit-read-only t))
+            (erase-buffer)
+            (skroad-search-results-mode) ;; first: resets keywords/locals
+            (setq-local skroad--current-node-title (buffer-name))
+            (setq-local revert-buffer-function
+                        (lambda (_ignore-auto _noconfirm)
+                          (skroad--search-render string)))
+            (font-lock-add-keywords
+             nil
+             (list (list (lambda (limit)
+                           (skroad--search-highlight-matcher string limit))
+                         0 ''skroad--search-match-face 'prepend))
+             'append)
+            (insert (format "Nodes containing %S: (searching...)\n\n"
+                            string)))
+          (skroad--goto-node-body-start))
+        ;; Actually schedule the search:
+        (let ((pending (length nodes))
+              (found-anything nil))
+          (if (zerop pending)
+              (skroad--search-finish buf nil)
+            (dolist (node nodes)
+              (skroad--defer
+               (when (skroad--cache-peek node) ;; Make sure it still exists!
+                 (skroad--with-node node t
+                   (let ((matches (skroad--search-current-buffer string)))
+                     (when matches
+                       (setq found-anything t)
+                       (skroad--search-insert-group buf node matches))))
+                 (setq pending (1- pending))
+                 (when (zerop pending)
+                   (skroad--search-finish buf found-anything))))))))
+      buf)))
+
+(defun skroad--cmd-top-search (string)
+  "Full-text search for STRING across all known nodes.
+Case-insensitive.  Results appear incrementally, grouped by node;
+repeating a search already in progress is a no-op."
+  (interactive (list (read-string "Search Skroad nodes for: ")))
+  (when (string-empty-p string)
+    (user-error "Empty search string"))
+  (pop-to-buffer (skroad--search-render string)))
 
 ;; Atomic Comments. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2837,9 +2990,10 @@ If this node did not have a tail indicator, this is a no-op."
 (defun skroad--current-buffer-node-p ()
   "Return t when the current buffer contains a Skroad node."
   (or (skroad--mode-p)
-      (when-let* ((file (buffer-file-name))
-                  (extension (file-name-extension file)))
-        (string-equal extension skroad--file-extension))))
+      (and buffer-file-name
+           (when-let* ((file (buffer-file-name))
+                       (extension (file-name-extension file)))
+             (string-equal extension skroad--file-extension)))))
 
 (defun skroad--current-internal-title ()
   "Get the current node's title from the buffer."
@@ -3094,7 +3248,8 @@ If this node did not have a tail indicator, this is a no-op."
 
 (defun skroad--set-writability ()
   "If the current node is a special node, interactive editing is prohibited."
-  (setq-local buffer-read-only (skroad--node-special-p)))
+  (setq-local buffer-read-only
+              (or (skroad--node-special-p) (skroad--search-results-p))))
 
 (defun skroad--find-word-boundary (pos limit)
   "Function for use in `find-word-boundary-function-table'."
@@ -3183,7 +3338,7 @@ If this node did not have a tail indicator, this is a no-op."
   "If the title is not visible in the current window, enable the header in it.
 Otherwise (including if current buffer is not in the mode), simply return nil."
   (when (and skroad--floating-title-enable
-             (skroad--mode-p)
+             (skroad--mode-or-search-results-p)
              (skroad--in-node-body-p (window-start)))
     (save-mark-and-excursion
       (goto-char (point-min))
@@ -3193,7 +3348,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 
 (defun skroad--vacate-window (window)
   "If the current buffer is in a different mode, disable the header in WINDOW."
-  (unless (skroad--mode-p)
+  (unless (skroad--mode-or-search-results-p)
     (run-with-timer ;; Fires after redraw is complete
      0 nil
      #'(lambda ()
@@ -3224,7 +3379,8 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 
 (defun skroad--save-cache-point ()
   "Save the current node's point to the point cache."
-  (puthash (skroad--current-node) (point) skroad--point-cache))
+  (when (skroad--current-buffer-node-p)
+    (puthash (skroad--current-node) (point) skroad--point-cache)))
 
 (defun skroad--before-kill-buffer-hook ()
   "Triggers prior to a skroad buffer being killed."
@@ -3239,11 +3395,12 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 (defun skroad--maybe-restore-cached-point ()
   "If the current node had been visited in this session, restore the point.
 Returns t when a cached position was actually found."
-  (let ((cached-point (gethash (skroad--current-node) skroad--point-cache)))
-    (if cached-point
-        (goto-char (min (point-max) cached-point))
-      (skroad--goto-node-body-start)
-      nil)))
+  (when (skroad--current-buffer-node-p)
+    (let ((cached-point (gethash (skroad--current-node) skroad--point-cache)))
+      (if cached-point
+          (goto-char (min (point-max) cached-point))
+        (skroad--goto-node-body-start)
+        nil))))
 
 ;; Back-end. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -3280,7 +3437,7 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
     (skroad--with-node node nil (skroad--buf-indices)))) ;; Runs actions!
 
 (defvar skroad--special-nodes nil
-  "List of all defined special nodes.  These nodes are created automatically;
+  "List of pre-defined special nodes.  These nodes are created automatically;
 contain only mechanically-generated content; and cannot be renamed, deleted,
 or edited interactively.  Special nodes are not subject to auto-backlinking.")
 
@@ -3289,11 +3446,12 @@ or edited interactively.  Special nodes are not subject to auto-backlinking.")
   (member (or node (skroad--current-node)) skroad--special-nodes))
 
 (defvar skroad--special-nodes-no-index nil
-  "List of all special nodes where indexing is inhibited.")
+  "List of pre-defined special nodes where indexing is inhibited.")
 
-(defun skroad--node-special-no-index-p (&optional node)
-  "Return t if NODE (if given; else the current node) has indexing inhibited."
-  (member (or node (skroad--current-node)) skroad--special-nodes-no-index))
+(defun skroad--node-disable-index-p ()
+  "Return t if the current node has indexing inhibited."
+  (or (null buffer-file-name)
+      (member (skroad--current-node) skroad--special-nodes-no-index)))
 
 (defmacro skroad--define-special-node (handle node allow-index &rest legend)
   "Define a special NODE; store title in HANDLE.
@@ -3769,8 +3927,9 @@ Warning: undo info is lost in all affected buffers!"
     )
   "Top-level keymap for the skroad major mode.")
 
-;; Global binding for find-node
+;; Global binding for find-node and node text search:
 (keymap-global-set "M-o" #'skroad--cmd-top-find-node)
+(keymap-global-set "C-M-o" #'skroad--cmd-top-search)
 
 ;; Mode init. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -3791,16 +3950,13 @@ Warning: undo info is lost in all affected buffers!"
       (run-with-idle-timer 0 nil #'skroad--lint))
     (setq skroad--global-init-done t)))
 
-;; TODO: proper mode exit cleanup
-;; TODO: do NOT set the mode if file is not in the data dir
-(define-derived-mode skroad-mode text-mode "Skroad"
-  (skroad--ensure-global-init)
-  (setq-local require-final-newline t) ;; Insert final newline if absent
-  ;; Disable default auto-save:
-  (add-hook 'auto-save-mode-hook
-            (lambda () (setq buffer-auto-save-file-name nil))
-            nil t)
-  (setq-local buffer-auto-save-file-name nil)
+(defun skroad--mode-common-init ()
+  "Init aspects common to both skroad-mode and skroad-search-results-mode."
+  (font-lock-mode 1)
+  (visual-line-mode 1)
+  ;; Handle word boundaries correctly (atomics are treated as unitary words) :
+  (setq-local find-word-boundary-function-table
+              skroad--find-word-boundary-function-table)
   ;; Prevent text properties from infesting the kill ring (emacs 28+) :
   (setq-local kill-transform-function #'substring-no-properties)
   ;; Modified isearch which ignores escaped brackets:
@@ -3808,31 +3964,58 @@ Warning: undo info is lost in all affected buffers!"
   ;; Install handler for Emacs help URLs:
   (setq-local browse-url-handlers
               '(("\\`help:" . skroad--emacs-help-url-handler)))
-  ;; Buffer-local hooks (other than change tracker: installed on first sync)
   (add-hook 'pre-command-hook #'skroad--pre-command-hook nil t)
   (add-hook 'post-command-hook #'skroad--post-command-hook nil t)
-  (add-hook 'before-save-hook #'skroad--before-save-hook nil t)
-  (add-hook 'after-save-hook #'skroad--after-save-hook nil t)
-  (add-hook 'kill-buffer-hook #'skroad--before-kill-buffer-hook nil t)
   (add-hook 'window-scroll-functions #'skroad--update-window-state nil t)
   (add-hook 'window-state-change-functions #'skroad--update-window-state nil t)
   (add-hook 'window-buffer-change-functions #'skroad--update-window-state nil t)
+  (face-remap-add-relative 'header-line 'skroad--title-face)
+  (skroad--deactivate-mark) ;; Zap spurious mark from opening links via mouse
+  (skroad--selector-init)
+  )
+
+;; TODO: proper mode exit cleanup
+;; TODO: do NOT set the mode if file is not in the data dir
+(define-derived-mode skroad-mode text-mode "Skroad"
+  (skroad--ensure-global-init)
+  (skroad--mode-common-init)
+  (setq-local require-final-newline t) ;; Insert final newline if absent
+  ;; Disable default auto-save:
+  (add-hook 'auto-save-mode-hook
+            (lambda () (setq buffer-auto-save-file-name nil))
+            nil t)
+  (setq-local buffer-auto-save-file-name nil)
+  ;; Buffer-local hooks (other than change tracker: installed on first sync)
+  (add-hook 'before-save-hook #'skroad--before-save-hook nil t)
+  (add-hook 'after-save-hook #'skroad--after-save-hook nil t)
+  (add-hook 'kill-buffer-hook #'skroad--before-kill-buffer-hook nil t)
   (add-hook 'after-change-functions #'skroad--quote-after-change-hook nil t)
   (skroad--install-yank-transformer)
   ;; (add-hook 'auto-save-hook #'skroad--autosave-hook nil t)
-  ;; Selector for atomics:
-  (skroad--selector-init)
-  ;; Keymap:
-  (use-local-map skroad--mode-map)
-  ;; Handle word boundaries correctly (atomics are treated as unitary words) :
-  (setq-local find-word-boundary-function-table
-              skroad--find-word-boundary-function-table)
   ;; Initialize autocomplete support.
   (setq-local completion-at-point-functions '(skroad--autocomplete-in-buf-capf))
   (skroad--autocomplete-buf-init)
   ;; Buffer-local hooks:
   (add-hook 'skroad-mode-hook 'skroad--open-node 0 t)
   )
+
+;; Set up keymap for Skroad mode:
+(set-keymap-parent skroad-mode-map
+                   (make-composed-keymap skroad--mode-map text-mode-map))
+
+(define-derived-mode skroad-search-results-mode special-mode "Skroad-Search"
+  "Major mode for Skroad full-text search result buffers.
+Not derived from `skroad', but fontifies its contents using
+skroad's font-lock rules.  Read-only (via `special-mode');
+contents are rewritten only by `skroad--search-render'."
+  (skroad--mode-common-init)
+  (skroad--init-font-lock)
+  (skroad--deactivate-mark)
+  )
+
+;; Set up keymap for Skroad search results mode:
+(set-keymap-parent skroad-search-results-mode-map
+                   (make-composed-keymap skroad--mode-map special-mode-map))
 
 (provide 'skroad)
 
