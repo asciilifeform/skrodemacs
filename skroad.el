@@ -1748,7 +1748,7 @@ disable the renamer and return nil."
         ((skroad--node-log-p current)
          (user-error "A log node cannot be renamed!")
          nil)
-        ((not (skroad--cache-peek current))
+        ((not (skroad--cache-peek current)) ;; TODO: a better test ?
          (user-error "This is a temporary node and cannot be renamed!")
          nil)
         (t t)))
@@ -2606,7 +2606,7 @@ match data and returns non-nil on success."
                     "\n"))
           (insert "\n"))))))
 
-(defun skroad--search-finish (buf found-anything)
+(defun skroad--search-finish (buf match-count match-node-count node-count)
   "Mark the search in BUF as complete, if it still lives."
   (when (buffer-live-p buf)
     (with-current-buffer buf
@@ -2615,9 +2615,10 @@ match data and returns non-nil on success."
           (goto-char (point-min))
           (when (re-search-forward "(searching\\.\\.\\.)" nil t)
             (replace-match "" t t))
-          (unless found-anything
-            (goto-char (point-max))
-            (insert "No matches.\n")))))))
+          (skroad--goto-node-body-start)
+          (insert
+           (format "\n%s matches in %s nodes (of %s searched) :\n"
+                   match-count match-node-count node-count)))))))
 
 (defun skroad--search-buffer-name (string)
   "Return the results buffer name for a search for STRING.
@@ -2653,10 +2654,11 @@ lines are highlighted."
                           string)))
         (skroad--goto-node-body-start))
       ;; Actually schedule the search:
-      (let ((found-anything nil)
+      (let ((match-count 0)
+            (match-node-count 0)
             (node-count (skroad--cache-count)))
         (if (zerop node-count)
-            (skroad--search-finish buf nil)
+            (skroad--search-finish buf 0 0 0)
           (skroad--info "Searching %s nodes..." node-count)
           (skroad--cache-foreach ;; Dispatch for each known node:
            #'(lambda (node)
@@ -2665,10 +2667,12 @@ lines are highlighted."
                   (skroad--with-node node t
                     (let ((matches (skroad--search-current-buffer string)))
                       (when matches
-                        (setq found-anything t)
+                        (setq match-node-count (1+ match-node-count))
+                        (setq match-count (+ match-count (length matches)))
                         (skroad--search-insert-group buf node matches))))))))
           (skroad--defer
-           (skroad--search-finish buf found-anything))))
+           (skroad--search-finish
+            buf match-count match-node-count node-count))))
       buf)))
 
 (defun skroad--cmd-top-search (string)
