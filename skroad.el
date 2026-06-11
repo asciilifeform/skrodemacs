@@ -2027,7 +2027,7 @@ If NODE does not exist, this is a no-op.  On success, return t."
     (user-error "Node '%s' does not exist!" node) ;; If it did not exist
     nil))
 
-(defun skroad--maybe-show-node (node)
+(defun skroad--show-existing-node (node)
   "Navigate to NODE, if it exists.  If called from a node buffer, may close it."
   (let* ((from-node (and (skroad--mode-p) (skroad--current-node))) ;; origin
          (from-buf (current-buffer)))
@@ -2056,7 +2056,7 @@ Must be called from a buffer containing a node."
     (unless (skroad--cache-peek node) ;; Suppose the node still doesn't exist?
       (skroad--in-node ;; Force immediate creation.
        node #'skroad--connect-to (skroad--current-node))))
-  (skroad--maybe-show-node node))
+  (skroad--show-existing-node node))
 
 ;; TODO
 ;; (defun skroad--verify-dead-link (node)
@@ -3899,7 +3899,7 @@ Warning: undo info is lost in all affected buffers!"
           skroad--disp-mode-this-window-or-existing)
          (node (skroad--autocomplete-minibuffer-prompt "Find Skroad node: ")))
     (when node
-      (skroad--maybe-show-node node))))
+      (skroad--show-existing-node node))))
 
 (defun skroad--cmd-top-jump-to-next-atomic ()
   "Jump to the next atomic after the point; try to cycle to first if none."
