@@ -38,7 +38,7 @@
   :group 'skroad-faces)
 
 (defface skroad--search-match-face
-  '((t :inherit match))
+  '((t :inherit match :bold t))
   "Face for occurrences of the search string in search results.")
 
 (defface skroad--selector-face
@@ -2617,7 +2617,7 @@ match data and returns non-nil on success."
             (replace-match "" t t))
           (skroad--goto-node-body-start)
           (insert
-           (format "\n%s results in %s nodes (of %s searched) :\n"
+           (format "\n** %s results in %s nodes (of %s searched) : **\n"
                    match-count match-node-count node-count)))))))
 
 (defun skroad--search-buffer-name (string)
