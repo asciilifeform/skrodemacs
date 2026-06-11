@@ -96,6 +96,11 @@
   "Face used for live links."
   :group 'skroad-faces)
 
+(defface skroad--live-deleted-link-face
+  '((t :inherit skroad--live-link-face :strike-through t))
+  "Face used for live links to nodes which no longer exist."
+  :group 'skroad-faces)
+
 (defface skroad--log-link-face
   '((t :inherit skroad--node-link-face :foreground "white"))
   "Face used for live log links."
@@ -123,7 +128,7 @@
   "Face used for dead links."
   :group 'skroad-faces)
 
-(defface skroad--dead-orphaned-link-face
+(defface skroad--dead-deleted-link-face
   '((t :inherit skroad--dead-link-face :strike-through t))
   "Face used for dead links to nodes which no longer exist."
   :group 'skroad-faces)
@@ -2001,7 +2006,7 @@ If an invalid link was seen during indexing, report it to the lint."
 (defun skroad--foreground-node (node)
   "If NODE is visible somewhere, go there; otherwise open in the current window.
 If NODE does not exist, this is a no-op.  On success, return t."
-  (when (and node (skroad--cache-peek node))
+  (if (and node (skroad--cache-peek node))
     (let* ((node-path (skroad--node-path node)) ;; Target path
            (node-buf (find-buffer-visiting node-path))) ;; buf (maybe nil)
       (if node-buf ;; If node is already open in a buffer, use that buffer:
@@ -2013,8 +2018,10 @@ If NODE does not exist, this is a no-op.  On success, return t."
                     (select-frame-set-input-focus node-frame)) ;; ... focus it.
                   (select-window node-win))
               (switch-to-buffer node-buf))) ;; ... unbury in current window.
-        (pop-to-buffer (find-file-noselect node-path)))) ;; ... or open it.
-    t)) ;; Return t when displayed.
+        (pop-to-buffer (find-file-noselect node-path))) ;; ... or open it.
+      t) ;; Return t when displayed.
+    (user-error "Node '%s' does not exist!" node) ;; If it did not exist
+    nil))
 
 (defun skroad--maybe-show-node (node)
   "Navigate to NODE, if it exists.  If called from a node buffer, may close it."
@@ -2035,10 +2042,12 @@ If NODE does not exist, this is a no-op.  On success, return t."
               (kill-buffer)))))
       t))) ;; Return t when displayed.
 
-(defun skroad--ensure-and-show-node (node)
-  "Navigate to NODE.  The node will be created if it does not yet exist.
+(defun skroad--show-node (node &optional no-create)
+  "Navigate to NODE.
+Unless NO-CREATE is true, the node will be created if it does not yet exist.
 Must be called from a buffer containing a node."
-  (unless (skroad--cache-peek node) ;; Is creation is still pending?
+  (unless (or (skroad--cache-peek node) ;; May already have been created
+              no-create) ;; Creation may be disabled
     (skroad--complete-all-deferred) ;; ... if so, let all deferred work finish.
     (unless (skroad--cache-peek node) ;; Suppose the node still doesn't exist?
       (skroad--in-node ;; Force immediate creation.
@@ -2154,6 +2163,12 @@ If TARGET does not exist, this is a no-op."
 (defconst skroad--link-node-live-end-delim "]]"
   "Delimiter indicating the end of a live Skroad link.")
 
+(defun skroad--action-live-link-activate (node)
+  "Activate a live link to NODE."
+  (skroad--show-node node
+                     (or (skroad--node-special-p) ;; Don't create from specials
+                         (skroad--search-results-p)))) ;; ... or from search res
+
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :order 100
@@ -2161,15 +2176,18 @@ If TARGET does not exist, this is a no-op."
   :on-init #'skroad--action-live-link-init
   :on-create #'skroad--action-live-link-create
   :on-destroy #'skroad--action-live-link-destroy
-  :on-activate #'skroad--ensure-and-show-node
+  :on-activate #'skroad--action-live-link-activate
   :face-function
   '(lambda (payload)
-     (list (cond ((skroad--node-self-p payload) 'skroad--self-link-face)
-                 ((skroad--node-special-p payload) 'skroad--special-link-face)
-                 ((skroad--node-log-p payload) 'skroad--log-link-face)
-                 ((skroad--node-stub-p payload) 'skroad--stub-link-face)
-                 (t 'skroad--live-link-face))
-           'skroad--node-link-decor-face))
+     (list
+      (if (skroad--cache-peek payload)
+          (cond ((skroad--node-self-p payload) 'skroad--self-link-face)
+                ((skroad--node-special-p payload) 'skroad--special-link-face)
+                ((skroad--node-log-p payload) 'skroad--log-link-face)
+                ((skroad--node-stub-p payload) 'skroad--stub-link-face)
+                (t 'skroad--live-link-face))
+        'skroad--live-deleted-link-face)
+      'skroad--node-link-decor-face))
   :begins skroad--link-node-live-start-delim
   :ends skroad--link-node-live-end-delim
   :keymap (define-keymap
@@ -2233,7 +2251,7 @@ If TARGET does not exist, this is a no-op."
   '(lambda (payload)
      (list (if (skroad--cache-peek payload)
                'skroad--dead-link-face
-             'skroad--dead-orphaned-link-face)
+             'skroad--dead-deleted-link-face)
            'skroad--node-link-decor-face))
   :keymap (define-keymap
             "t" #'skroad--cmd-atomic-delimited-textify
