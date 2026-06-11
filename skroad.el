@@ -1294,6 +1294,10 @@ or the node's indices, if it has been indexed; or `empty' (indices are null).")
   "Evaluate (for side effects) FN applied to each node currently in the cache."
   (maphash #'(lambda (key _val) (funcall fn key)) (skroad--cache)))
 
+(defun skroad--cache-count ()
+  "Return the number of nodes currently in the cache."
+  (hash-table-count (skroad--cache)))
+
 ;; Indexed text types. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--index-delta (index payload delta &optional final create destroy)
@@ -2618,7 +2622,7 @@ match data and returns non-nil on success."
 (defun skroad--search-buffer-name (string)
   "Return the results buffer name for a search for STRING.
 Case-insensitive: strings differing only in case share a buffer."
-  (format "*skroad-search: %s*" (downcase string)))
+  (format "*skroad-search: '%s'*" (downcase string)))
 
 (defun skroad--search-render (string)
   "Begin a full-text search for STRING across all known nodes.
@@ -2626,46 +2630,46 @@ If a search for STRING is already in progress, do nothing except return its
 buffer.  Otherwise create (or reuse and reset) the results buffer immediately
 and return it; the per-file searches are deferred, and append their results,
 grouped by node, as they complete.  Occurrences of STRING within the matched
-lines are highlighted with `skroad--search-match'."
+lines are highlighted."
   (let ((buf (get-buffer (skroad--search-buffer-name string))))
     (if (skroad--search-in-progress-p buf)
         buf ;; already searching: no-op
       (setq buf (get-buffer-create (skroad--search-buffer-name string)))
-      (let ((nodes nil))
-        (maphash (lambda (node _) (push node nodes)) (skroad--cache))
-        (with-current-buffer buf
-          (let ((inhibit-read-only t))
-            (erase-buffer)
-            (skroad-search-results-mode) ;; first: resets keywords/locals
-            (setq-local skroad--current-node-title (buffer-name))
-            (setq-local revert-buffer-function
-                        (lambda (_ignore-auto _noconfirm)
-                          (skroad--search-render string)))
-            (font-lock-add-keywords
-             nil
-             (list (list (lambda (limit)
-                           (skroad--search-highlight-matcher string limit))
-                         0 ''skroad--search-match-face 'prepend))
-             'append)
-            (insert (format "Nodes containing %S: (searching...)\n\n"
-                            string)))
-          (skroad--goto-node-body-start))
-        ;; Actually schedule the search:
-        (let ((pending (length nodes))
-              (found-anything nil))
-          (if (zerop pending)
-              (skroad--search-finish buf nil)
-            (dolist (node nodes)
-              (skroad--defer
-               (when (skroad--cache-peek node) ;; Make sure it still exists!
-                 (skroad--with-node node t
-                   (let ((matches (skroad--search-current-buffer string)))
-                     (when matches
-                       (setq found-anything t)
-                       (skroad--search-insert-group buf node matches))))
-                 (setq pending (1- pending))
-                 (when (zerop pending)
-                   (skroad--search-finish buf found-anything))))))))
+      (with-current-buffer buf
+        (let ((inhibit-read-only t))
+          (erase-buffer)
+          (skroad-search-results-mode) ;; first: resets keywords/locals
+          (setq-local skroad--current-node-title (buffer-name))
+          (setq-local revert-buffer-function
+                      (lambda (_ignore-auto _noconfirm)
+                        (skroad--search-render string)))
+          (font-lock-add-keywords
+           nil
+           (list (list (lambda (limit)
+                         (skroad--search-highlight-matcher string limit))
+                       0 ''skroad--search-match-face 'prepend))
+           'append)
+          (insert (format "Nodes containing %S: (searching...)\n\n"
+                          string)))
+        (skroad--goto-node-body-start))
+      ;; Actually schedule the search:
+      (let ((pending (skroad--cache-count))
+            (found-anything nil))
+        (if (zerop pending)
+            (skroad--search-finish buf nil)
+          (skroad--cache-foreach ;; Dispatch for each known node:
+           #'(lambda (node)
+               (skroad--defer ;; Defer each individual node search:
+                (when (skroad--cache-peek node) ;; Make sure it still exists!
+                  (skroad--with-node node t
+                    (let ((matches (skroad--search-current-buffer string)))
+                      (when matches
+                        (setq found-anything t)
+                        (skroad--search-insert-group buf node matches))))
+                  (setq pending (1- pending))
+                  (when (zerop pending)
+                    (skroad--search-finish buf found-anything))))))
+          ))
       buf)))
 
 (defun skroad--cmd-top-search (string)
