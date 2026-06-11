@@ -2622,7 +2622,7 @@ match data and returns non-nil on success."
 (defun skroad--search-buffer-name (string)
   "Return the results buffer name for a search for STRING.
 Case-insensitive: strings differing only in case share a buffer."
-  (format "*skroad-search: '%s'*" (downcase string)))
+  (format "*skroad-search: %S*" (downcase string)))
 
 (defun skroad--search-render (string)
   "Begin a full-text search for STRING across all known nodes.
@@ -2633,7 +2633,7 @@ grouped by node, as they complete.  Occurrences of STRING within the matched
 lines are highlighted."
   (let ((buf (get-buffer (skroad--search-buffer-name string))))
     (if (skroad--search-in-progress-p buf)
-        buf ;; already searching: no-op
+        buf ;; If already searching for this string? no-op.
       (setq buf (get-buffer-create (skroad--search-buffer-name string)))
       (with-current-buffer buf
         (let ((inhibit-read-only t))
@@ -2653,10 +2653,11 @@ lines are highlighted."
                           string)))
         (skroad--goto-node-body-start))
       ;; Actually schedule the search:
-      (let ((pending (skroad--cache-count))
-            (found-anything nil))
-        (if (zerop pending)
+      (let ((found-anything nil)
+            (node-count (skroad--cache-count)))
+        (if (zerop node-count)
             (skroad--search-finish buf nil)
+          (skroad--info "Searching %s nodes..." node-count)
           (skroad--cache-foreach ;; Dispatch for each known node:
            #'(lambda (node)
                (skroad--defer ;; Defer each individual node search:
@@ -2665,11 +2666,9 @@ lines are highlighted."
                     (let ((matches (skroad--search-current-buffer string)))
                       (when matches
                         (setq found-anything t)
-                        (skroad--search-insert-group buf node matches))))
-                  (setq pending (1- pending))
-                  (when (zerop pending)
-                    (skroad--search-finish buf found-anything))))))
-          ))
+                        (skroad--search-insert-group buf node matches))))))))
+          (skroad--defer
+           (skroad--search-finish buf found-anything))))
       buf)))
 
 (defun skroad--cmd-top-search (string)
