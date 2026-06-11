@@ -2058,6 +2058,12 @@ Must be called from a buffer containing a node."
        node #'skroad--connect-to (skroad--current-node))))
   (skroad--show-existing-node node))
 
+(defun skroad--action-live-link-activate (node)
+  "Activate a live link to NODE."
+  (skroad--show-node node
+                     (or (skroad--node-special-p) ;; Don't create from specials
+                         (skroad--search-results-p)))) ;; ... or from search res
+
 ;; TODO
 ;; (defun skroad--verify-dead-link (node)
 ;;   "A dead link to NODE must be revived if there is a live reciprocal link."
@@ -2166,12 +2172,6 @@ If TARGET does not exist, this is a no-op."
 
 (defconst skroad--link-node-live-end-delim "]]"
   "Delimiter indicating the end of a live Skroad link.")
-
-(defun skroad--action-live-link-activate (node)
-  "Activate a live link to NODE."
-  (skroad--show-node node
-                     (or (skroad--node-special-p) ;; Don't create from specials
-                         (skroad--search-results-p)))) ;; ... or from search res
 
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
