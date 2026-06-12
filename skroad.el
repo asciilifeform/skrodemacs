@@ -2657,7 +2657,9 @@ lines are highlighted."
                (skroad--defer ;; Defer each individual node search:
                 (ignore-errors
                   (when (skroad--cache-peek node) ;; Make sure it still exists!
-                    (skroad--with-file (skroad--node-path node)
+                    (with-temp-buffer ;; Fastest possible load
+                      (insert-file-contents
+                       (skroad--node-path node) nil nil nil t)
                       (let ((matches (skroad--search-current-buffer string)))
                         (when matches
                           (setq match-node-count (1+ match-node-count))
