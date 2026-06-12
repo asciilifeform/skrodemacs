@@ -1741,14 +1741,14 @@ disable the renamer and return nil."
 
 (defun skroad--node-renamer-permit (current)
   "Determine whether a node titled CURRENT is renameable."
-  (cond ((skroad--node-special-p current)
+  (cond ((skroad--search-results-p)
+         (user-error "Can't rename from search results!")
+         nil)
+        ((skroad--node-special-p current)
          (user-error "A special node cannot be renamed!")
          nil)
         ((skroad--node-log-p current)
          (user-error "A log node cannot be renamed!")
-         nil)
-        ((not (skroad--cache-peek current)) ;; TODO: a better test ?
-         (user-error "This is a temporary node and cannot be renamed!")
          nil)
         (t t)))
 
@@ -3056,6 +3056,7 @@ If we're in search results mode, return the name of the buffer."
       (skroad--fontify-current-line)
       (delete-region (point) (progn (forward-line 1) (point))))))
 
+;; TODO: suppose there's no tail indicator?
 (defun skroad--current-node-extract-body ()
   "Return the body of the current node."
   (save-mark-and-excursion
