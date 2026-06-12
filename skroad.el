@@ -1398,8 +1398,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
                      indices skroad--buf-indices-pending
                      (or no-actions (skroad--node-special-p)) init))
       (setq-local skroad--buf-indices-table indices)
-      (skroad--cache-write (skroad--current-node) indices)
-      (skroad--buf-indices-finalize))))
+      (skroad--cache-write (skroad--current-node) indices))))
 
 (defvar-local skroad--scan-in-progress nil
   "When true, indicates that scan is currently in progress.")
@@ -2070,10 +2069,6 @@ Must be called from a buffer containing a node."
 ;;              (skroad--connected-p node)) ;; and has a live link to current node.
 ;;     (skroad--link-revive node)
 ;;     (skroad--lint-report (format "Auto-revived dead link to '%s'" node))))
-
-(defun skroad--buf-indices-finalize ()
-  "Perform actions required after updating the current node's indices."
-  (skroad--current-node-update-orphan-status))
 
 ;; TODO: log entry
 ;; TODO: check if we have an unreachable that can be renamed and will correspond
@@ -3255,7 +3250,8 @@ If this node did not have a tail indicator, this is a no-op."
 (defun skroad--before-save-common ()
   "Operations to perform before any save (interactive or not)."
   (skroad--do-deferred-replacements)
-  (skroad--current-node-update-stub-status))
+  (skroad--current-node-update-stub-status)
+  (skroad--current-node-update-orphan-status))
 
 (defun skroad--before-save-hook ()
   "Triggers prior to an interactive save."
@@ -3781,6 +3777,7 @@ Warning: undo info is lost in all affected buffers!"
               (skroad--with-node node t ;; TODO: permit actions???
                 (skroad--rectify-node-title)
                 (skroad--current-node-update-stub-status)
+                (skroad--current-node-update-orphan-status)
                 (skroad--clear-buf-undo-info)
                 )))))
       (skroad--defer
