@@ -508,6 +508,7 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
 
 ;; File and directory ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: actions at a distance always save?!!!!!
 ;; TODO: prevent backup files litter?
 (defun skroad--save-current-node ()
   "Save the current node."
@@ -3259,6 +3260,7 @@ If this node did not have a tail indicator, this is a no-op."
 (defun skroad--before-save-hook ()
   "Triggers prior to an interactive save."
   (skroad--renamer-deactivate)
+  (skroad--buf-indices-sync)
   (skroad--before-save-common))
 
 (when skroad--debug
@@ -3927,7 +3929,7 @@ Warning: undo info is lost in all affected buffers!"
   (goto-char (skroad--node-tail-start-pos)))
 
 (defun skroad--cmd-top-move-tail-here ()
-  "Move the current node tail indicator to the point.  Cannot be undone."
+  "Move the current node tail indicator to the point."
   (interactive)
   (if buffer-read-only
       (skroad--info "This node's tail cannot be moved!")
