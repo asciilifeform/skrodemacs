@@ -2860,6 +2860,7 @@ REASON, if given, is a comment describing the cause of the operation."
 (defun skroad--move-tail-indicator-here ()
   "Move (and reregister) the tail indicator of the current node to the point.
 Let the user know whether the tail had actually moved (or was already here.)
+No-op if the proposed tail indicator would overlap the old one.
 For use in interactive commands only."
   (skroad--node-tail-ensure)
   (let ((old-start (copy-marker (overlay-start skroad--buf-tail-overlay)))
