@@ -2658,13 +2658,14 @@ lines are highlighted."
           (skroad--cache-foreach ;; Dispatch for each known node:
            #'(lambda (node)
                (skroad--defer ;; Defer each individual node search:
-                (when (skroad--cache-peek node) ;; Make sure it still exists!
-                  (skroad--with-node node t
-                    (let ((matches (skroad--search-current-buffer string)))
-                      (when matches
-                        (setq match-node-count (1+ match-node-count))
-                        (setq match-count (+ match-count (length matches)))
-                        (skroad--search-insert-group buf node matches))))))))
+                (ignore-errors
+                  (when (skroad--cache-peek node) ;; Make sure it still exists!
+                    (skroad--with-file (skroad--node-path node)
+                      (let ((matches (skroad--search-current-buffer string)))
+                        (when matches
+                          (setq match-node-count (1+ match-node-count))
+                          (setq match-count (+ match-count (length matches)))
+                          (skroad--search-insert-group buf node matches)))))))))
           (skroad--defer
            (skroad--search-finish
             buf match-count match-node-count node-count))))
