@@ -1274,7 +1274,7 @@ or the node's indices, if it has been indexed; or `empty' (indices are null).")
   (unless (skroad--cache-peek node) (skroad--cache-intern-unindexed node)))
 
 (defun skroad--cache-invalidate (node)
-  "If NODE is in the cache, mark it as invalid.  Otherwise, do nothing."
+  "If NODE is in the cache, mark it as unindexed.  Otherwise, do nothing."
   (when (skroad--cache-peek node) (skroad--cache-intern-unindexed node)))
 
 (defun skroad--cache-evict (node)
