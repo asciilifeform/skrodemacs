@@ -2062,15 +2062,18 @@ Must be called from a buffer containing a node."
 If we are coming from a search result buffer or a special, never create NODE.
 In the case of a search result, activate isearch with the query string if NODE
 actually loaded."
-  (let ((from-search (skroad--get-search-status)))
+  (let ((from-search (skroad--get-search-status))
+        (from-res (get-text-property (point) 'skroad-search-result)))
     (when (skroad--show-node
            node
            (or (skroad--node-special-p) ;; Don't create from specials
                from-search)) ;; ... or from search res
       (when from-search
-        (goto-char (point-min))
-        (isearch-mode t) ;; Forward search
-        (isearch-yank-string from-search)))))
+        (if from-res
+            (skroad--maybe-restore-cached-point)
+          (goto-char (point-min))
+          (isearch-mode t) ;; Forward search
+          (isearch-yank-string from-search))))))
 
 ;; TODO
 ;; (defun skroad--verify-dead-link (node)
@@ -3201,11 +3204,13 @@ If we're in search results mode, return the name of the buffer."
 (defun skroad--mark-jail (p)
   "If mark is inactive, return point P; otherwise, return a constrained P."
   (if mark-active
-    (let ((m (mark)))
-      (if (<= m (skroad--node-body-end-pos)) ;; Mark is in the node body
-          (min (max p (skroad--node-body-start-pos))
-               (skroad--node-body-end-pos))
-        (max p (skroad--node-tail-start-pos)))) ;; Mark is in the node tail
+      (let ((m (mark)))
+        (if (skroad--buf-have-tail-indicator-p)
+            (if (<= m (skroad--node-body-end-pos)) ;; Mark is in the node body
+                (min (max p (skroad--node-body-start-pos))
+                     (skroad--node-body-end-pos))
+              (max p (skroad--node-tail-start-pos))) ;; Mark is in the node tail
+          (max p (skroad--node-body-start-pos)))) ;; No tail indicator
     p)) ;; No mark
 
 (defun skroad--point-zone-handler (prev)
