@@ -2553,8 +2553,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 
 (defun skroad--search-current-buffer (string)
   "Return the text of each line in the current buffer matching STRING.
-Matching is case-insensitive.  One entry per matching line, in
-reverse buffer order."
+Matching is case-insensitive.  One entry per matching line, in buffer order."
   (let ((case-fold-search t)
         (search-upper-case nil)
         (matches nil))
@@ -2566,7 +2565,7 @@ reverse buffer order."
                (line-beginning-position) (line-end-position))
               matches)
         (end-of-line)))
-    matches))
+    (reverse matches)))
 
 (defun skroad--search-highlight-matcher (string limit)
   "Find the next occurrence of STRING within a result line, up to LIMIT.
