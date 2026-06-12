@@ -1278,7 +1278,7 @@ or the node's indices, if it has been indexed; or `empty' (indices are null).")
   (when (skroad--cache-peek node) (skroad--cache-intern-unindexed node)))
 
 (defun skroad--cache-evict (node)
-  "Evict NODE from the cache."
+  "Evict NODE from the cache.  Do this only when deleting or renaming the NODE."
   (remhash node (skroad--cache)))
 
 (defun skroad--cache-rename (node new-node)
