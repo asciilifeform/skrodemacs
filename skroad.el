@@ -1612,8 +1612,12 @@ If there are any, return the count; otherwise return nil."
   (skroad--renamer-deactivate) ;; Deactivate when already active somewhere
   (let ((renamer-type (skroad--prop-at 'renamer-overlay-type)))
     (when renamer-type
-      (if (skroad--idle-have-work-p)
-          (user-error "Please wait until queued work completes!")
+      (cond
+       ((skroad--search-results-p)
+        (user-error "Can't rename from search results!"))
+       ((skroad--idle-have-work-p)
+        (user-error "Please wait until queued work completes!"))
+       (t
         (skroad--with-current-zone
           (let ((old-name (funcall (get renamer-type 'name-rename) start)))
             (when (skroad--fn-or-t (get renamer-type 'permit-rename) old-name)
@@ -1639,7 +1643,7 @@ If there are any, return the count; otherwise return nil."
                 (overlay-put skroad--renamer 'snapshot snapshot))
               (set-buffer-modified-p nil)
               (skroad--renamer-go-to-text-start)
-              (add-hook 'post-command-hook #'skroad--renamer-validate))))))))
+              (add-hook 'post-command-hook #'skroad--renamer-validate)))))))))
 
 (defun skroad--renamer-deactivate ()
   "Deactivate the renamer if it is currently active."
@@ -1741,10 +1745,7 @@ disable the renamer and return nil."
 
 (defun skroad--node-renamer-permit (current)
   "Determine whether a node titled CURRENT is renameable."
-  (cond ((skroad--search-results-p)
-         (user-error "Can't rename from search results!")
-         nil)
-        ((skroad--node-special-p current)
+  (cond ((skroad--node-special-p current)
          (user-error "A special node cannot be renamed!")
          nil)
         ((skroad--node-log-p current)
