@@ -2633,7 +2633,6 @@ lines are highlighted."
         (let ((inhibit-read-only t))
           (erase-buffer)
           (skroad-search-results-mode) ;; first: resets keywords/locals
-          (setq-local skroad--current-node-title (buffer-name))
           (setq-local revert-buffer-function ;; TODO: make one for regular mode?
                       #'(lambda (_ignore-auto _noconfirm)
                           (skroad--search-render string)))
@@ -2997,10 +2996,14 @@ If this node did not have a tail indicator, this is a no-op."
   "Cached title of the node in the current buffer (Do not access directly).")
 
 (defun skroad--current-node ()
-  "Return the filename-derived title of the node in the current buffer."
+  "Return the filename-derived title of the node in the current buffer.
+If we're in search results mode, return the name of the buffer."
   (or skroad--current-node-title
-      (setq-local skroad--current-node-title
-                  (skroad--file-path-to-node-title (buffer-file-name)))))
+      (setq-local
+       skroad--current-node-title
+       (or (and buffer-file-name
+                (skroad--file-path-to-node-title buffer-file-name))
+           (buffer-name)))))
 
 (defun skroad--node-self-p (node)
   "Return t if NODE is the current node."
@@ -3010,7 +3013,7 @@ If this node did not have a tail indicator, this is a no-op."
   "Return t when the current buffer contains a Skroad node."
   (or (skroad--mode-p)
       (and buffer-file-name
-           (when-let* ((file (buffer-file-name))
+           (when-let* ((file buffer-file-name)
                        (extension (file-name-extension file)))
              (string-equal extension skroad--file-extension)))))
 
