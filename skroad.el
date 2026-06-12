@@ -2786,7 +2786,7 @@ and equal to each other.  Never signals an error."
 (defun skroad--log-node-op (node live op &optional unique reason)
   "Record an OP on NODE (if LIVE: emplace live link) to the current log node.
 The current log node is created if it did not previously exist.
-If UNIQUE is true, an entry found to be a duplicate is moved to the day's end.
+If UNIQUE is true, attempted duplication simply moves an entry to the day's end.
 REASON, if given, is a comment describing the cause of the operation."
   (let ((entry
          (concat op " " (if live
