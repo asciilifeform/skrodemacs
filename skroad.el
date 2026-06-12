@@ -273,7 +273,7 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
           t))))
 
 (defmacro skroad--visit-open-nodes (&rest body)
-  "Evaluate BODY in each currently-open node buffer."
+  "Evaluate BODY in each currently-open node or search result buffer."
   (declare (indent defun))
   (let ((visiting-buffer (make-symbol "visiting-buffer")))
     `(dolist (,visiting-buffer (buffer-list))
