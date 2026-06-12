@@ -2610,19 +2610,24 @@ match data and returns non-nil on success."
           (insert "\n"))))))
 
 (defun skroad--search-finish (buf match-count match-node-count node-count)
-  "Mark the search in BUF as complete, if it still lives."
+  "Mark the search in BUF as complete, if it still lives.
+Jump to the first result node link, if there are any."
   (when (buffer-live-p buf)
     (with-current-buffer buf
       (let ((inhibit-read-only t))
+        (goto-char (point-min))
         (save-excursion
-          (goto-char (point-min))
           (when (re-search-forward "(searching\\.\\.\\.)" nil t)
             (replace-match "" t t))
           (skroad--goto-node-body-start)
           (insert "\n")
           (skroad--atomic-comment-insert
            (format "%s results in %s nodes (of %s searched) :"
-                   match-count match-node-count node-count)))))))
+                   match-count match-node-count node-count))))
+      (when (funcall (get 'skroad--text-link-node-live 'find-any-forward))
+        (goto-char (match-beginning 0))
+        (skroad--fontify-current-line)
+        (skroad--selector-update)))))
 
 (defvar-local skroad--search-query nil
   "Current query in a search result buffer.")
