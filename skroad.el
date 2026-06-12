@@ -2624,11 +2624,11 @@ Jump to the first result node link, if there are any."
           (skroad--atomic-comment-insert
            (format "%s results in %s nodes (of %s searched) :"
                    match-count match-node-count node-count))))
-      (cond ((funcall (get 'skroad--text-link-node-live 'find-any-forward))
-             (goto-char (match-beginning 0))
-             (skroad--fontify-current-line)
-             (skroad--selector-update))
-            (t (skroad--goto-node-body-start))))))
+      (skroad--goto-node-body-start)
+      (when (funcall (get 'skroad--text-link-node-live 'find-any-forward))
+        (goto-char (match-beginning 0))
+        (skroad--fontify-current-line)
+        (skroad--selector-update)))))
 
 (defvar-local skroad--search-query nil
   "Current query in a search result buffer.")
