@@ -2638,14 +2638,14 @@ Jump to the first result node link, if there are any."
   (and (skroad--search-results-p) skroad--search-query))
 
 (defun skroad--search-render (string)
-  "Begin a full-text search for STRING across all known nodes.
+  "Begin a case-insensitive full-text search for STRING across all known nodes.
 If a search for STRING is already in progress, do nothing except return its
 buffer.  Otherwise create (or reuse and reset) the results buffer immediately
 and return it; the per-file searches are deferred, and append their results,
 grouped by node, as they complete.  Occurrences of STRING within the matched
 lines are highlighted."
   (let* ((buf-name ;; Strings differing only in case share a buffer.
-          (format "*skroad-search: %S*" (downcase string)))
+          (format "*skroad-search: %S*" (downcase string))) ;; Case-insensitive.
          (buf (get-buffer buf-name)))
     (if (skroad--search-in-progress-p buf)
         buf ;; If already searching for this string? no-op.
