@@ -622,29 +622,69 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
 
 ;; Keymap utils. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun skroad--keymap-write-filter (cmd)
+  "Void CMD in read-only buffers if it declares (interactive \"*...\")."
+  (let ((spec (and (fboundp cmd) (cadr (interactive-form cmd)))))
+    (unless (and buffer-read-only (stringp spec) (string-prefix-p "*" spec))
+      cmd)))
+
+(defun skroad--keymap-guard (def)
+  (if (symbolp def)
+      `(menu-item "" ,def :filter skroad--keymap-write-filter) def))
+
+(defun skroad--define-keymap (&rest pairs)
+  "Like `define-keymap'; commands with (interactive \"*\") are void
+in read-only buffers.  Accepts :parent MAP among PAIRS."
+  (declare (indent 0))
+  (let ((map (make-sparse-keymap)))
+    (while pairs
+      (if (eq (car pairs) :parent)
+          (set-keymap-parent map (progn (pop pairs) (pop pairs)))
+        (keymap-set map (pop pairs) (skroad--keymap-guard (pop pairs)))))
+    map))
+
+(defun skroad--key-resolve (bd)
+  "Apply menu-item filters as lookup would; nil if currently void."
+  (while (eq (car-safe bd) 'menu-item)
+    (let ((f (plist-get (nthcdr 3 bd) :filter)))
+      (setq bd (if f (funcall f (nth 2 bd)) (nth 2 bd)))))
+  bd)
+
 (defun skroad--get-keymap-docs (keymap)
-  "Return an alist of (KEY . DOCSTRING) for documented bindings in KEYMAP."
-  (let (out remaps seen)
-    (map-keymap
-     (lambda (ev bd)
-       (if (eq ev 'remap)
-           (map-keymap (lambda (c n) (push (cons c n) remaps)) bd)
-         (unless (memq ev seen)
-           (push ev seen)
+  "Alist of (KEY . DOC) for live documented bindings in KEYMAP and parents."
+  (let (entries remaps seen)
+    (while (keymapp keymap)
+      (map-keymap
+       (lambda (ev bd)
+         (cond ((eq ev 'remap)
+                (map-keymap (lambda (c n)
+                              (unless (assq c remaps) (push (cons c n) remaps)))
+                            bd))
+               ((and (not (memq ev seen))
+                     (setq bd (skroad--key-resolve bd))) ; void: parent active
+                (push ev seen)
+                (push (cons ev bd) entries))))
+       keymap)
+      (setq keymap (keymap-parent keymap)))
+    (nreverse
+     (delq
+      nil
+      (mapcar
+       (lambda (e)
+         (let ((ev (car e))
+               (fn (skroad--key-resolve
+                    (or (cdr (assq (cdr e) remaps)) (cdr e)))))
            (and (or (integerp ev)
                     (and (symbolp ev)
-                         (not (memq ev '(menu-bar tab-bar tool-bar
-                                                  header-line mode-line)))
-                         (not (string-match-p
-                               "mouse\\|drag\\|click\\|wheel"
-                               (symbol-name ev)))))
-                (not (eq bd 'ignore))
-                (let* ((fn (or (cdr (assq bd remaps)) bd))
-                       (doc (and (functionp fn) (documentation fn))))
-                  (when doc
-                    (push (cons (key-description (vector ev)) doc) out)))))))
-     keymap)
-    (nreverse out)))
+                         (not
+                          (string-match-p
+                           "mouse\\|drag\\|click\\|wheel\\|-bar\\'\\|-line\\'"
+                           (symbol-name ev)))))
+                (functionp fn) (not (eq fn 'ignore))
+                (let ((doc (documentation fn)))
+                  (and doc (cons (key-description (vector ev))
+                                 (car (split-string doc "\n"))))))))
+       entries)))))
 
 (defun skroad--make-keymap-help (keymap) ;; TODO: wrap?
   "Generate a keymap help string from the given KEYMAP."
@@ -1532,7 +1572,7 @@ If there are any, return the count; otherwise return nil."
 ;; Insert a space immediately behind the atomic currently under the point.
 (defun skroad--cmd-atomic-prepend-space ()
   "InsSp"
-  (interactive)
+  (interactive "*")
   (save-mark-and-excursion (goto-char (skroad--zone-start)) (insert " ")))
 
 (defvar-local skroad--buf-alt-mark nil
@@ -1542,11 +1582,11 @@ If there are any, return the count; otherwise return nil."
   "Deactivate the mark and clear the alt-mark."
   (deactivate-mark) (setq-local skroad--buf-alt-mark nil))
 
-(defmacro skroad--define-atomics-region-cmd (wrap-command)
+(defmacro skroad--define-atomics-region-cmd (wrap-command &optional i-arg)
   "Wrap COMMAND to use region if exists, or use the atomic at point as region."
   `(defun ,(read (concat "skroad--cmd-atomic-"
                          (symbol-name wrap-command))) ()
-     (interactive)
+     (interactive ,i-arg)
      (if (use-region-p)
          (call-interactively ',wrap-command)
        (skroad--with-current-zone
@@ -1554,8 +1594,8 @@ If there are any, return the count; otherwise return nil."
      (skroad--deactivate-mark)))
 
 ;; TODO: don't sync link disconnects until obvious that we won't yank them back
-(skroad--define-atomics-region-cmd delete-region)
-(skroad--define-atomics-region-cmd kill-region)
+(skroad--define-atomics-region-cmd delete-region "*")
+(skroad--define-atomics-region-cmd kill-region "*")
 (skroad--define-atomics-region-cmd kill-ring-save)
 
 (defun skroad--cmd-atomic-set-mark ()
@@ -1571,7 +1611,7 @@ If there are any, return the count; otherwise return nil."
   :doc "Selected, clicked, killed, etc. as units. Point sits only on first pos."
   :atomic t ;; TODO: check
   :keymap
-  (define-keymap
+  (skroad--define-keymap
     "SPC" #'skroad--cmd-atomic-prepend-space
     "<remap> <set-mark-command>" #'skroad--cmd-atomic-set-mark
     "<remap> <self-insert-command>" #'ignore
@@ -1613,8 +1653,6 @@ If there are any, return the count; otherwise return nil."
   (let ((renamer-type (skroad--prop-at 'renamer-overlay-type)))
     (when renamer-type
       (cond
-       ((skroad--search-results-p)
-        (user-error "Can't rename from search results!"))
        ((skroad--idle-have-work-p)
         (user-error "Please wait until queued work completes!"))
        (t
@@ -1644,6 +1682,11 @@ If there are any, return the count; otherwise return nil."
               (set-buffer-modified-p nil)
               (skroad--renamer-go-to-text-start)
               (add-hook 'post-command-hook #'skroad--renamer-validate)))))))))
+
+(defun skroad--cmd-direct-renamer-activate-here ()
+  "Rename"
+  (interactive "*")
+  (call-interactively #'skroad--cmd-renamer-activate-here))
 
 (defun skroad--renamer-deactivate ()
   "Deactivate the renamer if it is currently active."
@@ -1711,37 +1754,55 @@ disable the renamer and return nil."
       (unless (string-equal old new)
         (funcall do-rename old new)))))
 
+(defmacro skroad--keymap-with-global-fallthrough (form)
+  "Wrap a `define-keymap' FORM for use as a field keymap in a special buffer.
+Inherits `global-map' and shadows the `self-insert-command'
+suppression that `suppress-keymap' installs via command remapping."
+  `(,(car form)
+    :parent global-map
+    "<remap> <self-insert-command>" #'self-insert-command
+    ,@(cdr form)))
+
 (skroad--deftype skroad--text-mixin-renamer-overlay
   :doc "Base mixin for renamer overlays."
   :mixin t
   :rear-advance t
   :field 'zone
   :keymap
-  (define-keymap
-    "<remap> <beginning-of-line>" ;; HOME jumps to the start of the text
-    #'(lambda () (interactive) (skroad--renamer-go-to-text-start))
-    "<remap> <end-of-line>" ;; END jumps to the end of the text
-    #'(lambda () (interactive)
-        (goto-char (1- (field-end)))
-        (skroad--skip-whitespace-backward (field-beginning)))
-    "<backspace>" ;; backspace must not change preceding text
-    #'(lambda () (interactive)
-        (cond ((use-region-p)
-               (delete-region (region-beginning) (region-end)))
-              ((> (point) (field-beginning))
-               (delete-char -1))))
-    "<return>" #'skroad--cmd-renamer-accept-changes
-    "<remap> <keyboard-quit>"
-    #'(lambda () (interactive)
-        (if mark-active
-            (skroad--deactivate-mark)
-          (skroad--renamer-deactivate)))))
+  (skroad--keymap-with-global-fallthrough
+   (skroad--define-keymap
+     "<remap> <beginning-of-line>" ;; HOME jumps to the start of the text
+     #'(lambda () (interactive) (skroad--renamer-go-to-text-start))
+     "<remap> <end-of-line>" ;; END jumps to the end of the text
+     #'(lambda () (interactive)
+         (goto-char (1- (field-end)))
+         (skroad--skip-whitespace-backward (field-beginning)))
+     "<backspace>" ;; backspace must not change preceding text
+     #'(lambda () (interactive)
+         (cond ((use-region-p)
+                (delete-region (region-beginning) (region-end)))
+               ((> (point) (field-beginning))
+                (delete-char -1))))
+     "<return>" #'skroad--cmd-renamer-accept-changes
+     "<remap> <keyboard-quit>"
+     #'(lambda () (interactive)
+         (if mark-active
+             (skroad--deactivate-mark)
+           (skroad--renamer-deactivate))))))
 
-(skroad--deftype skroad--text-mixin-renameable
+(skroad--deftype skroad--text-mixin-renameable-indirect
   :doc "Mixin for allowing the use of the rename command with an atomic type."
   :mixin t
   :require 'renamer-overlay-type
-  :keymap (define-keymap "r" #'skroad--cmd-renamer-activate-here))
+  :keymap (skroad--define-keymap
+            "r" #'skroad--cmd-renamer-activate-here))
+
+(skroad--deftype skroad--text-mixin-renameable-direct
+  :doc "Mixin for allowing the use of the rename command with an atomic type."
+  :mixin t
+  :require 'renamer-overlay-type
+  :keymap (skroad--define-keymap
+            "r" #'skroad--cmd-direct-renamer-activate-here))
 
 (defun skroad--node-renamer-permit (current)
   "Determine whether a node titled CURRENT is renameable."
@@ -1912,7 +1973,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 ;; Transform the item under the point to plain text by removing delimiters.
 (defun skroad--cmd-atomic-delimited-textify ()
   "Text"
-  (interactive)
+  (interactive "*")
   (skroad--with-current-zone
     (let ((text (skroad--data-at)))
       (save-mark-and-excursion
@@ -1941,7 +2002,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 (skroad--deftype skroad--text-mixin-link-navigable
   :doc "Mixin denoting a navigable link."
   :mixin t
-  :keymap (define-keymap
+  :keymap (skroad--define-keymap
             "<mouse-1>" #'skroad--cmd-link-mouse-activate
             "<mouse-2>" #'skroad--cmd-link-mouse-activate-new-win
             "<return>" #'skroad--cmd-link-activate
@@ -2151,19 +2212,19 @@ If TARGET does not exist, this is a no-op."
 
 (defun skroad--cmd-deaden-at (&rest _args)
   "Deaden"
-  (interactive)
+  (interactive "*")
   (skroad--link-unlink (skroad--data-at)))
 
 (defun skroad--cmd-merge-at (&rest _args)
   "Merge"
-  (interactive)
+  (interactive "*")
   (skroad--merge-node-into-current (skroad--data-at)))
 
 ;; TODO: deleting tail links should zap any resulting empty line?
 ;; TODO: make this work for selections?
 (defun skroad--cmd-banish-at (&rest _args)
   "Banish" ;; If live link is a duplicate, self-link, or special: delete it.
-  (interactive) ;; ... but if none of the above, move it to the node's tail.
+  (interactive "*") ;; ... but if none of the above, move it to the node's tail.
   (skroad--buf-indices-sync) ;; Make sure this node's indices are up to date
   (let* ((node (skroad--data-at)) ;; The live link being banished
          (single ;; Is this the last remaining copy of an indexed live link?
@@ -2202,7 +2263,7 @@ If TARGET does not exist, this is a no-op."
       'skroad--node-link-decor-face))
   :begins skroad--link-node-live-start-delim
   :ends skroad--link-node-live-end-delim
-  :keymap (define-keymap
+  :keymap (skroad--define-keymap
             "t" #'skroad--cmd-atomic-delimited-textify
             "b" #'skroad--cmd-banish-at
             "m" #'skroad--cmd-merge-at
@@ -2214,7 +2275,7 @@ If TARGET does not exist, this is a no-op."
   :finder-filter #'skroad--in-node-body-p
   :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-atomic-delimited
-  :use 'skroad--text-mixin-renameable
+  :use 'skroad--text-mixin-renameable-indirect
   :use 'skroad--text-mixin-indexed)
 
 ;; TODO: do this in title def?
@@ -2249,7 +2310,7 @@ If TARGET does not exist, this is a no-op."
 
 (defun skroad--cmd-liven-at (&rest _args)
   "Liven"
-  (interactive)
+  (interactive "*")
   (skroad--link-revive (skroad--data-at)))
 
 (skroad--deftype skroad--text-link-node-dead
@@ -2265,7 +2326,7 @@ If TARGET does not exist, this is a no-op."
                'skroad--dead-link-face
              'skroad--dead-deleted-link-face)
            'skroad--node-link-decor-face))
-  :keymap (define-keymap
+  :keymap (skroad--define-keymap
             "t" #'skroad--cmd-atomic-delimited-textify
             "<return>" #'ignore
             "l" #'skroad--cmd-liven-at
@@ -2421,7 +2482,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 ;; Turn the URL at point into plain text by placing a space after the prefix.
 (defun skroad--cmd-bare-url-comment ()
   "Text"
-  (interactive)
+  (interactive "*")
   (skroad--with-current-zone
     (save-mark-and-excursion
       (goto-char start)
@@ -2442,12 +2503,13 @@ Already-encoded URLs are left untouched to avoid double-encoding."
   :match-number 0
   :regex-any skroad--regexp-url-encoded
   :on-activate #'skroad--browse-url
-  :keymap (define-keymap "t" #'skroad--cmd-bare-url-comment)
+  :keymap (skroad--define-keymap
+            "t" #'skroad--cmd-bare-url-comment)
   :finder-filter #'skroad--in-node-body-p
   :renamer-overlay-type 'skroad--text-url-renamer
   :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-findable
-  :use 'skroad--text-mixin-renameable
+  :use 'skroad--text-mixin-renameable-indirect
   :use 'skroad--text-mixin-rendered-zoned
   )
 
@@ -2523,7 +2585,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 ;; Turn the MD URL at point into plain text by breaking it with a space
 (defun skroad--cmd-md-url-comment ()
   "Text"
-  (interactive)
+  (interactive "*")
   (skroad--with-current-zone
     (save-mark-and-excursion
       (goto-char end)
@@ -2542,14 +2604,14 @@ Already-encoded URLs are left untouched to avoid double-encoding."
   :hide-escapes t
   :regex-any skroad--md-url-regexp
   :on-activate #'skroad--browse-url
-  :keymap (define-keymap
+  :keymap (skroad--define-keymap
             "t" #'skroad--cmd-md-url-comment
             "s" #'skroad--cmd-link-show)
   :finder-filter #'skroad--in-node-body-p
   :renamer-overlay-type 'skroad--text-url-renamer
   :use 'skroad--text-mixin-link-navigable
   :use 'skroad--text-mixin-findable
-  :use 'skroad--text-mixin-renameable
+  :use 'skroad--text-mixin-renameable-indirect
   :use 'skroad--text-mixin-rendered-zoned
   )
 
@@ -2632,7 +2694,9 @@ Jump to the first result node link, if there are any."
       (when (funcall (get 'skroad--text-link-node-live 'find-any-forward))
         (goto-char (match-beginning 0))
         (skroad--fontify-current-line)
-        (skroad--selector-update)))))
+        ;; (skroad--selector-update)
+        (run-with-idle-timer 0 nil #'skroad--selector-update)
+        ))))
 
 (defvar-local skroad--search-query nil
   "Current query in a search result buffer.")
@@ -2735,7 +2799,7 @@ See e.g. `skroad--merge-node-into-current'."
   :visible-match-number 1
   :payload-regex (rx (+ print) "\n")
   :begins "@Time@" :ends ""
-  :keymap (define-keymap
+  :keymap (skroad--define-keymap
             "M-<up>" #'skroad--cmd-timestamp-jump-later
             "M-<down>" #'skroad--cmd-timestamp-jump-earlier
             )
@@ -3075,7 +3139,7 @@ If we're in search results mode, return the name of the buffer."
 
 (defun skroad--cmd-title-delete-current-node ()
   "Delete"
-  (interactive)
+  (interactive "*")
   (let ((node (skroad--current-node)))
     (if (or buffer-read-only
             (skroad--node-special-p node)
@@ -3089,7 +3153,7 @@ If we're in search results mode, return the name of the buffer."
 ;; Move the tail indicator to the position suggested by the tail heuristic.
 (defun skroad--cmd-title-reset-tail ()
   "TailReset"
-  (interactive)
+  (interactive "*")
   (let ((node (skroad--current-node)))
     (if buffer-read-only
         (user-error "This node's tail cannot be moved!")
@@ -3104,7 +3168,7 @@ If we're in search results mode, return the name of the buffer."
   :use 'skroad--text-atomic
   :order 500
   :keymap
-  (define-keymap
+  (skroad--define-keymap
     "<return>" #'ignore "SPC" #'ignore
     "<deletechar>" #'ignore "<backspace>" #'ignore
     "<remap> <set-mark-command>" #'ignore
@@ -3118,7 +3182,7 @@ If we're in search results mode, return the name of the buffer."
   :inhibit-isearch t ;; Don't interactive-search in the title
   :read-only "Title must be changed via rename command!"
   :renamer-overlay-type 'skroad--text-node-renamer-direct
-  :use 'skroad--text-mixin-renameable
+  :use 'skroad--text-mixin-renameable-direct
   :match-number 0
   :regex-any (rx string-start (* not-newline) "\n")
   :use 'skroad--text-mixin-findable
@@ -3170,7 +3234,9 @@ If we're in search results mode, return the name of the buffer."
   (skroad--with-current-zone
     (move-overlay skroad--buf-selector start end)
     (unless (skroad--last-ev-was-mouse-p)
-      (skroad--show-key-help)))
+      (when (and (eq (current-buffer) (window-buffer))
+                 (frame-focus-state))
+        (skroad--show-key-help))))
   (skroad--toggle-cursor-state nil))
 
 (defun skroad--selector-deactivate ()
@@ -3898,7 +3964,7 @@ Warning: undo info is lost in all affected buffers!"
 
 (defun skroad--cmd-top-backspace ()
   "If prev point is in an atomic, delete it; otherwise, normal backspace."
-  (interactive)
+  (interactive "*")
   (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
         ((bobp) nil)
         (t (let* ((p (point)) (left (1- p)))
@@ -3909,7 +3975,7 @@ Warning: undo info is lost in all affected buffers!"
 
 (defun skroad--cmd-top-gt ()
   "If there is a region, increase its quote level; otherwise insert `>'."
-  (interactive)
+  (interactive "*")
   (unless (skroad--in-node-title-p)
     (if (and (use-region-p) (not (skroad--renamer-active-p)))
         (skroad--quote-region (region-beginning) (region-end))
@@ -3917,7 +3983,7 @@ Warning: undo info is lost in all affected buffers!"
 
 (defun skroad--cmd-top-lt ()
   "If there is a region, decrease its quote level; otherwise insert `<'."
-  (interactive)
+  (interactive "*")
   (unless (skroad--in-node-title-p)
     (if (and (use-region-p) (not (skroad--renamer-active-p)))
         (skroad--unquote-region (region-beginning) (region-end))
@@ -3956,7 +4022,7 @@ Warning: undo info is lost in all affected buffers!"
 
 (defun skroad--cmd-top-move-tail-here ()
   "Move the current node tail indicator to the point."
-  (interactive)
+  (interactive "*")
   (if buffer-read-only
       (skroad--info "This node's tail cannot be moved!")
     (skroad--move-tail-indicator-here)))
@@ -3968,7 +4034,7 @@ Warning: undo info is lost in all affected buffers!"
   (skroad--request-refontify)) ;; Schedule a refontification.
 
 (defvar skroad--mode-map
-  (define-keymap
+  (skroad--define-keymap
     ">" #'skroad--cmd-top-gt
     "<" #'skroad--cmd-top-lt
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
