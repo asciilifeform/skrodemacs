@@ -2058,10 +2058,19 @@ Must be called from a buffer containing a node."
   (skroad--show-existing-node node))
 
 (defun skroad--action-live-link-activate (node)
-  "Activate a live link to NODE."
-  (skroad--show-node node
-                     (or (skroad--node-special-p) ;; Don't create from specials
-                         (skroad--search-results-p)))) ;; ... or from search res
+  "Activate a live link to NODE.
+If we are coming from a search result buffer or a special, never create NODE.
+In the case of a search result, activate isearch with the query string if NODE
+actually loaded."
+  (let ((from-search (skroad--get-search-status)))
+    (when (skroad--show-node
+           node
+           (or (skroad--node-special-p) ;; Don't create from specials
+               from-search)) ;; ... or from search res
+      (when from-search
+        (goto-char (point-min))
+        (isearch-mode t) ;; Forward search
+        (isearch-yank-string from-search)))))
 
 ;; TODO
 ;; (defun skroad--verify-dead-link (node)
@@ -2616,6 +2625,13 @@ match data and returns non-nil on success."
            (format "%s results in %s nodes (of %s searched) :"
                    match-count match-node-count node-count)))))))
 
+(defvar-local skroad--search-query nil
+  "Current query in a search result buffer.")
+
+(defun skroad--get-search-status ()
+  "If we're in a search results buffer, return the query string.  If not, nil."
+  (and (skroad--search-results-p) skroad--search-query))
+
 (defun skroad--search-render (string)
   "Begin a full-text search for STRING across all known nodes.
 If a search for STRING is already in progress, do nothing except return its
@@ -2642,7 +2658,8 @@ lines are highlighted."
                            (skroad--search-highlight-matcher string limit))
                        0 ''skroad--search-match-face 'prepend))
            'append)
-          (insert (format "Nodes containing %S: (searching...)\n\n" string)))
+          (insert (format "Nodes containing %S: (searching...)\n\n" string))
+          (setq-local skroad--search-query string))
         (skroad--goto-node-body-start))
       ;; Actually schedule the search:
       (let ((match-count 0)
