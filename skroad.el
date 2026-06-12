@@ -2595,7 +2595,7 @@ match data and returns non-nil on success."
       (let ((inhibit-read-only t))
         (save-excursion
           (goto-char (point-max))
-          (insert (skroad--link-generate-live node) "\n")
+          (insert (skroad--link-generate-live node) " :\n")
           (dolist (text matches)
             (insert ">" (propertize text 'skroad-search-result t)
                     "\n"))
