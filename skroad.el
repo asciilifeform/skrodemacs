@@ -1484,7 +1484,7 @@ These may occur if ill-behaved minor modes are in use.")
     (skroad--verify-change-hook-pairing nil)
     (skroad--scan-region start end -1)))
 
-(defun skroad--after-change-function (start end length)
+(defun skroad--after-change-function (start end _length)
   "Triggers following a change in the buffer in region START...END."
   (let ((skroad--change-hook-in-progress t))
     (skroad--verify-change-hook-pairing t)
