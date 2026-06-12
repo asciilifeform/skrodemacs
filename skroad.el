@@ -2611,8 +2611,9 @@ match data and returns non-nil on success."
           (when (re-search-forward "(searching\\.\\.\\.)" nil t)
             (replace-match "" t t))
           (skroad--goto-node-body-start)
-          (insert
-           (format "\n** %s results in %s nodes (of %s searched) : **\n"
+          (insert "\n")
+          (skroad--atomic-comment-insert
+           (format "%s results in %s nodes (of %s searched) :"
                    match-count match-node-count node-count)))))))
 
 (defun skroad--search-buffer-name (string)
