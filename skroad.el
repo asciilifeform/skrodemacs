@@ -266,6 +266,7 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
             `(unwind-protect ,@body
                (when (buffer-modified-p)
                  (skroad--buf-indices-sync ,no-actions)
+                 (skroad--before-save-common)
                  (skroad--save-current-node))
                (when (skroad--mode-p)
                  (skroad--selector-update)))
@@ -3234,7 +3235,6 @@ If this node did not have a tail indicator, this is a no-op."
   (skroad--do-deferred-replacements)
   (skroad--buf-indices-sync)
   (skroad--fontify-current-line)
-  ;; (skroad--current-node-update-stub-status)
   (unless (skroad--renamer-active-p)
     (unless (and isearch-mode (not (use-region-p)))
       (skroad--point-zone-handler skroad--buf-pre-command-point-state))
@@ -3242,8 +3242,7 @@ If this node did not have a tail indicator, this is a no-op."
     (skroad--adjust-mark-if-present)
     (skroad--save-cache-point))
   (when (or (skroad--idle-no-work-p) skroad--lint-in-progress)
-    (skroad--maybe-refontify-now (skroad--idle-have-work-p)))
-  )
+    (skroad--maybe-refontify-now (skroad--idle-have-work-p))))
 
 (defun skroad--after-save-hook ()
   "Triggers following a skroad buffer save."
@@ -3252,11 +3251,15 @@ If this node did not have a tail indicator, this is a no-op."
                                   write-file basic-save-buffer)))
     (skroad--log-node-revise (skroad--current-node))))
 
-(defun skroad--before-save-hook ()
-  "Triggers prior to a skroad buffer save."
-  (skroad--renamer-deactivate)
+(defun skroad--before-save-common ()
+  "Operations to perform before any save (interactive or not)."
   (skroad--do-deferred-replacements)
-  )
+  (skroad--current-node-update-stub-status))
+
+(defun skroad--before-save-hook ()
+  "Triggers prior to an interactive save."
+  (skroad--renamer-deactivate)
+  (skroad--before-save-common))
 
 (when skroad--debug
   (defadvice skroad--post-command-hook (around intercept activate)
