@@ -2635,16 +2635,15 @@ lines are highlighted."
           (skroad-search-results-mode) ;; first: resets keywords/locals
           (setq-local skroad--current-node-title (buffer-name))
           (setq-local revert-buffer-function
-                      (lambda (_ignore-auto _noconfirm)
-                        (skroad--search-render string)))
+                      #'(lambda (_ignore-auto _noconfirm)
+                          (skroad--search-render string)))
           (font-lock-add-keywords
            nil
-           (list (list (lambda (limit)
-                         (skroad--search-highlight-matcher string limit))
+           (list (list #'(lambda (limit)
+                           (skroad--search-highlight-matcher string limit))
                        0 ''skroad--search-match-face 'prepend))
            'append)
-          (insert (format "Nodes containing %S: (searching...)\n\n"
-                          string)))
+          (insert (format "Nodes containing %S: (searching...)\n\n" string)))
         (skroad--goto-node-body-start))
       ;; Actually schedule the search:
       (let ((match-count 0)
