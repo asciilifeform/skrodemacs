@@ -3540,14 +3540,13 @@ If USE-PREFIX is given, use it.  Otherwise prefix the current node, if any."
   "A node with links to all known stub nodes. A stub node is a non-special node
 without any text between the title and the tail.  New nodes start out as stubs.
 Stubs which are disconnected do not retain dead links; when orphaned, a stub
-will be queued for auto-deletion (see `skroad--node-set-orphan' below.)")
+becomes a candidate for auto-deletion (see below.)")
 
 (skroad--define-special-node skroad--special-node-orphans "#Orphans" t
   "A node with links to all known orphans (non-special nodes that have no live
 links to nodes other than themselves, specials, and logs.)  A node found to be
-orphan becomes a candidate for deletion (and the only nodes that may be deleted
-are orphan nodes.) A node found to be an orphan stub is auto-deleted if it is
-not currently open in any buffer; but if it is, the user is prompted first.")
+an orphan stub becomes a candidate for automatic deletion: if the node is not
+open in any buffer, it is deleted immediately; otherwise, user must confirm.")
 
 (defun skroad--node-stub-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known stub."
