@@ -2634,7 +2634,7 @@ lines are highlighted."
           (erase-buffer)
           (skroad-search-results-mode) ;; first: resets keywords/locals
           (setq-local skroad--current-node-title (buffer-name))
-          (setq-local revert-buffer-function
+          (setq-local revert-buffer-function ;; TODO: make one for regular mode?
                       #'(lambda (_ignore-auto _noconfirm)
                           (skroad--search-render string)))
           (font-lock-add-keywords
