@@ -2616,11 +2616,6 @@ match data and returns non-nil on success."
            (format "%s results in %s nodes (of %s searched) :"
                    match-count match-node-count node-count)))))))
 
-(defun skroad--search-buffer-name (string)
-  "Return the results buffer name for a search for STRING.
-Case-insensitive: strings differing only in case share a buffer."
-  (format "*skroad-search: %S*" (downcase string)))
-
 (defun skroad--search-render (string)
   "Begin a full-text search for STRING across all known nodes.
 If a search for STRING is already in progress, do nothing except return its
@@ -2628,10 +2623,12 @@ buffer.  Otherwise create (or reuse and reset) the results buffer immediately
 and return it; the per-file searches are deferred, and append their results,
 grouped by node, as they complete.  Occurrences of STRING within the matched
 lines are highlighted."
-  (let ((buf (get-buffer (skroad--search-buffer-name string))))
+  (let* ((buf-name ;; Strings differing only in case share a buffer.
+          (format "*skroad-search: %S*" (downcase string)))
+         (buf (get-buffer buf-name)))
     (if (skroad--search-in-progress-p buf)
         buf ;; If already searching for this string? no-op.
-      (setq buf (get-buffer-create (skroad--search-buffer-name string)))
+      (setq buf (get-buffer-create buf-name))
       (with-current-buffer buf
         (let ((inhibit-read-only t))
           (erase-buffer)
