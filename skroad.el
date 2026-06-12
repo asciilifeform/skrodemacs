@@ -2649,25 +2649,23 @@ lines are highlighted."
       (let ((match-count 0)
             (match-node-count 0)
             (node-count (skroad--cache-count)))
-        (if (zerop node-count)
-            (skroad--search-finish buf 0 0 0)
-          (skroad--info "Searching %s nodes..." node-count)
-          (skroad--cache-foreach ;; Dispatch for each known node:
-           #'(lambda (node)
-               (skroad--defer ;; Defer each individual node search:
-                (ignore-errors
-                  (when (skroad--cache-peek node) ;; Make sure it still exists!
-                    (with-temp-buffer ;; Fastest possible load
-                      (insert-file-contents
-                       (skroad--node-path node) nil nil nil t)
-                      (let ((matches (skroad--search-current-buffer string)))
-                        (when matches
-                          (setq match-node-count (1+ match-node-count))
-                          (setq match-count (+ match-count (length matches)))
-                          (skroad--search-insert-group buf node matches)))))))))
-          (skroad--defer
-           (skroad--search-finish
-            buf match-count match-node-count node-count))))
+        (skroad--info "Searching %s nodes..." node-count)
+        (skroad--cache-foreach ;; Dispatch for each known node:
+         #'(lambda (node)
+             (skroad--defer ;; Defer each individual node search:
+              (ignore-errors
+                (when (skroad--cache-peek node) ;; Make sure it still exists!
+                  (with-temp-buffer ;; Fastest possible load
+                    (insert-file-contents
+                     (skroad--node-path node) nil nil nil t)
+                    (let ((matches (skroad--search-current-buffer string)))
+                      (when matches
+                        (setq match-node-count (1+ match-node-count))
+                        (setq match-count (+ match-count (length matches)))
+                        (skroad--search-insert-group buf node matches)))))))))
+        (skroad--defer
+         (skroad--search-finish
+          buf match-count match-node-count node-count)))
       buf)))
 
 (defun skroad--cmd-top-search (string)
