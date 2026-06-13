@@ -3140,7 +3140,8 @@ If we're in search results mode, return the name of the buffer."
 
 (defun skroad--node-self-p (node)
   "Return t if NODE is the current node."
-  (string-equal node (skroad--current-node)))
+  (and (skroad--mode-p) ;; No node is considered equal to a search res buffer
+       (string-equal node (skroad--current-node))))
 
 (defun skroad--current-buffer-node-p ()
   "Return t when the current buffer contains a Skroad node."
