@@ -4131,7 +4131,7 @@ Warning: undo info is lost in all affected buffers!"
     (when node
       (skroad--show-existing-node node))))
 
-(defun search-skrode (string)
+(defun search-skroad (string)
   "Full-text search for STRING across all known nodes.
 Case-insensitive.  Results appear incrementally, grouped by node;
 repeating a search already in progress is a no-op."
@@ -4142,7 +4142,7 @@ repeating a search already in progress is a no-op."
 
 ;; Global binding for find-node and node text search:
 (keymap-global-set "M-o" #'find-skroad-node)
-(keymap-global-set "C-M-o" #'search-skrode)
+(keymap-global-set "C-M-o" #'search-skroad)
 
 ;; Mode init. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
