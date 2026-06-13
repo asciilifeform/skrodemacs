@@ -3449,6 +3449,7 @@ If we're in search results mode, return the name of the buffer."
   (skroad--current-node-update-stub-status) ;; TODO: do we want this here?
   (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
   (skroad--skip-whitespace-forward)
+  (skroad--update-mode-line-label)
   )
 
 ;; Floating header line. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -3490,6 +3491,32 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
                           (skroad--vacate-window ,window)))))
                (set-window-parameter nil 'skroad--header-eval header-updater)
                header-updater)))))))
+
+(defvar-local skroad--buf-modeline-label nil
+  "The modeline label for the current buffer.")
+
+(defun skroad--update-mode-line-label ()
+  "Update the modeline label for the currently-open node."
+  (let ((is-stub (skroad--node-stub-p))
+        (is-orphan (skroad--node-orphan-p)))
+    (setq-local skroad--buf-modeline-label
+                (concat
+                 "Skroad"
+                 (cond ((skroad--node-special-p) " Special")
+                       ((skroad--node-log-p) " Log")
+                       ((and is-stub is-orphan) " Orphan Stub")
+                       (is-stub " Stub")
+                       (is-orphan " Orphan")
+                       ((skroad--search-results-p) nil)
+                       (t ""))
+                 " Node"))))
+
+(defun skroad--setup-mode-line ()
+  "Replace the buffer name in the mode with `skroad--buf-modeline-label'."
+  (setq-local mode-line-buffer-identification
+              '(:eval
+                (propertized-buffer-identification
+                 (format "%s" (or skroad--buf-modeline-label (buffer-name)))))))
 
 ;; Point cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -3665,7 +3692,8 @@ open in any buffer, it is deleted immediately; otherwise, user must confirm.")
   (when (skroad--set-special-status node skroad--special-node-stubs status)
     (when status
       (skroad--defer-orphan-stub-check node)) ;; Possible deletion
-    (skroad--request-refontify))) ;; Schedule a refontification.
+    (skroad--request-refontify) ;; Schedule a refontification.
+    t)) ;; Return t if status changed.
 
 (defun skroad--current-node-stubbed-p ()
   "Determine whether the current node is presently a stub.
@@ -3680,18 +3708,20 @@ If the tail did not previously exist in the current node, it is emplaced."
 (defun skroad--current-node-update-stub-status ()
   "Update the current node's saved stub status.  No-op when renamer is active."
   (unless (skroad--renamer-active-p)
-    (skroad--node-set-stub
-     (skroad--current-node) (skroad--current-node-stubbed-p))))
+    (when (and (skroad--node-set-stub
+                (skroad--current-node) (skroad--current-node-stubbed-p))
+               (skroad--mode-p))
+      (skroad--update-mode-line-label))))
 
 (defun skroad--node-set-orphan (node status)
   "Set the orphan STATUS of NODE.  If it became an orphan stub, try deleting it.
 If deletion is blocked, no new auto-deletion attempt will be made until and
 unless the node stops being an orphan stub and then later becomes one again,
 or until a lint is performed (node will be silently deleted unless open.)"
-  (when (and
-         (skroad--set-special-status node skroad--special-node-orphans status)
-         status)
-    (skroad--defer-orphan-stub-check node))) ;; Possible deletion
+  (when (skroad--set-special-status node skroad--special-node-orphans status)
+    (when status
+      (skroad--defer-orphan-stub-check node)) ;; Possible deletion
+    t)) ;; Return t if status changed.
 
 (defun skroad--current-node-orphaned-p ()
   "Determine whether the current node is presently an orphan.
@@ -3703,8 +3733,10 @@ The current node's indices must exist."
 (defun skroad--current-node-update-orphan-status ()
   "Unless the current node is a special or log, update its saved orphan status."
   (unless (or (skroad--node-special-p) (skroad--node-log-p))
-    (skroad--node-set-orphan
-     (skroad--current-node) (skroad--current-node-orphaned-p))))
+    (when (and (skroad--node-set-orphan
+                (skroad--current-node) (skroad--current-node-orphaned-p))
+               (skroad--mode-p))
+      (skroad--update-mode-line-label))))
 
 (defun skroad--prompt-delete-node (node)
   "Prompt to confirm the deletion of NODE and return the answer."
@@ -4091,6 +4123,7 @@ Warning: undo info is lost in all affected buffers!"
   (face-remap-add-relative 'header-line 'skroad--title-face)
   (skroad--deactivate-mark) ;; Zap spurious mark from opening links via mouse
   (skroad--selector-init)
+  (skroad--setup-mode-line) ;; Modeline diddler
   )
 
 ;; TODO: proper mode exit cleanup
