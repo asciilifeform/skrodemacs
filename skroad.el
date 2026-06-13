@@ -2441,7 +2441,6 @@ If DELETE-ALL is t, delete rather than deaden in the body as well as the tail."
         (skroad--link-delete node)
       (skroad--link-unlink node))))
 
-;; TODO: allow teleyank into log nodes?
 (defun skroad--yank-into (node &rest yank-args)
   "Ensure that NODE exists, and yank into it.  YANK-ARGS are passed to yank."
   (if (or (skroad--node-special-p node) ;; Don't teleyank into special nodes
@@ -3534,16 +3533,17 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 
 (defun skroad--update-modeline-node-label ()
   "Update the modeline label for the currently-open node."
-  (setq-local
-   skroad--buf-modeline-node-label
-   (concat
-    (if (skroad--node-special-p)
-        "Special "
-      (concat
-       (if (skroad--node-orphan-p) "Orphan " "")
-       (if (skroad--node-stub-p) "Stub " "")
-       (if (skroad--node-log-p) "Log " "")))
-    "Node")))
+  (when (skroad--mode-p) ;; Only in-mode
+    (setq-local
+     skroad--buf-modeline-node-label
+     (concat
+      (if (skroad--node-special-p)
+          "Special "
+        (concat
+         (if (skroad--node-orphan-p) "Orphan " "")
+         (if (skroad--node-stub-p) "Stub " "")
+         (if (skroad--node-log-p) "Log " "")))
+      "Node"))))
 
 (defun skroad--setup-mode-line ()
   "Replace the buffer name in the mode with a node description."
@@ -3750,9 +3750,8 @@ If the tail did not previously exist in the current node, it is emplaced."
 (defun skroad--current-node-update-stub-status ()
   "Update the current node's saved stub status.  No-op when renamer is active."
   (unless (skroad--renamer-active-p)
-    (when (and (skroad--node-set-stub
-                (skroad--current-node) (skroad--current-node-stubbed-p))
-               (skroad--mode-p))
+    (when (skroad--node-set-stub
+           (skroad--current-node) (skroad--current-node-stubbed-p))
       (skroad--update-modeline-node-label))))
 
 (defun skroad--node-set-orphan (node status)
@@ -3775,9 +3774,8 @@ The current node's indices must exist."
 (defun skroad--current-node-update-orphan-status ()
   "Unless the current node is a special or log, update its saved orphan status."
   (unless (or (skroad--node-special-p) (skroad--node-log-p))
-    (when (and (skroad--node-set-orphan
-                (skroad--current-node) (skroad--current-node-orphaned-p))
-               (skroad--mode-p))
+    (when (skroad--node-set-orphan
+           (skroad--current-node) (skroad--current-node-orphaned-p))
       (skroad--update-modeline-node-label))))
 
 (defun skroad--prompt-delete-node (node)
