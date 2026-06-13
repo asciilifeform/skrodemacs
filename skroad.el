@@ -1567,6 +1567,12 @@ If there are any, return the count; otherwise return nil."
                    (throw 'found k)))
                index))))
 
+(defun skroad--current-indices-live-link-count ()
+  "Return the number of live links in the current node's indices."
+  (let ((index
+         (alist-get 'skroad--text-link-node-live (skroad--buf-indices))))
+    (or (and (hash-table-p index) (hash-table-count index)) 0)))
+
 ;;; Atomic Text Type. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Insert a space immediately behind the atomic currently under the point.
@@ -3449,7 +3455,7 @@ If we're in search results mode, return the name of the buffer."
   (skroad--current-node-update-stub-status) ;; TODO: do we want this here?
   (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
   (skroad--skip-whitespace-forward)
-  (skroad--update-mode-line-label)
+  (skroad--update-modeline-node-label)
   )
 
 ;; Floating header line. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -3492,13 +3498,13 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
                (set-window-parameter nil 'skroad--header-eval header-updater)
                header-updater)))))))
 
-(defvar-local skroad--buf-modeline-label nil
+(defvar-local skroad--buf-modeline-node-label nil
   "The modeline label for the current buffer.")
 
-(defun skroad--update-mode-line-label ()
+(defun skroad--update-modeline-node-label ()
   "Update the modeline label for the currently-open node."
   (setq-local
-   skroad--buf-modeline-label
+   skroad--buf-modeline-node-label
    (unless (skroad--search-results-p)
      (concat
       (if (skroad--node-orphan-p) "Orphan " "")
@@ -3509,11 +3515,19 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
       "Node"))))
 
 (defun skroad--setup-mode-line ()
-  "Replace the buffer name in the mode with `skroad--buf-modeline-label'."
+  "Replace the buffer name in the mode with `skroad--buf-modeline-node-label'."
   (setq-local mode-line-buffer-identification
               '(:eval
                 (propertized-buffer-identification
-                 (format "%s" (or skroad--buf-modeline-label (buffer-name)))))))
+                 (format "%s"
+                         (or
+                          (and (stringp skroad--buf-modeline-node-label)
+                               (concat
+                                skroad--buf-modeline-node-label
+                                (format
+                                 " (%s)"
+                                 (skroad--current-indices-live-link-count))))
+                          (buffer-name)))))))
 
 ;; Point cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -3708,7 +3722,7 @@ If the tail did not previously exist in the current node, it is emplaced."
     (when (and (skroad--node-set-stub
                 (skroad--current-node) (skroad--current-node-stubbed-p))
                (skroad--mode-p))
-      (skroad--update-mode-line-label))))
+      (skroad--update-modeline-node-label))))
 
 (defun skroad--node-set-orphan (node status)
   "Set the orphan STATUS of NODE.  If it became an orphan stub, try deleting it.
@@ -3733,7 +3747,7 @@ The current node's indices must exist."
     (when (and (skroad--node-set-orphan
                 (skroad--current-node) (skroad--current-node-orphaned-p))
                (skroad--mode-p))
-      (skroad--update-mode-line-label))))
+      (skroad--update-modeline-node-label))))
 
 (defun skroad--prompt-delete-node (node)
   "Prompt to confirm the deletion of NODE and return the answer."
