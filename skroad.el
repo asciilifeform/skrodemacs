@@ -2001,7 +2001,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   (skroad--do-link-action (point)))
 
 (defun skroad--cmd-link-activate-new-win ()
-  "GoNewWin."
+  "Win."
   (interactive)
   (skroad--do-link-action (point) skroad--disp-mode-force-new-window))
 
@@ -2212,7 +2212,7 @@ If TARGET does not exist, this is a no-op."
 
 ;; Yank (with optional ARGS) into a node when standing on a live link to it.
 (defun skroad--cmd-teleyank-at (&rest args)
-  "Teleyank"
+  "YankTo"
   (interactive)
   (skroad--yank-into (skroad--data-at) args))
 
