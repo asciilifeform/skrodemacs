@@ -37,7 +37,7 @@
   "Display floating title at the top of the window if title is not in view.")
 
 (defface skroad--text-face '((t :inherit default))
-  "Default face used for skrode text types."
+  "Default face used for skroad text types."
   :group 'skroad-faces)
 
 (defface skroad--search-match-face
