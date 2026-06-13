@@ -3497,19 +3497,20 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 
 (defun skroad--update-mode-line-label ()
   "Update the modeline label for the currently-open node."
-  (let ((is-stub (skroad--node-stub-p))
-        (is-orphan (skroad--node-orphan-p)))
-    (setq-local skroad--buf-modeline-label
-                (concat
-                 "Skroad"
-                 (cond ((skroad--node-special-p) " Special")
-                       ((skroad--node-log-p) " Log")
-                       ((and is-stub is-orphan) " Orphan Stub")
-                       (is-stub " Stub")
-                       (is-orphan " Orphan")
-                       ((skroad--search-results-p) nil)
-                       (t ""))
-                 " Node"))))
+  (setq-local
+   skroad--buf-modeline-label
+   (unless (skroad--search-results-p)
+     (concat
+      "Skroad"
+      (let ((is-stub (skroad--node-stub-p))
+            (is-orphan (skroad--node-orphan-p)))
+        (cond ((skroad--node-special-p) " Special")
+              ((skroad--node-log-p) " Log")
+              ((and is-stub is-orphan) " Orphan Stub")
+              (is-stub " Stub")
+              (is-orphan " Orphan")
+              (t "")))
+      " Node"))))
 
 (defun skroad--setup-mode-line ()
   "Replace the buffer name in the mode with `skroad--buf-modeline-label'."
