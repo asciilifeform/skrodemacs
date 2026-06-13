@@ -2911,6 +2911,7 @@ and equal to each other.  Never signals an error."
   "Generate the name of the current log node."
   (skroad--make-log-node (skroad--make-date-string skroad--log-month-format)))
 
+;; TODO: log nodes should be creatable from here and from nowhere else!
 (defun skroad--log-node-op (node live op &optional unique reason)
   "Record an OP on NODE (if LIVE: emplace live link) to the current log node.
 The current log node is created if it did not previously exist.
@@ -2946,7 +2947,7 @@ REASON, if given, is a comment describing the cause of the operation."
 (defun skroad--log-node-rename (old node)
   "Record the renaming of OLD to NODE to the current log."
   (skroad--log-node-op ;; May duplicate
-   node t "Renamed" nil (concat " from '" old "'"))
+   node t "Renamed" nil (concat "from '" old "'"))
   (skroad--lint-deaden old) ;; Deaden any old links in the lint log
   )
 
