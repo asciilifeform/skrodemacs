@@ -2793,15 +2793,6 @@ lines are highlighted."
           buf match-count match-node-count node-count)))
       buf)))
 
-(defun skroad--cmd-top-search (string)
-  "Full-text search for STRING across all known nodes.
-Case-insensitive.  Results appear incrementally, grouped by node;
-repeating a search already in progress is a no-op."
-  (interactive (list (read-string "Search Skroad nodes for: ")))
-  (when (string-empty-p string)
-    (user-error "Empty search string"))
-  (pop-to-buffer (skroad--search-render string)))
-
 ;; Atomic Comments. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (skroad--deftype skroad--text-atomic-comment
@@ -4075,15 +4066,6 @@ Warning: undo info is lost in all affected buffers!"
         (skroad--unquote-region (region-beginning) (region-end))
       (insert "<"))))
 
-(defun skroad--cmd-top-find-node ()
-  "Find and open a Skroad node using the minibuffer."
-  (interactive)
-  (let* ((display-buffer-overriding-action
-          skroad--disp-mode-this-window-or-existing)
-         (node (skroad--autocomplete-minibuffer-prompt "Find Skroad node: ")))
-    (when node
-      (skroad--show-existing-node node))))
-
 (defun skroad--cmd-top-jump-to-next-atomic ()
   "Jump to the next atomic after the point; try to cycle to first if none."
   (interactive nil skroad-mode skroad-search-results-mode)
@@ -4125,8 +4107,6 @@ Warning: undo info is lost in all affected buffers!"
   (setq skroad--atomic-show-payload-only (not skroad--atomic-show-payload-only))
   (skroad--request-refontify)) ;; Schedule a refontification.
 
-;; Mode init. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (defvar skroad--mode-map
   (skroad--define-keymap
     ">" #'skroad--cmd-top-gt
@@ -4138,11 +4118,33 @@ Warning: undo info is lost in all affected buffers!"
     "M-t" #'skroad--cmd-top-goto-tail
     "C-M-l" #'skroad--cmd-top-toggle-atomic-text-hiding ;; TODO: do we need it?
     )
-  "Top-level keymap for the skroad major mode.")
+  "Top-level command keymap for the skroad major mode.")
+
+;; Skroad commands with global bindings. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun find-skroad-node ()
+  "Find and open a Skroad node using the minibuffer.  Works from any mode."
+  (interactive)
+  (let* ((display-buffer-overriding-action
+          skroad--disp-mode-this-window-or-existing)
+         (node (skroad--autocomplete-minibuffer-prompt "Find Skroad node: ")))
+    (when node
+      (skroad--show-existing-node node))))
+
+(defun search-skrode (string)
+  "Full-text search for STRING across all known nodes.
+Case-insensitive.  Results appear incrementally, grouped by node;
+repeating a search already in progress is a no-op."
+  (interactive (list (read-string "Search all Skroad nodes for: ")))
+  (when (string-empty-p string)
+    (user-error "Empty search string!"))
+  (pop-to-buffer (skroad--search-render string)))
 
 ;; Global binding for find-node and node text search:
-(keymap-global-set "M-o" #'skroad--cmd-top-find-node)
-(keymap-global-set "C-M-o" #'skroad--cmd-top-search)
+(keymap-global-set "M-o" #'find-skroad-node)
+(keymap-global-set "C-M-o" #'search-skrode)
+
+;; Mode init. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--global-init-done nil
   "Indicates that the Skroad mode global init was completed in this session.")
