@@ -3508,9 +3508,8 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
    (concat
     (if (skroad--node-orphan-p) "Orphan " "")
     (if (skroad--node-stub-p) "Stub " "")
-    (cond ((skroad--node-special-p) "Special ")
-          ((skroad--node-log-p) "Log ")
-          (t ""))
+    (if (skroad--node-special-p) "Special " "")
+    (if (skroad--node-log-p) "Log " "")
     "Node")))
 
 (defun skroad--setup-mode-line ()
