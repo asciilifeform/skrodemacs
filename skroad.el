@@ -3498,6 +3498,8 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
                (set-window-parameter nil 'skroad--header-eval header-updater)
                header-updater)))))))
 
+;; Modeline. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defvar-local skroad--buf-modeline-node-label nil
   "The modeline label for the current buffer.")
 
