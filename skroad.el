@@ -2921,8 +2921,7 @@ REASON, if given, is a comment describing the cause of the operation."
          (concat op " " (if live
                             (skroad--link-generate-live node)
                           (skroad--link-generate-dead node))
-                 (or (and (stringp reason) (concat " (" reason ")")) "")
-                 ".")))
+                 (or (and (stringp reason) (concat " (" reason ".)")) ""))))
     (skroad--defer
      (message (concat "Skroad Log Entry: " entry))
      (skroad--with-node (skroad--current-log-name) nil ;; Run actions!
