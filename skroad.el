@@ -3554,12 +3554,11 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
     (setq-local
      skroad--buf-modeline-node-label
      (concat
-      (if (skroad--node-special-p)
-          "Special "
-        (concat
-         (if (skroad--node-orphan-p) "Orphan " "")
-         (if (skroad--node-stub-p) "Stub " "")
-         (if (skroad--node-log-p) "Log " "")))
+      (cond ((skroad--node-special-p) "Special ")
+            ((skroad--node-log-p) "Log ")
+            (t (concat
+                (if (skroad--node-orphan-p) "Orphan " "")
+                (if (skroad--node-stub-p) "Stub " ""))))
       "Node"))))
 
 (defun skroad--setup-mode-line ()
@@ -3686,9 +3685,10 @@ ORIGIN is indexed/created if required.  If NODE is a special node, return nil."
 
 (defun skroad--set-special-status (node special status)
   "Set connection STATUS of NODE from the given SPECIAL (assumed) node.
-SPECIAL is created if required.  If NODE itself is a special node, do nothing.
+SPECIAL is created if required.  If NODE itself is a special or log, do nothing.
 Return t only when the connection status of NODE from SPECIAL actually changed."
   (unless (or (skroad--node-special-p node) ;; If node itself is special, no-op
+              (skroad--node-log-p node) ;; Log nodes are never stubs or orphans
               (eq (skroad--connected-p special node) status)) ;; no change?
     (skroad--in-node
      special (if status #'skroad--connect-to #'skroad--disconnect-from) node t)
