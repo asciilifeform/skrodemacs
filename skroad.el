@@ -3505,17 +3505,16 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
   "Update the modeline label for the currently-open node."
   (setq-local
    skroad--buf-modeline-node-label
-   (unless (skroad--search-results-p)
-     (concat
-      (if (skroad--node-orphan-p) "Orphan " "")
-      (if (skroad--node-stub-p) "Stub " "")
-      (cond ((skroad--node-special-p) "Special ")
-            ((skroad--node-log-p) "Log ")
-            (t ""))
-      "Node"))))
+   (concat
+    (if (skroad--node-orphan-p) "Orphan " "")
+    (if (skroad--node-stub-p) "Stub " "")
+    (cond ((skroad--node-special-p) "Special ")
+          ((skroad--node-log-p) "Log ")
+          (t ""))
+    "Node")))
 
 (defun skroad--setup-mode-line ()
-  "Replace the buffer name in the mode with `skroad--buf-modeline-node-label'."
+  "Replace the buffer name in the mode with a node description."
   (setq-local mode-line-buffer-identification
               '(:eval
                 (propertized-buffer-identification
@@ -4134,7 +4133,6 @@ Warning: undo info is lost in all affected buffers!"
   (face-remap-add-relative 'header-line 'skroad--title-face)
   (skroad--deactivate-mark) ;; Zap spurious mark from opening links via mouse
   (skroad--selector-init)
-  (skroad--setup-mode-line) ;; Modeline diddler
   )
 
 ;; TODO: proper mode exit cleanup
@@ -4158,6 +4156,7 @@ Warning: undo info is lost in all affected buffers!"
   ;; Initialize autocomplete support.
   (setq-local completion-at-point-functions '(skroad--autocomplete-in-buf-capf))
   (skroad--autocomplete-buf-init)
+  (skroad--setup-mode-line) ;; Modeline diddler
   ;; Buffer-local hooks:
   (add-hook 'skroad-mode-hook 'skroad--open-node 0 t)
   )
