@@ -3527,7 +3527,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
                                (concat
                                 skroad--buf-modeline-node-label
                                 (format
-                                 " (%s)"
+                                 " (%s peers)"
                                  (skroad--current-indices-live-link-count))))
                           (buffer-name)))))))
 
