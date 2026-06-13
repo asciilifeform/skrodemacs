@@ -7,6 +7,9 @@
 (require 'text-property-search)
 (require 'browse-url)
 
+(defvar skroad-mode)
+(defvar skroad-search-results-mode)
+
 ;;; Knobs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--debug t)
@@ -235,6 +238,12 @@
 (defun skroad--mode-or-search-results-p ()
   "Determine whether skroad mode or search results mode is currently active."
   (or (skroad--mode-p) (skroad--search-results-p)))
+
+(defun skroad--modes-only ()
+  "Signal an error if a command is performed outside of our modes."
+  (unless (skroad--mode-or-search-results-p)
+    (user-error
+     "This command works only in skroad-mode and skroad-search-results-mode!")))
 
 (defmacro skroad--with-file (file &rest body)
   "Evaluate BODY, operating on FILE (must exist).  Use existing buffer, if any."
@@ -1578,7 +1587,8 @@ If there are any, return the count; otherwise return nil."
 ;; Insert a space immediately behind the atomic currently under the point.
 (defun skroad--cmd-atomic-prepend-space ()
   "InsSp"
-  (interactive "*")
+  (interactive "*" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (save-mark-and-excursion (goto-char (skroad--zone-start)) (insert " ")))
 
 (defvar-local skroad--buf-alt-mark nil
@@ -1592,7 +1602,8 @@ If there are any, return the count; otherwise return nil."
   "Wrap COMMAND to use region if exists, or use the atomic at point as region."
   `(defun ,(read (concat "skroad--cmd-atomic-"
                          (symbol-name wrap-command))) ()
-     (interactive ,i-arg)
+     (interactive ,i-arg skroad-mode skroad-search-results-mode)
+     (skroad--modes-only)
      (if (use-region-p)
          (call-interactively ',wrap-command)
        (skroad--with-current-zone
@@ -1606,7 +1617,8 @@ If there are any, return the count; otherwise return nil."
 
 (defun skroad--cmd-atomic-set-mark ()
   "Set the mark inside an atomic."
-  (interactive)
+  (interactive nil skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (save-excursion
     (skroad--with-current-zone
       (setq-local skroad--buf-alt-mark start)
@@ -1654,7 +1666,8 @@ If there are any, return the count; otherwise return nil."
 ;; Try to activate the renamer in the current zone.
 (defun skroad--cmd-renamer-activate-here ()
   "Rename"
-  (interactive)
+  (interactive nil skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (skroad--renamer-deactivate) ;; Deactivate when already active somewhere
   (let ((renamer-type (skroad--prop-at 'renamer-overlay-type)))
     (when renamer-type
@@ -1691,7 +1704,8 @@ If there are any, return the count; otherwise return nil."
 
 (defun skroad--cmd-direct-renamer-activate-here ()
   "Rename"
-  (interactive "*")
+  (interactive "*" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (call-interactively #'skroad--cmd-renamer-activate-here))
 
 (defun skroad--renamer-deactivate ()
@@ -1751,7 +1765,8 @@ disable the renamer and return nil."
 
 (defun skroad--cmd-renamer-accept-changes ()
   "Accept the proposed renaming, if the renamer is currently active and valid."
-  (interactive)
+  (interactive nil skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (when (skroad--renamer-validate)
     (let ((old (overlay-get skroad--renamer 'old-name))
           (new (skroad--get-renamer-text))
@@ -1954,7 +1969,8 @@ DISPLAY-MODE controls what happens when this results in opening a buffer."
 (defun skroad--cmd-link-mouse-activate (click &optional display-mode)
   "Perform the action attribute of the link that got the CLICK.
 DISPLAY-MODE is passed to `skroad--do-link-action'."
-  (interactive "e")
+  (interactive "e" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (let* ((posn (event-start click))
          (click-pos (posn-point posn))
          (window (posn-window posn))
@@ -1973,13 +1989,15 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 
 (defun skroad--cmd-link-mouse-activate-new-win (click)
   "Activate a link via the mouse, opening any buffers in a new window."
-  (interactive "e")
+  (interactive "e" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (skroad--cmd-link-mouse-activate click skroad--disp-mode-force-new-window))
 
 ;; Transform the item under the point to plain text by removing delimiters.
 (defun skroad--cmd-atomic-delimited-textify ()
   "Text"
-  (interactive "*")
+  (interactive "*" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (skroad--with-current-zone
     (let ((text (skroad--data-at)))
       (save-mark-and-excursion
@@ -1997,12 +2015,14 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 ;; Perform the action attribute of the link at point.
 (defun skroad--cmd-link-activate ()
   "Go"
-  (interactive)
+  (interactive nil skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (skroad--do-link-action (point)))
 
 (defun skroad--cmd-link-activate-new-win ()
   "Win."
-  (interactive)
+  (interactive nil skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (skroad--do-link-action (point) skroad--disp-mode-force-new-window))
 
 (skroad--deftype skroad--text-mixin-link-navigable
@@ -2213,24 +2233,30 @@ If TARGET does not exist, this is a no-op."
 ;; Yank (with optional ARGS) into a node when standing on a live link to it.
 (defun skroad--cmd-teleyank-at (&rest args)
   "YankTo"
-  (interactive)
+  (interactive nil skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (skroad--yank-into (skroad--data-at) args))
 
 (defun skroad--cmd-deaden-at (&rest _args)
   "Deaden"
-  (interactive "*")
+  (interactive "*" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (skroad--link-unlink (skroad--data-at)))
 
 (defun skroad--cmd-merge-at (&rest _args)
   "Merge"
-  (interactive "*")
+  (interactive "*" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (skroad--merge-node-into-current (skroad--data-at)))
 
 ;; TODO: deleting tail links should zap any resulting empty line?
 ;; TODO: make this work for selections?
+;; If live link is a duplicate, self-link, or special: delete it.
+;; ... but if none of the above, move it to the node's tail.
 (defun skroad--cmd-banish-at (&rest _args)
-  "Banish" ;; If live link is a duplicate, self-link, or special: delete it.
-  (interactive "*") ;; ... but if none of the above, move it to the node's tail.
+  "Banish"
+  (interactive "*" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (skroad--buf-indices-sync) ;; Make sure this node's indices are up to date
   (let* ((node (skroad--data-at)) ;; The live link being banished
          (single ;; Is this the last remaining copy of an indexed live link?
@@ -2316,7 +2342,8 @@ If TARGET does not exist, this is a no-op."
 
 (defun skroad--cmd-liven-at (&rest _args)
   "Liven"
-  (interactive "*")
+  (interactive "*" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (skroad--link-revive (skroad--data-at)))
 
 (skroad--deftype skroad--text-link-node-dead
@@ -2488,7 +2515,8 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 ;; Turn the URL at point into plain text by placing a space after the prefix.
 (defun skroad--cmd-bare-url-comment ()
   "Text"
-  (interactive "*")
+  (interactive "*" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (skroad--with-current-zone
     (save-mark-and-excursion
       (goto-char start)
@@ -2585,13 +2613,15 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 ;; Simply display the URL without navigating to it.
 (defun skroad--cmd-link-show ()
   "Show"
-  (interactive)
+  (interactive nil skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (skroad--info (skroad--data-at)))
 
 ;; Turn the MD URL at point into plain text by breaking it with a space
 (defun skroad--cmd-md-url-comment ()
   "Text"
-  (interactive "*")
+  (interactive "*" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (skroad--with-current-zone
     (save-mark-and-excursion
       (goto-char end)
@@ -2815,7 +2845,8 @@ See e.g. `skroad--merge-node-into-current'."
 
 (defun skroad--cmd-timestamp-jump-earlier ()
   "Previous"
-  (interactive)
+  (interactive nil skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (let ((pos (save-mark-and-excursion
                (forward-char)
                (skroad--timestamp-find-forward))))
@@ -2823,7 +2854,8 @@ See e.g. `skroad--merge-node-into-current'."
 
 (defun skroad--cmd-timestamp-jump-later ()
   "Next"
-  (interactive)
+  (interactive nil skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (let ((pos (skroad--timestamp-find-backward)))
     (when pos (goto-char pos))))
 
@@ -3137,18 +3169,20 @@ If we're in search results mode, return the name of the buffer."
 
 (defun skroad--cmd-title-kill-ring-save ()
   "Save the current node's title, transformed to a live link, to the kill ring."
-  (interactive)
-    (let ((node (skroad--current-internal-title))
-          (is-node (skroad--mode-p)))
-      (with-temp-buffer
-        (if is-node
-            (skroad--link-insert-live node)
-          (insert node))
-        (copy-region-as-kill (point-min) (point-max)))))
+  (interactive nil skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
+  (let ((node (skroad--current-internal-title))
+        (is-node (skroad--mode-p)))
+    (with-temp-buffer
+      (if is-node
+          (skroad--link-insert-live node)
+        (insert node))
+      (copy-region-as-kill (point-min) (point-max)))))
 
 (defun skroad--cmd-title-delete-current-node ()
   "Delete"
-  (interactive "*")
+  (interactive "*" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (let ((node (skroad--current-node)))
     (if (or buffer-read-only
             (skroad--node-special-p node)
@@ -3162,7 +3196,8 @@ If we're in search results mode, return the name of the buffer."
 ;; Move the tail indicator to the position suggested by the tail heuristic.
 (defun skroad--cmd-title-reset-tail ()
   "TailReset"
-  (interactive "*")
+  (interactive "*" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (let ((node (skroad--current-node)))
     (if buffer-read-only
         (user-error "This node's tail cannot be moved!")
@@ -4012,7 +4047,8 @@ Warning: undo info is lost in all affected buffers!"
 
 (defun skroad--cmd-top-backspace ()
   "If prev point is in an atomic, delete it; otherwise, normal backspace."
-  (interactive "*")
+  (interactive "*" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
         ((bobp) nil)
         (t (let* ((p (point)) (left (1- p)))
@@ -4023,7 +4059,8 @@ Warning: undo info is lost in all affected buffers!"
 
 (defun skroad--cmd-top-gt ()
   "If there is a region, increase its quote level; otherwise insert `>'."
-  (interactive "*")
+  (interactive "*" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (unless (skroad--in-node-title-p)
     (if (and (use-region-p) (not (skroad--renamer-active-p)))
         (skroad--quote-region (region-beginning) (region-end))
@@ -4031,7 +4068,8 @@ Warning: undo info is lost in all affected buffers!"
 
 (defun skroad--cmd-top-lt ()
   "If there is a region, decrease its quote level; otherwise insert `<'."
-  (interactive "*")
+  (interactive "*" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (unless (skroad--in-node-title-p)
     (if (and (use-region-p) (not (skroad--renamer-active-p)))
         (skroad--unquote-region (region-beginning) (region-end))
@@ -4048,38 +4086,46 @@ Warning: undo info is lost in all affected buffers!"
 
 (defun skroad--cmd-top-jump-to-next-atomic ()
   "Jump to the next atomic after the point; try to cycle to first if none."
-  (interactive)
+  (interactive nil skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (skroad--zone-jump-from (point) nil t))
 
 (defun skroad--cmd-top-jump-to-prev-atomic ()
   "Jump to the previous atomic before the point; try to cycle to last if none."
-  (interactive)
+  (interactive nil skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (skroad--zone-jump-from (point) t t))
 
 (defun skroad--cmd-top-tab ()
   "Top-level key binding for TAB."
-  (interactive)
+  (interactive nil skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (if (skroad--autocomplete-start-pos) ;; Are we sitting in a [[..... ?
       (completion-at-point) ;; ... trigger the autocomplete.
     (skroad--cmd-top-jump-to-next-atomic))) ;; ... if not, regular tab binding.
 
 (defun skroad--cmd-top-goto-tail ()
   "Top-level jump-to-tail."
-  (interactive)
+  (interactive nil skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (goto-char (skroad--node-tail-start-pos)))
 
 (defun skroad--cmd-top-move-tail-here ()
   "Move the current node tail indicator to the point."
-  (interactive "*")
+  (interactive "*" skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (if buffer-read-only
       (skroad--info "This node's tail cannot be moved!")
     (skroad--move-tail-indicator-here)))
 
 (defun skroad--cmd-top-toggle-atomic-text-hiding ()
   "Toggle non-match text hiding in atomics having a `visible-match-number'."
-  (interactive)
+  (interactive nil skroad-mode skroad-search-results-mode)
+  (skroad--modes-only)
   (setq skroad--atomic-show-payload-only (not skroad--atomic-show-payload-only))
   (skroad--request-refontify)) ;; Schedule a refontification.
+
+;; Mode init. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--mode-map
   (skroad--define-keymap
@@ -4097,8 +4143,6 @@ Warning: undo info is lost in all affected buffers!"
 ;; Global binding for find-node and node text search:
 (keymap-global-set "M-o" #'skroad--cmd-top-find-node)
 (keymap-global-set "C-M-o" #'skroad--cmd-top-search)
-
-;; Mode init. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--global-init-done nil
   "Indicates that the Skroad mode global init was completed in this session.")
