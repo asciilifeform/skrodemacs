@@ -2729,9 +2729,7 @@ Jump to the first result node link, if there are any."
       (when (funcall (get 'skroad--text-link-node-live 'find-any-forward))
         (goto-char (match-beginning 0))
         (skroad--fontify-current-line)
-        ;; (skroad--selector-update)
-        (run-with-idle-timer 0 nil #'skroad--selector-update)
-        ))))
+        (run-with-idle-timer 0 nil #'skroad--selector-update)))))
 
 (defvar-local skroad--search-query nil
   "Current query in a search result buffer.")
