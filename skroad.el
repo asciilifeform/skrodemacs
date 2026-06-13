@@ -3138,10 +3138,13 @@ If we're in search results mode, return the name of the buffer."
 (defun skroad--cmd-title-kill-ring-save ()
   "Save the current node's title, transformed to a live link, to the kill ring."
   (interactive)
-  (let ((node (skroad--current-internal-title)))
-    (with-temp-buffer
-      (skroad--link-insert-live node)
-      (copy-region-as-kill (point-min) (point-max)))))
+    (let ((node (skroad--current-internal-title))
+          (is-node (skroad--mode-p)))
+      (with-temp-buffer
+        (if is-node
+            (skroad--link-insert-live node)
+          (insert node))
+        (copy-region-as-kill (point-min) (point-max)))))
 
 (defun skroad--cmd-title-delete-current-node ()
   "Delete"
