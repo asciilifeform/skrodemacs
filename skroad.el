@@ -2813,7 +2813,13 @@ See e.g. `skroad--merge-node-into-current'."
 
 ;; TODO: M-up/down should apply to all atomic types???
 
-(defconst skroad--log-date-format "%d %B, %Y" "Format used for log dates.")
+(defconst skroad--log-day-format "%d %B, %Y" "Format used for log dates.")
+(defconst skroad--log-month-format "%B %Y" "Format used for log months.")
+(defconst skroad--log-year-format "%Y" "Format used for log years.")
+
+(defun skroad--make-date-string (format)
+  "Generate a string representing the current date in the given FORMAT."
+  (format-time-string format (seconds-to-time (current-time))))
 
 (skroad--deftype skroad--text-timestamp
   :doc "Timestamp."
@@ -2859,19 +2865,18 @@ See e.g. `skroad--merge-node-into-current'."
     (when (funcall (get 'skroad--text-timestamp 'find-any-backward))
       (match-beginning 0))))
 
-(defun skroad--current-date-string ()
-  "Generate a string representing today's date."
-  (format-time-string skroad--log-date-format (seconds-to-time (current-time))))
-
 (defun skroad--emplace-log-entry (text &optional unique)
   "Insert TEXT as a log entry in the current buffer, under the current date.
 If UNIQUE is true, TEXT found to be a duplicate is simply moved to the end."
   (skroad--goto-node-body-start)
-  (let ((now (skroad--current-date-string)))
+  (let ((now (skroad--make-date-string skroad--log-day-format)))
     (unless (funcall (get 'skroad--text-timestamp 'search) now)
       (insert "\n" (funcall (get 'skroad--text-timestamp 'generate) now) "\n")))
   (let ((day-bottom
-         (copy-marker (or (skroad--timestamp-find-forward) (point-max))))
+         (copy-marker (or (skroad--timestamp-find-forward)
+                          ;; (point-max)
+                          (skroad--node-body-end-pos)
+                          )))
         (log-line (concat text "\n")))
     (when (and unique (search-forward log-line day-bottom t))
       (delete-region (match-beginning 0) (match-end 0)))
@@ -2885,6 +2890,10 @@ If UNIQUE is true, TEXT found to be a duplicate is simply moved to the end."
   (let ((n (or node (skroad--current-node))))
     (and (stringp n) (string-prefix-p skroad--log-node-prefix n))))
 
+(defun skroad--make-log-node (title)
+  "Create a log node from the given TITLE."
+  (concat skroad--log-node-prefix title))
+
 (defun skroad--log-earlier-p (a b)
   "Return non-nil if date string A represents an earlier date than B.
 Unparseable strings are treated as earlier than parseable ones,
@@ -2896,7 +2905,14 @@ and equal to each other.  Never signals an error."
      (db t)
      (t nil))))
 
-;; TODO: ensure current month log
+(defun skroad--current-year-log-name ()
+  "Generate the name of the current year log node."
+  (skroad--make-log-node (skroad--make-date-string skroad--log-year-format)))
+
+(defun skroad--current-log-name ()
+  "Generate the name of the current log node."
+  (skroad--make-log-node (skroad--make-date-string skroad--log-month-format)))
+
 (defun skroad--log-node-op (node live op &optional unique reason)
   "Record an OP on NODE (if LIVE: emplace live link) to the current log node.
 The current log node is created if it did not previously exist.
@@ -2910,8 +2926,11 @@ REASON, if given, is a comment describing the cause of the operation."
                  ".")))
     (skroad--defer
      (message (concat "Skroad Log Entry: " entry))
-     (skroad--with-node skroad--special-node-log nil ;; Run actions!
-       (skroad--emplace-log-entry entry unique)))))
+     (skroad--with-node (skroad--current-log-name) nil ;; Run actions!
+       (skroad--emplace-log-entry entry unique)
+       (skroad--connect-to (skroad--make-log-node "Log"))
+       (skroad--connect-to (skroad--current-year-log-name))
+       ))))
 
 (defun skroad--log-node-revise (node)
   "Record a revision of NODE to the current log."
@@ -3076,8 +3095,9 @@ A non-log link is emplaced at the top of the tail, just below the indicator."
                           node (match-string-no-properties 1))
                          (goto-char (match-beginning 0))
                        (goto-char (match-end 0))
-                       (insert "\n" link)
-                       nil))))
+                       (insert "\n")
+                       nil)))
+             (insert link))
             (t (goto-char tail-start) ;; An ordinary link?
                (insert link "\n"))))))
 
@@ -3385,7 +3405,8 @@ If we're in search results mode, return the name of the buffer."
 (defun skroad--before-save-hook ()
   "Triggers prior to an interactive save."
   (skroad--renamer-deactivate)
-  (skroad--buf-indices-sync)
+  ;; (when (buffer-modified-p)
+  ;;   (skroad--buf-indices-sync))
   (skroad--before-save-common))
 
 (when skroad--debug
