@@ -2874,9 +2874,7 @@ If UNIQUE is true, TEXT found to be a duplicate is simply moved to the end."
       (insert "\n" (funcall (get 'skroad--text-timestamp 'generate) now) "\n")))
   (let ((day-bottom
          (copy-marker (or (skroad--timestamp-find-forward)
-                          ;; (point-max)
-                          (skroad--node-body-end-pos)
-                          )))
+                          (skroad--node-body-end-pos)))) ;; Will create tail!
         (log-line (concat text "\n")))
     (when (and unique (search-forward log-line day-bottom t))
       (delete-region (match-beginning 0) (match-end 0)))
@@ -2929,8 +2927,7 @@ REASON, if given, is a comment describing the cause of the operation."
      (skroad--with-node (skroad--current-log-name) nil ;; Run actions!
        (skroad--emplace-log-entry entry unique)
        (skroad--connect-to (skroad--make-log-node "Log"))
-       (skroad--connect-to (skroad--current-year-log-name))
-       ))))
+       (skroad--connect-to (skroad--current-year-log-name))))))
 
 (defun skroad--log-node-revise (node)
   "Record a revision of NODE to the current log."
