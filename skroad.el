@@ -2946,7 +2946,7 @@ REASON, if given, is a comment describing the cause of the operation."
 (defun skroad--log-node-rename (old node)
   "Record the renaming of OLD to NODE to the current log."
   (skroad--log-node-op ;; May duplicate
-   node t "Renamed" nil (concat "from '" old "'"))
+   node t "Renamed" nil (concat "From '" old "'"))
   (skroad--lint-deaden old) ;; Deaden any old links in the lint log
   )
 
