@@ -2911,45 +2911,44 @@ and equal to each other.  Never signals an error."
   "Generate the name of the current log node."
   (skroad--make-log-node (skroad--make-date-string skroad--log-month-format)))
 
-;; TODO: log nodes should be creatable from here and from nowhere else?
-(defun skroad--log-node-op (node live op &optional unique reason)
-  "Record an OP on NODE (if LIVE: emplace live link) to the current log node.
+(defun skroad--log-node-op (node op &optional unique reason)
+  "Record an OP on NODE to the current log node.
 The current log node is created if it did not previously exist.
 If UNIQUE is true, attempted duplication simply moves an entry to the day's end.
 REASON, if given, is a comment describing the cause of the operation."
   (skroad--defer
-   (let ((entry
-          (concat op " " (if live
-                             (skroad--link-generate-live node)
-                           (skroad--link-generate-dead node))
-                  (or (and (stringp reason)
-                           (concat " (" reason ")")) ""))))
+   (let* ((live (skroad--cache-peek node)) ;; Use a live link when node exists
+          (entry
+           (concat op " " (if live
+                              (skroad--link-generate-live node)
+                            (skroad--link-generate-dead node))
+                   (or (and (stringp reason)
+                            (concat " (" reason ")")) ""))))
      (message (concat "Skroad Log Entry: " entry))
      (skroad--with-node (skroad--current-log-name) nil ;; Run actions!
-       (when live
-         (skroad--link-revive-to node))
+       (when live (skroad--link-revive-to node)) ;; Revive if adding live link
        (skroad--emplace-log-entry entry unique)
        (skroad--connect-to (skroad--make-log-node "Log"))
        (skroad--connect-to (skroad--current-year-log-name))))))
 
 (defun skroad--log-node-revise (node)
   "Record a revision of NODE to the current log."
-  (skroad--log-node-op node t "Revised" t)) ;; May NOT duplicate
+  (skroad--log-node-op node "Revised" t)) ;; Bump rather than duplicate
 
 (defun skroad--log-node-create (node)
   "Record the creation of NODE to the current log, with optional REASON."
-  (skroad--log-node-op node t "Created")) ;; May duplicate
+  (skroad--log-node-op node "Created")) ;; May duplicate
 
 (defun skroad--log-node-remove (node &optional reason)
   "Record the removal of NODE to the current log, with optional REASON."
-  (skroad--log-node-op node nil "Deleted" nil reason) ;; May duplicate
+  (skroad--log-node-op node "Deleted" nil reason) ;; May duplicate
   (skroad--lint-deaden node) ;; Deaden any old links in the lint log
   )
 
 (defun skroad--log-node-rename (old node)
   "Record the renaming of OLD to NODE to the current log."
   (skroad--log-node-op ;; May duplicate
-   node t "Renamed" nil (concat "Was: '" old "'"))
+   node "Renamed" nil (concat "Was: '" old "'"))
   (skroad--lint-deaden old) ;; Deaden any old links in the lint log
   )
 
