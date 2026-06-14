@@ -418,6 +418,7 @@ confine its edits to the matched text.  Return t if there were any matches."
     (when pos (goto-char pos))
     (= (pos-bol) (point-min))))
 
+;; TODO: rename, given as meaning of "body" changed to exclude tail !
 (defun skroad--in-node-body-p (&optional pos)
   "Return t if POS (or point, if not given) is inside the current node's body."
   (not (skroad--in-node-title-p pos)))
@@ -2037,7 +2038,8 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 (defun skroad--mouseover-node-preview (_window buf position)
   "User is mousing over a link in WINDOW, BUF, at POSITION.  Preview body."
   (with-current-buffer buf
-    (let ((node (skroad--data-at position)))
+    (let ((origin (skroad--current-node))
+          (node (skroad--data-at position)))
       (when (stringp node)
         (cond ((skroad--node-stub-p node) (format "Stub node '%s'" node))
               ((skroad--node-special-p node) (format "Special node '%s'" node))
@@ -2046,7 +2048,9 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
                (propertize
                 (or (ignore-errors
                       (skroad--with-file (skroad--node-path node)
-                        (skroad--current-node-extract-body)))
+                        (if (skroad--node-log-p)
+                            (skroad--log-extract-relevant origin)
+                          (skroad--current-node-extract-body))))
                     "This node is missing from the data directory !?")
                 'help-echo-inhibit-substitution t)) ;; Emacs 29+
               (t "A deleted node."))))))
@@ -2821,6 +2825,7 @@ See e.g. `skroad--merge-node-into-current'."
   "Generate a string representing the current date in the given FORMAT."
   (format-time-string format (seconds-to-time (current-time))))
 
+;; TODO: exclude from tails!
 (skroad--deftype skroad--text-timestamp
   :doc "Timestamp."
   :use 'skroad--text-atomic
@@ -2902,6 +2907,35 @@ and equal to each other.  Never signals an error."
      ((and da db) (< da db))
      (db t)
      (t nil))))
+
+(defun skroad--log-extract-relevant (node)
+  "Extract dates and lines pertinent to NODE from the current (log) node.
+For use with `skroad--mouseover-node-preview'."
+  (let ((result ""))
+    (goto-char (point-max))
+    (while (skroad--timestamp-find-backward)
+      (let ((day
+             (skroad--clean-whitespace
+              (funcall (get 'skroad--text-timestamp 'get-match))))
+            (day-end (point))
+            (day-start (match-end 0))
+            (next (match-beginning 0)))
+        (funcall
+         (get 'skroad--text-link-node-live 'walk)
+         node
+         #'(lambda ()
+             (let ((log-line (buffer-substring-no-properties
+                              (line-beginning-position)
+                              (line-end-position))))
+               (setq result
+                     (concat (format "%s: %s\n" day log-line) result))))
+         day-start
+         day-end)
+        (goto-char next)))
+    (concat (format "History of %s in %s:\n\n"
+                    (skroad--link-generate-live node)
+                    (skroad--link-generate-live (skroad--current-node)))
+            result)))
 
 (defun skroad--current-year-log-name ()
   "Generate the name of the current year log node."
