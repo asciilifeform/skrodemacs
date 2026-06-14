@@ -2911,20 +2911,23 @@ and equal to each other.  Never signals an error."
   "Generate the name of the current log node."
   (skroad--make-log-node (skroad--make-date-string skroad--log-month-format)))
 
-;; TODO: log nodes should be creatable from here and from nowhere else!
+;; TODO: log nodes should be creatable from here and from nowhere else?
 (defun skroad--log-node-op (node live op &optional unique reason)
   "Record an OP on NODE (if LIVE: emplace live link) to the current log node.
 The current log node is created if it did not previously exist.
 If UNIQUE is true, attempted duplication simply moves an entry to the day's end.
 REASON, if given, is a comment describing the cause of the operation."
-  (let ((entry
-         (concat op " " (if live
-                            (skroad--link-generate-live node)
-                          (skroad--link-generate-dead node))
-                 (or (and (stringp reason) (concat " (" reason ".)")) ""))))
-    (skroad--defer
+  (skroad--defer
+   (let ((entry
+          (concat op " " (if live
+                             (skroad--link-generate-live node)
+                           (skroad--link-generate-dead node))
+                  (or (and (stringp reason)
+                           (concat " (" reason ")")) ""))))
      (message (concat "Skroad Log Entry: " entry))
      (skroad--with-node (skroad--current-log-name) nil ;; Run actions!
+       (when live
+         (skroad--link-revive-to node))
        (skroad--emplace-log-entry entry unique)
        (skroad--connect-to (skroad--make-log-node "Log"))
        (skroad--connect-to (skroad--current-year-log-name))))))
@@ -2946,7 +2949,7 @@ REASON, if given, is a comment describing the cause of the operation."
 (defun skroad--log-node-rename (old node)
   "Record the renaming of OLD to NODE to the current log."
   (skroad--log-node-op ;; May duplicate
-   node t "Renamed" nil (concat "From '" old "'"))
+   node t "Renamed" nil (concat "Was: '" old "'"))
   (skroad--lint-deaden old) ;; Deaden any old links in the lint log
   )
 
