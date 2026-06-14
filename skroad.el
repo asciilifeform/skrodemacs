@@ -2917,17 +2917,17 @@ The current log node is created if it did not previously exist.
 If UNIQUE is true, attempted duplication simply moves an entry to the day's end.
 REASON, if given, is a comment describing the cause of the operation."
   (skroad--defer
-   (let* ((live (skroad--cache-peek node)) ;; Use a live link when node exists
-          (entry
-           (concat op " " (if live
-                              (skroad--link-generate-live node)
-                            (skroad--link-generate-dead node))
-                   (or (and (stringp reason)
-                            (concat " (" reason ")")) ""))))
-     (message (concat "Skroad Log Entry: " entry))
+   (let* ((node-exists (skroad--cache-peek node)) ;; Does node still exist?
+          (link (if node-exists
+                    (skroad--link-generate-live node)
+                  (skroad--link-generate-dead node)))
+          (annotation (or (and (stringp reason) (concat " (" reason ")")) ""))
+          (log-entry (concat op " " link annotation)))
+     (message (concat "Skroad Log Entry: " log-entry))
      (skroad--with-node (skroad--current-log-name) nil ;; Run actions!
-       (when live (skroad--link-revive-to node)) ;; Revive if adding live link
-       (skroad--emplace-log-entry entry unique)
+       (when node-exists
+         (skroad--link-revive-to node)) ;; Revive if adding a live link
+       (skroad--emplace-log-entry log-entry unique)
        (skroad--connect-to (skroad--make-log-node "Log"))
        (skroad--connect-to (skroad--current-year-log-name))))))
 
