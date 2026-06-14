@@ -2048,7 +2048,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
                 (or (ignore-errors
                       (skroad--with-file (skroad--node-path node)
                         (if (skroad--node-log-p)
-                            (skroad--log-extract-relevant origin t)
+                            (skroad--log-history-of-node origin t)
                           (skroad--current-node-extract-body))))
                     "This node is missing from the data directory !?")
                 'help-echo-inhibit-substitution t)) ;; Emacs 29+
@@ -2271,6 +2271,13 @@ If TARGET does not exist, this is a no-op."
         (skroad--info "'%s' is now in the tail." node))
       (delete-region (skroad--zone-start) (skroad--zone-end))))) ;; now delete.
 
+(defun skroad--cmd-show-node-history-at ()
+  "Hist"
+  (interactive nil skroad-mode)
+  (skroad--modes-only)
+  (let ((node (skroad--data-at)))
+    (pop-to-buffer (skroad--history-render node))))
+
 (defconst skroad--link-node-live-start-delim "[["
   "Delimiter indicating the start of a live Skroad link.")
 
@@ -2304,6 +2311,7 @@ If TARGET does not exist, this is a no-op."
             "m" #'skroad--cmd-merge-at
             "l" #'skroad--cmd-deaden-at
             "y" #'skroad--cmd-teleyank-at ;; Official teleyank trigger
+            "h" #'skroad--cmd-show-node-history-at
             "<remap> <yank>" #'skroad--cmd-teleyank-at ;; Regular yank also
             )
   :renamer-overlay-type 'skroad--text-node-renamer-indirect
@@ -2793,6 +2801,33 @@ lines are highlighted."
           buf match-count match-node-count node-count)))
       buf)))
 
+;; Node History. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun skroad--history-render (node)
+  "Show an ephemeral buffer displaying the known history of NODE."
+  (let ((node-history (skroad--with-node node t
+                        (skroad--current-node-get-history))))
+    (if (or (not (skroad--cache-peek node))
+            (string-empty-p node-history))
+        (user-error "No history was found for this node!")
+      (let* ((buf-name
+              (format "*skroad-node-history: %s*" node))
+             (buf (get-buffer buf-name)))
+        (if (buffer-live-p buf)
+            buf
+          (setq buf (get-buffer-create buf-name))
+          (with-current-buffer buf
+            (let ((inhibit-read-only t))
+              (erase-buffer)
+              (skroad-ephemeral-mode)
+              (setq-local revert-buffer-function
+                          #'(lambda (_ignore-auto _noconfirm)
+                              (skroad--history-render node)))
+              (insert (format "History: '%s'\n" node))
+              (insert node-history)
+              (skroad--goto-node-body-start)))
+          buf)))))
+
 ;; Atomic Comments. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (skroad--deftype skroad--text-atomic-comment
@@ -2907,20 +2942,17 @@ and equal to each other.  Never signals an error."
      (db t)
      (t nil))))
 
-(defun skroad--log-extract-relevant (node &optional text-only)
+(defun skroad--log-history-of-node (node &optional text-only)
   "Extract dates and lines pertinent to NODE from the current (log) node.
 If TEXT-ONLY is t, return results suitable for hovertext."
   (let ((result ""))
     (goto-char (point-max))
     (while (skroad--timestamp-find-backward)
-      (let ((day
-             (if text-only
-                 (funcall (get 'skroad--text-timestamp 'get-match))
-               (buffer-substring-no-properties
-                (match-beginning 0) (match-end 0))))
+      (let ((day (match-string-no-properties (if text-only 1 0)))
             (day-end (point))
             (day-start (match-end 0))
-            (next (match-beginning 0)))
+            (next (match-beginning 0))
+            (day-found-any nil))
         (funcall
          (get 'skroad--text-link-node-live 'walk)
          node
@@ -2928,11 +2960,32 @@ If TEXT-ONLY is t, return results suitable for hovertext."
              (let ((log-line (buffer-substring-no-properties
                               (line-beginning-position)
                               (line-end-position))))
-               (setq result (concat log-line "\n" result))))
-         day-start
-         day-end)
-        (setq result (concat "\n" day result))
+               (setq result (concat log-line "\n" result))
+               (setq day-found-any t)))
+         day-start day-end)
+        (when day-found-any (setq result (concat "\n" day result)))
         (goto-char next)))
+    result))
+
+(defun skroad--current-node-get-history ()
+  "Get a history of the current node via log links in the tail, if any."
+  (let ((this-node (skroad--current-node))
+        (result "")) ;; Will remain empty if nothing is found
+    (save-mark-and-excursion
+      (funcall
+       (get 'skroad--text-link-node-live 'for-all-in-region) ;; Backwards
+       (skroad--node-tail-start-pos)
+       (point-max)
+       #'(lambda ()
+           (let ((node (funcall
+                        (get 'skroad--text-link-node-live 'get-match))))
+             (when (and (skroad--node-log-p node) ;; Log link?
+                        (skroad--cache-peek node)) ;; ... Log actually exists?
+               (let ((node-history ;; Get the relevant history, if any:
+                      (ignore-errors
+                        (skroad--with-file (skroad--node-path node)
+                          (skroad--log-history-of-node this-node)))))
+                 (setq result (concat result node-history))))))))
     result))
 
 (defun skroad--current-year-log-name ()
@@ -3247,6 +3300,13 @@ If we're in ephemeral mode, return the name of the buffer."
           (skroad--jump-to-suggested-node-tail)
           (skroad--move-tail-indicator-here))))))
 
+(defun skroad--cmd-title-show-node-history ()
+  "History"
+  (interactive nil skroad-mode)
+  (skroad--modes-only)
+  (let ((node (skroad--current-node)))
+    (pop-to-buffer (skroad--history-render node))))
+
 (skroad--deftype skroad--text-node-title
   :doc "Node title."
   :use 'skroad--text-atomic
@@ -3261,6 +3321,7 @@ If we're in ephemeral mode, return the name of the buffer."
     "<remap> <kill-ring-save>" #'skroad--cmd-title-kill-ring-save
     "d" #'skroad--cmd-title-delete-current-node
     "T" #'skroad--cmd-title-reset-tail
+    "h" #'skroad--cmd-title-show-node-history
     )
   :face 'skroad--title-face
   :inhibit-isearch t ;; Don't interactive-search in the title
