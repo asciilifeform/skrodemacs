@@ -2049,7 +2049,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
                 (or (ignore-errors
                       (skroad--with-file (skroad--node-path node)
                         (if (skroad--node-log-p)
-                            (skroad--log-extract-relevant origin)
+                            (skroad--log-extract-relevant origin t)
                           (skroad--current-node-extract-body))))
                     "This node is missing from the data directory !?")
                 'help-echo-inhibit-substitution t)) ;; Emacs 29+
@@ -2908,15 +2908,17 @@ and equal to each other.  Never signals an error."
      (db t)
      (t nil))))
 
-(defun skroad--log-extract-relevant (node)
+(defun skroad--log-extract-relevant (node &optional text-only)
   "Extract dates and lines pertinent to NODE from the current (log) node.
-For use with `skroad--mouseover-node-preview'."
+If TEXT-ONLY is t, return results suitable for hovertext."
   (let ((result ""))
     (goto-char (point-max))
     (while (skroad--timestamp-find-backward)
       (let ((day
-             (skroad--clean-whitespace
-              (funcall (get 'skroad--text-timestamp 'get-match))))
+             (if text-only
+                 (funcall (get 'skroad--text-timestamp 'get-match))
+               (buffer-substring-no-properties
+                (match-beginning 0) (match-end 0))))
             (day-end (point))
             (day-start (match-end 0))
             (next (match-beginning 0)))
@@ -2927,15 +2929,12 @@ For use with `skroad--mouseover-node-preview'."
              (let ((log-line (buffer-substring-no-properties
                               (line-beginning-position)
                               (line-end-position))))
-               (setq result
-                     (concat (format "%s: %s\n" day log-line) result))))
+               (setq result (concat log-line "\n" result))))
          day-start
          day-end)
+        (setq result (concat "\n" day result))
         (goto-char next)))
-    (concat (format "History of %s in %s:\n\n"
-                    (skroad--link-generate-live node)
-                    (skroad--link-generate-live (skroad--current-node)))
-            result)))
+    result))
 
 (defun skroad--current-year-log-name ()
   "Generate the name of the current year log node."
