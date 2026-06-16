@@ -31,6 +31,9 @@
 
 (defconst skroad--log-node-prefix "@" "Prefix character denoting a log node.")
 
+(defconst skroad--node-tail-indicator "\n@@@\n"
+  "Node tail indicator.  The newlines must NOT be removed.")
+
 ;;; Fonts. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--floating-title-enable t
@@ -272,7 +275,7 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
      (skroad--with-file (skroad--node-ensure ,node)
        (skroad--buf-indices-sync)
        ,(if body
-            `(unwind-protect ,@body
+            `(unwind-protect (progn ,@body)
                (when (buffer-modified-p)
                  (skroad--buf-indices-sync ,no-actions)
                  (skroad--before-save-common)
@@ -280,6 +283,12 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
                (when (skroad--mode-p)
                  (skroad--selector-update)))
           t))))
+
+(defmacro skroad--with-existing-node (node no-actions &rest body)
+  "Like `skroad--with-node', but do not create the node if it does not exist."
+  (declare (indent defun))
+  `(when (skroad--cache-peek ,node)
+     (skroad--with-node ,node ,no-actions ,@body)))
 
 (defmacro skroad--visit-open-nodes (&rest body)
   "Evaluate BODY in each currently-open node or ephemeral buffer."
@@ -401,7 +410,7 @@ confine its edits to the matched text.  Return t if there were any matches."
   "Clear the undo history for the current buffer."
   (setq-local buffer-undo-list nil))
 
-;; Title/body positions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Node title and body. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--goto-node-body-start ()
   "Jump to the position at the start of the current node's body."
@@ -421,6 +430,46 @@ confine its edits to the matched text.  Return t if there were any matches."
 (defun skroad--after-node-title-p (&optional pos)
   "Return t if POS (or point, if not given) is inside the current node's body."
   (not (skroad--in-node-title-p pos)))
+
+(defvar-local skroad--current-node-title nil
+  "Cached title of the node in the current buffer (Do not access directly).")
+
+(defun skroad--current-node ()
+  "Return the filename-derived title of the node in the current buffer.
+If we're in ephemeral mode, return the name of the buffer."
+  (or skroad--current-node-title
+      (setq-local
+       skroad--current-node-title
+       (or (and buffer-file-name
+                (skroad--file-path-to-node-title buffer-file-name))
+           (buffer-name)))))
+
+(defun skroad--node-self-p (node)
+  "Return t if NODE is the current node."
+  (and (skroad--mode-p) ;; No node is considered equal to an ephemeral
+       (string-equal node (skroad--current-node))))
+
+(defun skroad--current-buffer-node-p ()
+  "Return t when the current buffer contains a Skroad node."
+  (or (skroad--mode-p)
+      (and buffer-file-name
+           (when-let* ((file buffer-file-name)
+                       (extension (file-name-extension file)))
+             (string-equal extension skroad--file-extension)))))
+
+(defun skroad--current-internal-title ()
+  "Get the current node's title from the buffer."
+  (buffer-substring-no-properties (point-min) (skroad--get-end-of-line 1)))
+
+(defun skroad--change-internal-title (new-title)
+  "Change the internal title of the current node to NEW-TITLE."
+  (let ((inhibit-read-only t))
+    (save-mark-and-excursion
+      (goto-char (point-min))
+      (insert new-title)
+      (insert "\n")
+      (skroad--fontify-current-line)
+      (delete-region (point) (progn (forward-line 1) (point))))))
 
 ;; Idle queue for background ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2078,7 +2127,8 @@ If an invalid link was seen during indexing, report it to the lint."
          (or (skroad--cache-peek payload) ;; Already in the cache? valid!
              (skroad--validate-node-title payload)))) ;; or actually validate.
     (when (and (not valid) skroad--scan-in-progress)
-      (skroad--lint-report (format "Invalid link: '%s'" payload)))
+      (skroad--lint-report
+       (format "Invalid link: '%s'" payload) (skroad--current-node)))
     valid))
 
 (skroad--deftype skroad--text-link-node
@@ -2099,26 +2149,32 @@ If an invalid link was seen during indexing, report it to the lint."
 
 (defun skroad--foreground-node (node)
   "If NODE is visible somewhere, go there; otherwise open in the current window.
-If NODE does not exist, this is a no-op.  On success, return t."
-  (if (and node (skroad--cache-peek node))
-    (let* ((node-path (skroad--node-path node)) ;; Target path
-           (node-buf (find-buffer-visiting node-path))) ;; buf (maybe nil)
-      (if node-buf ;; If node is already open in a buffer, use that buffer:
-          (let* ((node-win (get-buffer-window node-buf t))
-                 (node-frame (window-frame node-win)))
-            (if node-win ;; If it already has a visible window, go there
-                (progn
-                  (unless (eq (window-frame) node-frame) ;; In different frame?
-                    (select-frame-set-input-focus node-frame)) ;; ... focus it.
-                  (select-window node-win))
-              (switch-to-buffer node-buf))) ;; ... unbury in current window.
-        (pop-to-buffer (find-file-noselect node-path))) ;; ... or open it.
-      t) ;; Return t when displayed.
+If NODE does not exist, this is a no-op with a warning.  On success, return t."
+  (if (skroad--cache-peek node)
+      (let* ((node-path (skroad--node-path node)) ;; Target path
+             (node-buf (find-buffer-visiting node-path))) ;; buf (maybe nil)
+        (if node-buf ;; If node is already open in a buffer, use that buffer:
+            (let* ((node-win (get-buffer-window node-buf t))
+                   (node-frame (window-frame node-win)))
+              (if node-win ;; If it already has a visible window, go there
+                  (progn
+                    (unless (eq (window-frame) node-frame) ;; In different frame?
+                      (select-frame-set-input-focus node-frame)) ;; ... focus it.
+                    (select-window node-win))
+                (switch-to-buffer node-buf))) ;; ... unbury in current window.
+          ;; Node was not already open anywhere; load it:
+          (unless (file-exists-p node-path)
+            (user-error "Node '%s' not found on disk! Try again?" node))
+          (pop-to-buffer (find-file-noselect node-path)))
+        t) ;; Return t when node actually got displayed.
     (user-error "Node '%s' does not exist!" node) ;; If it did not exist
-    nil))
+    nil)) ;; Return nil if it did not get displayed.
 
-(defun skroad--show-existing-node (node)
-  "Navigate to NODE, if it exists.  If called from a node buffer, may close it."
+(defun skroad--show-node (node)
+  "Navigate to NODE, if it exists.  If called from a node buffer, may close it.
+If it doesn't exist yet, try completing all deferred actions before giving up."
+  (unless (skroad--cache-peek node) ;; If node doesn't exist yet:
+    (skroad--complete-all-deferred)) ;; ... let all deferred ops complete.
   (let* ((from-node (and (skroad--mode-p) (skroad--current-node))) ;; origin
          (from-buf (current-buffer)))
     (when (skroad--foreground-node node) ;; Display the node, if exists
@@ -2136,76 +2192,66 @@ If NODE does not exist, this is a no-op.  On success, return t."
               (kill-buffer)))))
       t))) ;; Return t when displayed.
 
-(defun skroad--show-node (node &optional no-create)
-  "Navigate to NODE.
-Unless NO-CREATE is true, the node will be created if it does not yet exist.
-Must be called from a buffer containing a node."
-  (unless (or (skroad--cache-peek node) ;; May already have been created
-              no-create) ;; Creation may be disabled
-    (skroad--complete-all-deferred) ;; ... if so, let all deferred work finish.
-    (unless (skroad--cache-peek node) ;; Suppose the node still doesn't exist?
-      (skroad--in-node ;; Force immediate creation.
-       node #'skroad--connect-to (skroad--current-node))))
-  (skroad--show-existing-node node))
-
 (defun skroad--action-live-link-activate (node)
-  "Activate a live link to NODE.
-If we are coming from an ephemeral buffer or a special, never create NODE.
-In the case of an ephemeral, activate isearch with the query string if NODE
-actually loaded."
+  "A live link to NODE was activated (via keyboard or mouse).
+When coming from search results, turn on isearch with the query string,
+assuming that the node was actually shown."
   (let ((from-search (skroad--get-search-status))
         (from-res (get-text-property (point) 'skroad-search-result)))
-    (when (skroad--show-node
-           node
-           (or (skroad--node-special-p) ;; Don't create from specials
-               from-search)) ;; ... or from ephemeral
-      (when from-search
-        (if from-res
-            (skroad--maybe-restore-cached-point)
-          (goto-char (point-min))
-          (isearch-mode t) ;; Forward search
-          (isearch-yank-string from-search))))))
+    (when (and (skroad--show-node node) ;; If node actually showed:
+               from-search ;; ... and we came from a search result buffer:
+               (not from-res)) ;; ... but not from inside a result quote:
+      (skroad--goto-node-body-start) ;; Isearch will start from top
+      (isearch-mode t) ;; Set up a forward isearch...
+      (isearch-yank-string from-search)))) ;; ... using current search string.
+
+
+;; (skroad--node-connect "xyz" "xxx" nil t)
+;; (skroad--node-disconnect "xyz" "xxx" t)
+
+;; (skroad--node-connect "xyz" "xxx")
+;; (skroad--node-connect-back-verify "xyz" "xxx")
 
 ;; TODO
 ;; (defun skroad--verify-dead-link (node)
 ;;   "A dead link to NODE must be revived if there is a live reciprocal link."
 ;;   (when (and (skroad--cache-peek node) ;; Target node exists, and:
-;;              (skroad--connected-p node)) ;; and has a live link to current node.
+;;              (skroad--node-connected-p node)) ;; and has a live link to current node.
 ;;     (skroad--link-revive node)
 ;;     (skroad--lint-report (format "Auto-revived dead link to '%s'" node))))
 
-;; TODO: log entry
-;; TODO: check if we have an unreachable that can be renamed and will correspond
-(defun skroad--action-live-link-init (origin target)
-  "A live link to TARGET was found to exist during the indexing of ORIGIN."
-  (message "live init: origin=%s target=%s" origin target)
-  (when (skroad--cache-peek origin) ;; Check that origin still exists
-    (unless (and (skroad--cache-peek target) ;; Target doesn't exist?
-                 (skroad--connected-p target origin)) ;; ... or has no backlink?
-      (skroad--in-node origin #'skroad--disconnect-from target) ;; Disconnect
-      (message "Non-reciprocal link in '%s' to '%s' disabled." origin target)))
-    )
+;; ;; TODO: log entry
+;; ;; TODO: check if we have an unreachable that can be renamed and will correspond
+;; (defun skroad--action-live-link-init (origin target)
+;;   "A live link to TARGET was found to exist during the indexing of ORIGIN."
+;;   (message "live init: origin=%s target=%s" origin target)
+;;   (when (skroad--cache-peek origin) ;; Check that origin still exists
+;;     (unless (and (skroad--cache-peek target) ;; Target doesn't exist?
+;;                  (skroad--node-connected-p target origin)) ;; ... no backlink?
+;;       (skroad--in-node origin #'skroad--disconnect-from target) ;; Disconnect
+;;       (message "Non-reciprocal link in '%s' to '%s' disabled." origin target)))
+;;     )
 
-(defun skroad--action-live-link-create (origin target)
-  "A live link to TARGET was first introduced into an already-indexed ORIGIN.
-TARGET will be created if it does not exist."
-  (message "connected: origin=%s target=%s" origin target)
-  (when (skroad--cache-peek origin) ;; Check that origin still exists
-    (skroad--in-node target #'skroad--connect-to origin))) ;; Connect in target.
+;; (defun skroad--action-live-link-create (origin target)
+;;   "A live link to TARGET was first introduced into an already-indexed ORIGIN.
+;; TARGET will be created if it does not exist."
+;;   (message "connected: origin=%s target=%s" origin target)
+;;   (when (skroad--cache-peek origin) ;; Check that origin still exists
+;;     (skroad--in-node target #'skroad--connect-to origin))) ;; Connect in target.
 
-(defun skroad--action-live-link-destroy (origin target)
-  "The last instance of a live link to TARGET was removed from ORIGIN.
-If TARGET does not exist, this is a no-op."
-  (message "disconnected: origin=%s target=%s" origin target)
-  (when (skroad--cache-peek target) ;; Check that target still exists
-    (skroad--in-node target #'skroad--disconnect-from origin))) ;; Disconnect.
+;; (defun skroad--action-live-link-destroy (origin target)
+;;   "The last instance of a live link to TARGET was removed from ORIGIN.
+;; If TARGET does not exist, this is a no-op."
+;;   (message "disconnected: origin=%s target=%s" origin target)
+;;   (when (skroad--cache-peek target) ;; Check that target still exists
+;;     (skroad--in-node target #'skroad--disconnect-from origin))) ;; Disconnect.
 
 ;; (defun skroad--action-check-dead-link (origin target)
 ;;   "Revive, if necessary, a dead link found in ORIGIN to TARGET."
 ;;   ;; (message "dead init: origin=%s target=%s" origin target)
 ;;   (when (and (skroad--cache-peek origin) (skroad--cache-peek target))
-;;     (when (or (skroad--connected-p origin target)
-;;               (and (skroad--connected-p target origin)
+;;     (when (or (skroad--node-connected-p origin target)
+;;               (and (skroad--node-connected-p target origin)
 ;;                    (message "lint")))
 ;;       (message "dead link in '%s' to '%s' should be revived!" origin target))
 ;;     )
@@ -2215,20 +2261,17 @@ If TARGET does not exist, this is a no-op."
   "A dead link to TARGET was found to exist during the indexing of ORIGIN."
   (message "dead init: origin=%s target=%s" origin target)
   (when (and (skroad--cache-peek origin) (skroad--cache-peek target)
-             (skroad--connected-p target origin))
+             (skroad--node-connected-p target origin))
     (message "dead link in '%s' to '%s' should be revived!" origin target)
     )
   )
-
-;; [-[zoolag]-]
-;; [-[xyz]-]
 
 (defun skroad--action-dead-link-create (origin target)
   "A dead link to TARGET was first introduced into an already-indexed ORIGIN."
   (message "dead create: origin=%s target=%s dist=%s" origin target
            skroad--at-a-distance)
   (when (and (skroad--cache-peek origin) (skroad--cache-peek target)
-             (skroad--connected-p origin target))
+             (skroad--node-connected-p origin target))
     (message "new dead link in '%s' to '%s' should be revived!" origin target)
     )
   )
@@ -2238,7 +2281,19 @@ If TARGET does not exist, this is a no-op."
   "YankTo"
   (interactive nil skroad-mode skroad-ephemeral-mode)
   (skroad--modes-only)
-  (skroad--yank-into (skroad--data-at) args))
+  (when-let* ((node (skroad--data-at)))
+    (if (or (skroad--node-special-p node) ;; Don't teleyank into special nodes
+            (skroad--node-log-p node)) ;; ... or into log nodes
+        (user-error (format "Cannot teleyank to node '%s' !" node))
+      (skroad--with-node node nil ;; Yank could contain links, so actions must run
+        (skroad--install-yank-transformer) ;; Ensure that transformer is present
+        (atomic-change-group
+          (goto-char (skroad--node-body-end-pos)) ;; Tail will be made if req'd
+          (ensure-empty-lines)
+          (apply #'yank args)
+          (insert "\n")))
+      (skroad--log-node-revise node)
+      (skroad--info (format "Teleyanked to node '%s'." node)))))
 
 (defun skroad--cmd-deaden-at (&rest _args)
   "Deaden"
@@ -2284,13 +2339,45 @@ If TARGET does not exist, this is a no-op."
 (defconst skroad--link-node-live-end-delim "]]"
   "Delimiter indicating the end of a live Skroad link.")
 
+(defun skroad--node-connect-back-verify (local remote)
+  "Live link(s) to REMOTE were found during the initial indexing of LOCAL.
+Ensure that if LOCAL still exists, REMOTE (if it exists) has a live link to it.
+If REMOTE does not exist, ensure that LOCAL does NOT have any live links to it.
+Do NOT run type actions in either node.  Log to lint if anything was changed."
+  (message "live init: local=%s remote=%s" local remote)
+  (if (skroad--cache-peek remote)
+      (when (skroad--node-connect remote local)
+        (skroad--lint-report
+         (format "Restored missing back-link to %s."
+                 (skroad--link-generate-live local))
+         remote))
+    (when (skroad--node-disconnect local remote)
+      (skroad--lint-report
+       (format "Link to missing node %s was disabled."
+               (skroad--link-generate-dead remote))
+       local))))
+
+(defun skroad--node-connect-back-create (local remote)
+  "A live link to REMOTE was introduced into LOCAL, which had none before.
+Ensure that if LOCAL still exists, REMOTE will exist and have a live link to it.
+No-op if LOCAL no longer exists.  Do NOT run type actions in either node."
+  (message "connected: local=%s remote=%s" local remote)
+  (skroad--node-connect remote local t))
+
+(defun skroad--node-disconnect-back (local remote)
+  "The node LOCAL once had live link(s) to REMOTE, but now the last one is gone.
+Ensure that REMOTE (if it still exists) does NOT have any live links to LOCAL.
+Do NOT run type actions in either node."
+  (message "disconnected: local=%s remote=%s" local remote)
+  (skroad--node-disconnect remote local))
+
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :order 100
   :use 'skroad--text-link-node
-  :on-init #'skroad--action-live-link-init
-  :on-create #'skroad--action-live-link-create
-  :on-destroy #'skroad--action-live-link-destroy
+  :on-init #'skroad--node-connect-back-verify
+  :on-create #'skroad--node-connect-back-create
+  :on-destroy #'skroad--node-disconnect-back
   :on-activate #'skroad--action-live-link-activate
   :face-function
   '(lambda (payload)
@@ -2438,34 +2525,23 @@ Return true if any such links were in fact revived."
 (defun skroad--connect-to (node)
   "Ensure that the current node has at least one live link to NODE.
 If it had dead links to NODE, liven them; else, test for existing live links;
-failing either of the above, emplace a new live link in the tail."
+failing either of the above, emplace a new live link in the tail.
+Return t if there had previously been no live links to NODE."
   (unless (skroad--node-self-p node) ;; May not connect to self
-    (or (skroad--link-revive-to node) ;; Can we revive any dead links?
-        (skroad--link-has-live-p node) ;; ... else, had live links already?
-        (skroad--link-insert-live-in-tail node)))) ;; ... else, need a new one.
+    (let ((had-live (skroad--link-has-live-p node)))
+      (unless (or (skroad--link-revive-to node) had-live)
+        (skroad--link-insert-live-in-tail node))
+      (not had-live))))
 
 (defun skroad--disconnect-from (node &optional delete-all)
   "Ensure that the current node does NOT have any live links to NODE.
+Return t if there had actually been a live link to NODE previously.
 If DELETE-ALL is t, delete rather than deaden in the body as well as the tail."
   (when (skroad--link-has-live-p node)
     (if delete-all
         (skroad--link-delete node)
-      (skroad--link-unlink node))))
-
-(defun skroad--yank-into (node &rest yank-args)
-  "Ensure that NODE exists, and yank into it.  YANK-ARGS are passed to yank."
-  (if (or (skroad--node-special-p node) ;; Don't teleyank into special nodes
-          (skroad--node-log-p node)) ;; ... or into log nodes
-      (skroad--info (format "Cannot teleyank to node '%s' !" node))
-    (skroad--with-node node nil ;; Yank could contain links, so actions must run
-      (skroad--install-yank-transformer) ;; Ensure that transformer is present
-      (atomic-change-group
-        (goto-char (skroad--node-body-end-pos))
-        (ensure-empty-lines)
-        (apply #'yank yank-args)
-        (insert "\n")))
-    (skroad--log-node-revise node)
-    (skroad--info (format "Teleyanked to node '%s'." node))))
+      (skroad--link-unlink node))
+    t))
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2803,9 +2879,10 @@ lines are highlighted."
 
 ;; Node History. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: proper refresh
 (defun skroad--history-render (node)
   "Show an ephemeral buffer displaying the known history of NODE."
-  (let ((node-history (skroad--with-node node t
+  (let ((node-history (skroad--with-existing-node node t
                         (skroad--current-node-get-history))))
     (if (or (not (skroad--cache-peek node))
             (string-empty-p node-history))
@@ -2813,20 +2890,20 @@ lines are highlighted."
       (let* ((buf-name
               (format "*skroad-node-history: %s*" node))
              (buf (get-buffer buf-name)))
-        (if (buffer-live-p buf)
-            buf
-          (setq buf (get-buffer-create buf-name))
-          (with-current-buffer buf
-            (let ((inhibit-read-only t))
-              (erase-buffer)
-              (skroad-ephemeral-mode)
-              (setq-local revert-buffer-function
-                          #'(lambda (_ignore-auto _noconfirm)
-                              (skroad--history-render node)))
-              (insert (format "History: '%s'\n" node))
-              (insert node-history)
-              (skroad--goto-node-body-start)))
-          buf)))))
+        (with-current-buffer (if (buffer-live-p buf)
+                                 buf
+                               (get-buffer-create buf-name))
+          (let ((inhibit-read-only t))
+            (message "generating hist...")
+            (erase-buffer)
+            (skroad-ephemeral-mode)
+            (setq-local revert-buffer-function
+                        #'(lambda (_ignore-auto _noconfirm)
+                            (skroad--history-render node)))
+            (insert (format "History: '%s'\n" node))
+            (insert node-history)
+            (skroad--goto-node-body-start)
+            (current-buffer)))))))
 
 ;; Atomic Comments. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -3045,9 +3122,6 @@ REASON, if given, is a comment describing the cause of the operation."
 
 ;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defconst skroad--node-tail-indicator "\n@@@\n"
-  "Node tail indicator.  The newlines must NOT be removed.")
-
 (defvar-local skroad--buf-tail-overlay nil
   "Overlay which covers the current node's tail indicator.")
 
@@ -3130,7 +3204,8 @@ Return true when an existing one was not found and a new one was inserted."
            (let ((inhibit-read-only t))
              (skroad--jump-to-suggested-node-tail t)
              (skroad--emplace-tail-indicator)
-             (skroad--lint-report "Tail was auto-positioned.")))
+             (skroad--lint-report
+              "Tail was auto-positioned." (skroad--current-node))))
          t)))
 
 (defun skroad--node-body-end-pos ()
@@ -3209,48 +3284,6 @@ If this node did not have a tail indicator, this is a no-op."
   :doc "Text type for rendering the tail indicator."
   :render-next #'skroad--render-tail-indicator
   :use 'skroad--text-mixin-rendered)
-
-;; Node title and body. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defvar-local skroad--current-node-title nil
-  "Cached title of the node in the current buffer (Do not access directly).")
-
-(defun skroad--current-node ()
-  "Return the filename-derived title of the node in the current buffer.
-If we're in ephemeral mode, return the name of the buffer."
-  (or skroad--current-node-title
-      (setq-local
-       skroad--current-node-title
-       (or (and buffer-file-name
-                (skroad--file-path-to-node-title buffer-file-name))
-           (buffer-name)))))
-
-(defun skroad--node-self-p (node)
-  "Return t if NODE is the current node."
-  (and (skroad--mode-p) ;; No node is considered equal to an ephemeral
-       (string-equal node (skroad--current-node))))
-
-(defun skroad--current-buffer-node-p ()
-  "Return t when the current buffer contains a Skroad node."
-  (or (skroad--mode-p)
-      (and buffer-file-name
-           (when-let* ((file buffer-file-name)
-                       (extension (file-name-extension file)))
-             (string-equal extension skroad--file-extension)))))
-
-(defun skroad--current-internal-title ()
-  "Get the current node's title from the buffer."
-  (buffer-substring-no-properties (point-min) (skroad--get-end-of-line 1)))
-
-(defun skroad--change-internal-title (new-title)
-  "Change the internal title of the current node to NEW-TITLE."
-  (let ((inhibit-read-only t))
-    (save-mark-and-excursion
-      (goto-char (point-min))
-      (insert new-title)
-      (insert "\n")
-      (skroad--fontify-current-line)
-      (delete-region (point) (progn (forward-line 1) (point))))))
 
 ;; TODO: suppose there's no tail indicator?
 (defun skroad--current-node-extract-body ()
@@ -3493,7 +3526,9 @@ If we're in ephemeral mode, return the name of the buffer."
 (defun skroad--before-save-common ()
   "Operations to perform before any save (interactive or not)."
   (skroad--do-deferred-replacements)
-  (skroad--current-node-update-stub-status))
+  ;; (message "before save: '%s'" (skroad--current-node))
+  (skroad--current-node-update-stub-status)
+  )
 
 (defun skroad--before-save-hook ()
   "Triggers prior to an interactive save."
@@ -3735,6 +3770,33 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
       (skroad--cache-fetch node)
     (skroad--with-node node nil (skroad--buf-indices)))) ;; Runs actions!
 
+(defun skroad--node-connected-p (local &optional remote)
+  "Test whether REMOTE (if given; else the current node) is linked from LOCAL.
+LOCAL is indexed/created if required.  If REMOTE is special, return nil."
+  (unless (skroad--node-special-p remote)
+    (skroad--indices-has-p 'skroad--text-link-node-live
+                           (or remote (skroad--current-node))
+                           (skroad--node-ensure-indices local))))
+
+(defun skroad--node-connect (local remote &optional create-local type-actions)
+  "If node REMOTE exists, ensure that node LOCAL has a live link to it.
+If CREATE-LOCAL is t, LOCAL will be created if it does not already exist.
+If TYPE-ACTIONS is t, type actions will run in LOCAL.
+Return t if the connection did not previously exist, but now does."
+  (when (and (skroad--cache-peek remote)
+             (or create-local (skroad--cache-peek local)))
+    (skroad--with-node local (not type-actions) (skroad--connect-to remote))))
+
+(defun skroad--node-disconnect (local remote &optional type-actions)
+  "If node LOCAL exists, ensure that it has no live links to node REMOTE.
+If TYPE-ACTIONS is t, type actions will run in LOCAL.
+Return t if the connection previously existed but now no longer does."
+  (skroad--with-existing-node
+    local (not type-actions) (skroad--disconnect-from remote)))
+
+
+;; Special nodes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defvar skroad--special-nodes nil
   "List of pre-defined special nodes.  These nodes are created automatically;
 contain only mechanically-generated content; and cannot be renamed, deleted,
@@ -3770,40 +3832,25 @@ If ALLOW-INDEX is false, do not track changes or maintain indices for the node."
       (delete-region (skroad--node-tail-start-pos) (point-max))
       )))
 
-(defun skroad--connected-p (origin &optional node)
-  "Test whether NODE (if given; else the current node) is linked from ORIGIN.
-ORIGIN is indexed/created if required.  If NODE is a special node, return nil."
-  (unless (skroad--node-special-p node)
-    (skroad--indices-has-p 'skroad--text-link-node-live
-                           (or node (skroad--current-node))
-                           (skroad--node-ensure-indices origin))))
-
 (defun skroad--set-special-status (node special status)
   "Set connection STATUS of NODE from the given SPECIAL (assumed) node.
 SPECIAL is created if required.  If NODE itself is a special or log, do nothing.
 Return t only when the connection status of NODE from SPECIAL actually changed."
   (unless (or (skroad--node-special-p node) ;; If node itself is special, no-op
               (skroad--node-log-p node) ;; Log nodes are never stubs or orphans
-              (eq (skroad--connected-p special node) status)) ;; no change?
+              (eq (skroad--node-connected-p special node) status)) ;; no change?
     (skroad--in-node
      special (if status #'skroad--connect-to #'skroad--disconnect-from) node t)
     t))
 
-(skroad--define-special-node skroad--special-node-log "#Log" nil
-  "Record of node creation, modification, and renaming.")
-
 (skroad--define-special-node skroad--special-node-lint "#Lint" nil
   "Record of all lint output (including problems corrected at run time).")
 
-(defun skroad--lint-report (text &optional use-prefix)
+(defun skroad--lint-report (text &optional node)
   "Log TEXT to the current lint report (when it does not already appear there.)
-If USE-PREFIX is given, use it.  Otherwise prefix the current node, if any."
+If NODE is given, prefix the report with a live link to it."
   (let* ((prefix
-          (or use-prefix
-              (if (skroad--current-buffer-node-p)
-                  (format "Node %s : "
-                          (skroad--link-generate-live (skroad--current-node)))
-                "")))
+          (or (and node (concat (skroad--link-generate-live node) ": ")) ""))
          (report (concat prefix text)))
     (message (concat "Skroad Lint: " report)) ;; Always print to console also
     (skroad--with-node skroad--special-node-lint t
@@ -3828,11 +3875,11 @@ open in any buffer, it is deleted immediately; otherwise, user must confirm.")
 
 (defun skroad--node-stub-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known stub."
-  (skroad--connected-p skroad--special-node-stubs node))
+  (skroad--node-connected-p skroad--special-node-stubs node))
 
 (defun skroad--node-orphan-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known orphan."
-  (skroad--connected-p skroad--special-node-orphans node))
+  (skroad--node-connected-p skroad--special-node-orphans node))
 
 (defun skroad--defer-orphan-stub-check (node)
   "Defer a check for orphan-stub status of NODE; propose deletion if true."
@@ -3899,8 +3946,7 @@ The current node's indices must exist."
 If NODE is open in a buffer, prompt to ask permission (unless FORCE is t).
 Before deleting, disconnect any remaining live links."
   (when (and (skroad--cache-peek node)
-             (not (or (skroad--node-special-p node)
-                      (skroad--node-log-p node))))
+             (not (skroad--node-special-p node)))
     (let* ((node-path (skroad--node-path node))
            (visiting-buffer (find-buffer-visiting node-path))
            (node-closed (null visiting-buffer)))
@@ -3908,37 +3954,24 @@ Before deleting, disconnect any remaining live links."
                 force ;; If force is t, just close the node silently right now
                 skroad--lint-in-progress ;; ... or if we're linting;
                 (skroad--prompt-delete-node node)) ;; else, ask first.
-        ;; TODO: report when we delete a node during lint!
-        (let ((node-peers
-               (skroad--with-node node t (skroad--link-get-all-live))))
-          (dolist (peer node-peers)
-            (when (skroad--cache-peek peer)
-              (skroad--in-node peer #'skroad--disconnect-from node))))
+        ;; TODO: include ephemerals?
+        (when skroad--lint-in-progress
+          (skroad--lint-report "Deleted during lint!") node)
+        (dolist (peer
+                 (append (skroad--with-node node t ;; Already verified to exist
+                           (skroad--link-get-all-live)) ;; Peers to zap in
+                         skroad--special-nodes)) ;; Also zap in specials
+          (skroad--node-disconnect peer node))
         (unless node-closed ;; Unless already closed, clean it up and close:
           (with-current-buffer visiting-buffer
             (let ((inhibit-read-only t))
               (kill-all-local-variables)
               (restore-buffer-modified-p nil)
               (kill-buffer))))
-        (skroad--node-set-orphan node nil) ;; Banish it from orphans
-        (skroad--node-set-stub node nil) ;; Banish it from stubs
         (skroad--cache-evict node) ;; Banish it from the cache
         (delete-file node-path) ;; Permanently delete the node file!
         (skroad--request-refontify) ;; Schedule a refontification.
         t)))) ;; Return t when actually deleted.
-
-;; TODO: exclude lint log, as it has no indices?
-(defun skroad--current-node-linked-from (&optional all-specials)
-  "Return a list of all nodes known to contain a live link to the current node.
-If ALL-SPECIALS is t, the list may include any special; otherwise only the log.
-The current node itself is not included, even if it contains self-links."
-  (let* ((node (skroad--current-node))
-         (outgoing-links (skroad--link-get-all-live))
-         (possible-specials (if all-specials
-                                skroad--special-nodes
-                              (list skroad--special-node-log)))
-         (candidates (append outgoing-links possible-specials)))
-    (seq-filter #'(lambda (n) (skroad--connected-p n node)) candidates)))
 
 ;; TODO: smarter merge that preserves un-tail-ish chunks in victim's tail?
 (defun skroad--merge-node-into-current (victim)
@@ -3966,7 +3999,7 @@ After all of this, the VICTIM is permanently deleted."
         (skroad--with-node victim t ;; Get all relevant info from the victim
           (setq victim-body (skroad--current-node-extract-body))
           (setq victim-peers ;; Nodes (except for this one) linking to it
-                (delete this-node (skroad--current-node-linked-from))) ;; TODO?
+                (delete this-node (skroad--link-get-all-live)))
           (setq victim-is-stub (skroad--node-stub-p)))
         (unless victim-is-stub ;; Don't insert anything if victim is a stub
           (let (import-start import-end)
@@ -3987,14 +4020,13 @@ After all of this, the VICTIM is permanently deleted."
             (goto-char import-start))) ;; Jump to the start indicator
         (skroad--buf-indices-sync t) ;; Sync indices, but don't run actions
         ;; Nodes that linked to the victim will now link to this node instead:
-        (dolist (peer victim-peers)
+        (dolist (remote victim-peers) ;; TODO: include ephemerals?
           (skroad--defer
-           (skroad--with-node peer nil ;; Run index actions, so tails get merged
+           (skroad--with-existing-node remote nil ;; Run actions to merge tails
              (skroad--link-merge victim this-node)
              (skroad--clear-buf-undo-info)))))
       (skroad--save-current-node) ;; Save immediately
       (skroad--clear-buf-undo-info) ;; Zap undo info
-      ;; TODO: defer deletion?
       (skroad--delete-node victim t) ;; Permanently delete the victim!
       (skroad--log-node-merge victim this-node)
       (skroad--request-refontify) ;; Schedule a refontification.
@@ -4004,25 +4036,26 @@ After all of this, the VICTIM is permanently deleted."
   "Rename node OLD to NEW.  OLD is presumed to exist; NEW is a valid title.
 Warning: undo info is lost in all affected buffers!"
   (skroad--complete-all-deferred) ;; Ensure no ops are pending
-  (let ((old-peers (skroad--with-node old t
-                     (skroad--current-node-linked-from t))))
-    (cond
-     ((and (skroad--cache-rename old new)
-           (skroad--mv-file (skroad--node-path old) (skroad--node-path new)))
-      (dolist (peer old-peers)
-        (skroad--defer
-         (skroad--with-node peer t ;; Don't perform actions
+  (cond
+   ((and (skroad--cache-rename old new)
+         (skroad--mv-file (skroad--node-path old) (skroad--node-path new)))
+    (dolist (special skroad--special-nodes) ;; Replace in specials first
+      (skroad--with-existing-node special t
+        (skroad--link-replace old new)))
+    (skroad--with-existing-node new t
+      (skroad--change-internal-title new)
+      (setq-local skroad--current-node-title nil) ;; Zap cached title
+      (let ((inhibit-modification-hooks t))
+        (skroad--link-replace old new)) ;; Update any self-links
+      (skroad--log-node-rename old new)
+      (skroad--request-refontify) ;; Schedule a refontification.
+      (skroad--clear-buf-undo-info) ;; Zap undo info
+      (dolist (remote (skroad--link-get-all-live)) ;; TODO: include ephemerals?
+        (skroad--defer ;; Schedule replacement in peers
+         (skroad--with-existing-node remote t ;; Don't perform actions
            (skroad--link-replace old new)
-           (skroad--clear-buf-undo-info))))
-      (skroad--with-node new t
-        (skroad--change-internal-title new)
-        (setq-local skroad--current-node-title nil) ;; Zap cached title
-        (let ((inhibit-modification-hooks t))
-          (skroad--link-replace old new)) ;; Update any self-links
-        (skroad--log-node-rename old new)
-        (skroad--request-refontify) ;; Schedule a refontification.
-        (skroad--clear-buf-undo-info))) ;; Zap undo info
-     (t (error "Could not rename node '%s' to '%s'!" old new)))))
+           (skroad--clear-buf-undo-info))))))
+   (t (error "Could not rename node '%s' to '%s'!" old new))))
 
 ;; TODO: write log entry if changing
 (defun skroad--rectify-node-title ()
@@ -4032,7 +4065,8 @@ Warning: undo info is lost in all affected buffers!"
     (unless (string-equal internal-title external-title)
       (skroad--lint-report
        (format
-        "Internal title '%s' does not match external title!" internal-title))
+        "Internal title '%s' does not match external title!" internal-title)
+       external-title)
       ;; temporary:
       (skroad--change-internal-title external-title)
       )))
@@ -4044,8 +4078,7 @@ Warning: undo info is lost in all affected buffers!"
     (setq skroad--lint-in-progress t)
     (dolist (node ;; Hollow out (don't delete) the nodes we regenerate :
              (list skroad--special-node-orphans
-                   skroad--special-node-stubs
-                   skroad--special-node-lint))
+                   skroad--special-node-stubs))
       (skroad--reset-special-node node))
     (let ((count 0))
       (skroad--cache-foreach ;; Dispatch for each known non-special node:
@@ -4054,14 +4087,14 @@ Warning: undo info is lost in all affected buffers!"
              (skroad--defer
               (setq count (1+ count))
               (skroad--cache-invalidate node) ;; Zap existing indices
-              (skroad--with-node node t ;; TODO: permit actions???
+              (skroad--with-existing-node node t ;; TODO: permit actions???
                 (skroad--rectify-node-title)
                 (skroad--current-node-update-stub-status)
                 (skroad--clear-buf-undo-info)
                 )))))
       (skroad--defer
        (skroad--lint-report
-        (format "Complete, linted %s nodes." count) "Lint: ")
+        (format "Lint complete, linted %s nodes." count))
        (skroad--request-refontify) ;; Schedule a refontification.
        (setq skroad--lint-in-progress nil)))))
 
@@ -4239,7 +4272,7 @@ Warning: undo info is lost in all affected buffers!"
           skroad--disp-mode-this-window-or-existing)
          (node (skroad--autocomplete-minibuffer-prompt "Find Skroad node: ")))
     (when node
-      (skroad--show-existing-node node))))
+      (skroad--show-node node))))
 
 (defun search-skroad (string)
   "Full-text search for STRING across all known nodes.
