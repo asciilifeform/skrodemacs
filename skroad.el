@@ -2205,58 +2205,6 @@ assuming that the node was actually shown."
       (isearch-mode t) ;; Set up a forward isearch...
       (isearch-yank-string from-search)))) ;; ... using current search string.
 
-
-;; (skroad--node-connect "xyz" "xxx" nil t)
-;; (skroad--node-disconnect "xyz" "xxx" t)
-
-;; (skroad--node-connect "xyz" "xxx")
-;; (skroad--node-connect-back-verify "xyz" "xxx")
-
-;; TODO
-;; (defun skroad--verify-dead-link (node)
-;;   "A dead link to NODE must be revived if there is a live reciprocal link."
-;;   (when (and (skroad--cache-peek node) ;; Target node exists, and:
-;;              (skroad--node-connected-p node)) ;; and has a live link to current node.
-;;     (skroad--link-revive node)
-;;     (skroad--lint-report (format "Auto-revived dead link to '%s'" node))))
-
-;; ;; TODO: log entry
-;; ;; TODO: check if we have an unreachable that can be renamed and will correspond
-;; (defun skroad--action-live-link-init (origin target)
-;;   "A live link to TARGET was found to exist during the indexing of ORIGIN."
-;;   (message "live init: origin=%s target=%s" origin target)
-;;   (when (skroad--cache-peek origin) ;; Check that origin still exists
-;;     (unless (and (skroad--cache-peek target) ;; Target doesn't exist?
-;;                  (skroad--node-connected-p target origin)) ;; ... no backlink?
-;;       (skroad--in-node origin #'skroad--disconnect-from target) ;; Disconnect
-;;       (message "Non-reciprocal link in '%s' to '%s' disabled." origin target)))
-;;     )
-
-;; (defun skroad--action-live-link-create (origin target)
-;;   "A live link to TARGET was first introduced into an already-indexed ORIGIN.
-;; TARGET will be created if it does not exist."
-;;   (message "connected: origin=%s target=%s" origin target)
-;;   (when (skroad--cache-peek origin) ;; Check that origin still exists
-;;     (skroad--in-node target #'skroad--connect-to origin))) ;; Connect in target.
-
-;; (defun skroad--action-live-link-destroy (origin target)
-;;   "The last instance of a live link to TARGET was removed from ORIGIN.
-;; If TARGET does not exist, this is a no-op."
-;;   (message "disconnected: origin=%s target=%s" origin target)
-;;   (when (skroad--cache-peek target) ;; Check that target still exists
-;;     (skroad--in-node target #'skroad--disconnect-from origin))) ;; Disconnect.
-
-;; (defun skroad--action-check-dead-link (origin target)
-;;   "Revive, if necessary, a dead link found in ORIGIN to TARGET."
-;;   ;; (message "dead init: origin=%s target=%s" origin target)
-;;   (when (and (skroad--cache-peek origin) (skroad--cache-peek target))
-;;     (when (or (skroad--node-connected-p origin target)
-;;               (and (skroad--node-connected-p target origin)
-;;                    (message "lint")))
-;;       (message "dead link in '%s' to '%s' should be revived!" origin target))
-;;     )
-;;   )
-
 (defun skroad--action-dead-link-init (origin target)
   "A dead link to TARGET was found to exist during the indexing of ORIGIN."
   (message "dead init: origin=%s target=%s" origin target)
@@ -3837,11 +3785,10 @@ If ALLOW-INDEX is false, do not track changes or maintain indices for the node."
 SPECIAL is created if required.  If NODE itself is a special or log, do nothing.
 Return t only when the connection status of NODE from SPECIAL actually changed."
   (unless (or (skroad--node-special-p node) ;; If node itself is special, no-op
-              (skroad--node-log-p node) ;; Log nodes are never stubs or orphans
-              (eq (skroad--node-connected-p special node) status)) ;; no change?
-    (skroad--in-node
-     special (if status #'skroad--connect-to #'skroad--disconnect-from) node t)
-    t))
+              (skroad--node-log-p node)) ;; Log nodes are never stubs or orphans
+    (if status
+        (skroad--node-connect special node t) ;; Create the special if required
+      (skroad--node-disconnect special node))))
 
 (skroad--define-special-node skroad--special-node-lint "#Lint" nil
   "Record of all lint output (including problems corrected at run time).")
