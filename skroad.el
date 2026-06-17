@@ -1636,7 +1636,7 @@ If there are any, return the count; otherwise return nil."
 ;; Insert a space immediately behind the atomic currently under the point.
 (defun skroad--cmd-atomic-prepend-space ()
   "InsSp"
-  (interactive "*" skroad-mode skroad-ephemeral-mode)
+  (interactive "*" skroad-mode)
   (skroad--modes-only)
   (save-mark-and-excursion (goto-char (skroad--zone-start)) (insert " ")))
 
@@ -2045,7 +2045,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
 ;; Transform the item under the point to plain text by removing delimiters.
 (defun skroad--cmd-atomic-delimited-textify ()
   "Text"
-  (interactive "*" skroad-mode skroad-ephemeral-mode)
+  (interactive "*" skroad-mode)
   (skroad--modes-only)
   (skroad--with-current-zone
     (let ((text (skroad--data-at)))
@@ -2245,13 +2245,13 @@ assuming that the node was actually shown."
 
 (defun skroad--cmd-deaden-at (&rest _args)
   "Deaden"
-  (interactive "*" skroad-mode skroad-ephemeral-mode)
+  (interactive "*" skroad-mode)
   (skroad--modes-only)
   (skroad--link-unlink (skroad--data-at)))
 
 (defun skroad--cmd-merge-at (&rest _args)
   "Merge"
-  (interactive "*" skroad-mode skroad-ephemeral-mode)
+  (interactive "*" skroad-mode)
   (skroad--modes-only)
   (skroad--merge-node-into-current (skroad--data-at)))
 
@@ -2261,7 +2261,7 @@ assuming that the node was actually shown."
 ;; ... but if none of the above, move it to the node's tail.
 (defun skroad--cmd-banish-at (&rest _args)
   "Banish"
-  (interactive "*" skroad-mode skroad-ephemeral-mode)
+  (interactive "*" skroad-mode)
   (skroad--modes-only)
   (skroad--buf-indices-sync) ;; Make sure this node's indices are up to date
   (let* ((node (skroad--data-at)) ;; The live link being banished
@@ -2276,7 +2276,7 @@ assuming that the node was actually shown."
 
 (defun skroad--cmd-show-node-history-at ()
   "Hist"
-  (interactive nil skroad-mode)
+  (interactive nil skroad-mode skroad-ephemeral-mode)
   (skroad--modes-only)
   (let ((node (skroad--data-at)))
     (pop-to-buffer (skroad--history-render node))))
@@ -2287,11 +2287,12 @@ assuming that the node was actually shown."
 (defconst skroad--link-node-live-end-delim "]]"
   "Delimiter indicating the end of a live Skroad link.")
 
+;; TODO: needs fix, this restores backlink when we're trying to delete fwd
 (defun skroad--node-connect-back-verify (local remote)
   "Live link(s) to REMOTE were found during the initial indexing of LOCAL.
 Ensure that if LOCAL still exists, REMOTE (if it exists) has a live link to it.
 If REMOTE does not exist, ensure that LOCAL does NOT have any live links to it.
-Do NOT run type actions in either node.  Log to lint if anything was changed."
+Do NOT run type actions in either node.  Log any resulting changes to lint."
   (message "live init: local=%s remote=%s" local remote)
   (if (skroad--cache-peek remote)
       (when (skroad--node-connect remote local)
@@ -2306,14 +2307,14 @@ Do NOT run type actions in either node.  Log to lint if anything was changed."
        local))))
 
 (defun skroad--node-connect-back-create (local remote)
-  "A live link to REMOTE was introduced into LOCAL, which had none before.
+  "A live link to REMOTE was introduced into LOCAL, which previously had none.
 Ensure that if LOCAL still exists, REMOTE will exist and have a live link to it.
 No-op if LOCAL no longer exists.  Do NOT run type actions in either node."
   (message "connected: local=%s remote=%s" local remote)
   (skroad--node-connect remote local t))
 
 (defun skroad--node-disconnect-back (local remote)
-  "The node LOCAL once had live link(s) to REMOTE, but now the last one is gone.
+  "The node LOCAL once had live link(s) to REMOTE, but the last one was removed.
 Ensure that REMOTE (if it still exists) does NOT have any live links to LOCAL.
 Do NOT run type actions in either node."
   (message "disconnected: local=%s remote=%s" local remote)
@@ -2388,7 +2389,7 @@ Do NOT run type actions in either node."
 
 (defun skroad--cmd-liven-at (&rest _args)
   "Liven"
-  (interactive "*" skroad-mode skroad-ephemeral-mode)
+  (interactive "*" skroad-mode)
   (skroad--modes-only)
   (skroad--link-revive (skroad--data-at)))
 
@@ -2549,7 +2550,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 ;; Turn the URL at point into plain text by placing a space after the prefix.
 (defun skroad--cmd-bare-url-comment ()
   "Text"
-  (interactive "*" skroad-mode skroad-ephemeral-mode)
+  (interactive "*" skroad-mode)
   (skroad--modes-only)
   (skroad--with-current-zone
     (save-mark-and-excursion
@@ -2654,7 +2655,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
 ;; Turn the MD URL at point into plain text by breaking it with a space
 (defun skroad--cmd-md-url-comment ()
   "Text"
-  (interactive "*" skroad-mode skroad-ephemeral-mode)
+  (interactive "*" skroad-mode)
   (skroad--modes-only)
   (skroad--with-current-zone
     (save-mark-and-excursion
@@ -3255,7 +3256,7 @@ If this node did not have a tail indicator, this is a no-op."
 
 (defun skroad--cmd-title-delete-current-node ()
   "Delete"
-  (interactive "*" skroad-mode skroad-ephemeral-mode)
+  (interactive "*" skroad-mode)
   (skroad--modes-only)
   (let ((node (skroad--current-node)))
     (if (or buffer-read-only
@@ -3270,7 +3271,7 @@ If this node did not have a tail indicator, this is a no-op."
 ;; Move the tail indicator to the position suggested by the tail heuristic.
 (defun skroad--cmd-title-reset-tail ()
   "TailReset"
-  (interactive "*" skroad-mode skroad-ephemeral-mode)
+  (interactive "*" skroad-mode)
   (skroad--modes-only)
   (let ((node (skroad--current-node)))
     (if buffer-read-only
@@ -3668,9 +3669,10 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
   "Triggers prior to a skroad buffer being killed."
   (skroad--renamer-deactivate)
   (skroad--save-cache-point)
+  ;;; TODO: never evict any node that's live-linked from an open node?
   ;;; TODO: remove!
-  (message "evicting: %s because closed!" (skroad--current-node))
-  (skroad--cache-invalidate (skroad--current-node)) ;; Evict when closing
+  ;; (message "evicting: %s because closed!" (skroad--current-node))
+  ;; (skroad--cache-invalidate (skroad--current-node)) ;; Evict when closing
   ;;;
   )
 
@@ -3719,7 +3721,7 @@ If NODE is a special node, and ALLOW-SPECIAL is nil, do nothing."
     (skroad--with-node node nil (skroad--buf-indices)))) ;; Runs actions!
 
 (defun skroad--node-connected-p (local &optional remote)
-  "Test whether REMOTE (if given; else the current node) is linked from LOCAL.
+  "Test whether LOCAL has any live links to REMOTE (if nil: the current node.)
 LOCAL is indexed/created if required.  If REMOTE is special, return nil."
   (unless (skroad--node-special-p remote)
     (skroad--indices-has-p 'skroad--text-link-node-live
@@ -3727,21 +3729,20 @@ LOCAL is indexed/created if required.  If REMOTE is special, return nil."
                            (skroad--node-ensure-indices local))))
 
 (defun skroad--node-connect (local remote &optional create-local type-actions)
-  "If node REMOTE exists, ensure that node LOCAL has a live link to it.
-If CREATE-LOCAL is t, LOCAL will be created if it does not already exist.
+  "If nodes LOCAL and REMOTE exist, ensure that LOCAL has a live link to REMOTE.
+If CREATE-LOCAL is t, allow creating LOCAL if it did not already exist.
 If TYPE-ACTIONS is t, type actions will run in LOCAL.
-Return t if the connection did not previously exist, but now does."
+Return t if connected, i.e. LOCAL previously had NO live links to REMOTE."
   (when (and (skroad--cache-peek remote)
              (or create-local (skroad--cache-peek local)))
     (skroad--with-node local (not type-actions) (skroad--connect-to remote))))
 
 (defun skroad--node-disconnect (local remote &optional type-actions)
-  "If node LOCAL exists, ensure that it has no live links to node REMOTE.
+  "If node LOCAL exists, ensure that it has NO live links to node REMOTE.
 If TYPE-ACTIONS is t, type actions will run in LOCAL.
-Return t if the connection previously existed but now no longer does."
+Return t if disconnected, i.e. LOCAL previously had any live links to REMOTE."
   (skroad--with-existing-node
     local (not type-actions) (skroad--disconnect-from remote)))
-
 
 ;; Special nodes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -3782,13 +3783,13 @@ If ALLOW-INDEX is false, do not track changes or maintain indices for the node."
 
 (defun skroad--set-special-status (node special status)
   "Set connection STATUS of NODE from the given SPECIAL (assumed) node.
-SPECIAL is created if required.  If NODE itself is a special or log, do nothing.
+SPECIAL is created if required.  No-op if NODE is a special or a log.
 Return t only when the connection status of NODE from SPECIAL actually changed."
   (unless (or (skroad--node-special-p node) ;; If node itself is special, no-op
               (skroad--node-log-p node)) ;; Log nodes are never stubs or orphans
     (if status
         (skroad--node-connect special node t) ;; Create the special if required
-      (skroad--node-disconnect special node))))
+      (skroad--node-disconnect special node)))) ;; No-op unless special exists
 
 (skroad--define-special-node skroad--special-node-lint "#Lint" nil
   "Record of all lint output (including problems corrected at run time).")
@@ -3901,9 +3902,9 @@ Before deleting, disconnect any remaining live links."
                 force ;; If force is t, just close the node silently right now
                 skroad--lint-in-progress ;; ... or if we're linting;
                 (skroad--prompt-delete-node node)) ;; else, ask first.
-        ;; TODO: include ephemerals?
         (when skroad--lint-in-progress
           (skroad--lint-report "Deleted during lint!") node)
+        ;; TODO: include ephemerals?
         (dolist (peer
                  (append (skroad--with-node node t ;; Already verified to exist
                            (skroad--link-get-all-live)) ;; Peers to zap in
@@ -4128,7 +4129,7 @@ Warning: undo info is lost in all affected buffers!"
 
 (defun skroad--cmd-top-backspace ()
   "If prev point is in an atomic, delete it; otherwise, normal backspace."
-  (interactive "*" skroad-mode skroad-ephemeral-mode)
+  (interactive "*" skroad-mode)
   (skroad--modes-only)
   (cond ((use-region-p) (delete-region (region-beginning) (region-end)))
         ((bobp) nil)
@@ -4140,7 +4141,7 @@ Warning: undo info is lost in all affected buffers!"
 
 (defun skroad--cmd-top-gt ()
   "If there is a region, increase its quote level; otherwise insert `>'."
-  (interactive "*" skroad-mode skroad-ephemeral-mode)
+  (interactive "*" skroad-mode)
   (skroad--modes-only)
   (unless (skroad--in-node-title-p)
     (if (and (use-region-p) (not (skroad--renamer-active-p)))
@@ -4149,7 +4150,7 @@ Warning: undo info is lost in all affected buffers!"
 
 (defun skroad--cmd-top-lt ()
   "If there is a region, decrease its quote level; otherwise insert `<'."
-  (interactive "*" skroad-mode skroad-ephemeral-mode)
+  (interactive "*" skroad-mode)
   (skroad--modes-only)
   (unless (skroad--in-node-title-p)
     (if (and (use-region-p) (not (skroad--renamer-active-p)))
@@ -4184,7 +4185,7 @@ Warning: undo info is lost in all affected buffers!"
 
 (defun skroad--cmd-top-move-tail-here ()
   "Move the current node tail indicator to the point."
-  (interactive "*" skroad-mode skroad-ephemeral-mode)
+  (interactive "*" skroad-mode)
   (skroad--modes-only)
   (if buffer-read-only
       (skroad--info "This node's tail cannot be moved!")
@@ -4308,10 +4309,7 @@ repeating a search already in progress is a no-op."
                    (make-composed-keymap skroad--mode-map text-mode-map))
 
 (define-derived-mode skroad-ephemeral-mode special-mode "Skroad-Ephemeral"
-  "Major mode for Skroad ephemeral buffers.
-Not derived from `skroad', but fontifies its contents using
-skroad's font-lock rules.  Read-only (via `special-mode');
-contents are rewritten only by `skroad--search-render'."
+  "Major mode for Skroad ephemeral buffers."
   (skroad--mode-common-init)
   (skroad--init-font-lock)
   (skroad--deactivate-mark)
