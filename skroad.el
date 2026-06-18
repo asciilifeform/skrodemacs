@@ -2843,7 +2843,7 @@ If REFRESH-ONLY is t, calculate the history only if it is already bufferized."
     (unless (and refresh-only (null buf-existing))
       (let* ((node-history (skroad--node-get-history node))
              (history-fail
-              (cond ((null node-history) "This node does not exist!")
+              (cond ((null node-history) "This node does not currently exist!")
                     ((string-empty-p node-history)
                      "No history was found for this node!")))
              (use-buf
@@ -2857,8 +2857,9 @@ If REFRESH-ONLY is t, calculate the history only if it is already bufferized."
                 (setq-local revert-buffer-function
                             #'(lambda (_ignore-auto _noconfirm)
                                 (skroad--history-render node)))
-                (insert (format "History of '%s'\n" node))
-                (insert (or history-fail node-history))
+                (insert (format "@Log Entries for '%s'\n" node))
+                (insert (or (and history-fail (concat "\n" history-fail))
+                            node-history))
                 (skroad--goto-node-body-start)
                 (current-buffer)))
           (user-error history-fail))))))
@@ -3031,11 +3032,12 @@ If there is no known history, returns empty string.  If node is missing: nil."
   "Generate the name of the current log node."
   (skroad--make-log-node (skroad--make-date-string skroad--log-month-format)))
 
-(defun skroad--log-node-op (node op &optional unique reason)
+(defun skroad--log-node-op (node op &optional unique reason aux-node)
   "Record an OP on NODE to the current log node.
 The current log node is created if it did not previously exist.
 If UNIQUE is true, attempted duplication simply moves an entry to the day's end.
-REASON, if given, is a comment describing the cause of the operation."
+REASON, if given, is a comment describing the cause of the operation.
+If AUX-NODE is given, refresh its history as well as that of NODE."
   (skroad--defer
    (let* ((node-exists (skroad--cache-peek node)) ;; Does node still exist?
           (link (if node-exists
@@ -3051,7 +3053,8 @@ REASON, if given, is a comment describing the cause of the operation."
        (skroad--connect-to (skroad--make-log-node "Log"))
        (skroad--connect-to (skroad--current-year-log-name)))
      (skroad--defer ;; Refresh history, if bufferized, after all of this is done
-      (skroad--history-render node t)))))
+      (skroad--history-render node t)
+      (when aux-node (skroad--history-render aux-node t))))))
 
 (defun skroad--log-node-revise (node)
   "Record a revision of NODE to the current log."
@@ -3068,9 +3071,7 @@ REASON, if given, is a comment describing the cause of the operation."
 
 (defun skroad--log-node-rename (old node)
   "Record the renaming of OLD to NODE to the current log."
-  (skroad--log-node-remove
-   old (concat "Renamed to: " (skroad--link-generate-live node)))
-  (skroad--log-node-create node (concat "Renamed from: '" old "'"))
+  (skroad--log-node-op node "Renamed" nil (format "'%s' -> '%s'" old node) old)
   (skroad--lint-deaden old)) ;; Deaden any old links in the lint log
 
 (defun skroad--log-node-merge (victim target)
@@ -3850,11 +3851,13 @@ open in any buffer, it is deleted immediately; otherwise, user must confirm.")
 
 (defun skroad--node-stub-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known stub."
-  (skroad--node-connected-p skroad--special-node-stubs node))
+  (skroad--node-connected-p
+   skroad--special-node-stubs (or node (skroad--current-node))))
 
 (defun skroad--node-orphan-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known orphan."
-  (skroad--node-connected-p skroad--special-node-orphans node))
+  (skroad--node-connected-p
+   skroad--special-node-orphans (or node (skroad--current-node))))
 
 (defun skroad--defer-orphan-stub-check (node)
   "Defer a check for orphan-stub status of NODE; propose deletion if true."
