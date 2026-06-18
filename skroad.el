@@ -4335,6 +4335,9 @@ repeating a search already in progress is a no-op."
   (skroad--setup-mode-line) ;; Modeline diddler
   ;; Buffer-local hooks:
   (add-hook 'skroad-mode-hook 'skroad--open-node 0 t)
+  ;; Display node counter:
+  (setq-local mode-line-process
+              '(:eval (format " [%s nodes]" (skroad--cache-count))))
   )
 
 ;; Set up keymap for Skroad mode:
