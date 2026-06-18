@@ -3066,13 +3066,11 @@ If AUX-NODE is given, refresh its history as well as that of NODE."
 
 (defun skroad--log-node-remove (node &optional reason)
   "Record the removal of NODE to the current log, with optional REASON."
-  (skroad--log-node-op node "Deleted" nil reason) ;; May duplicate
-  (skroad--lint-deaden node)) ;; Deaden any old links in the lint log
+  (skroad--log-node-op node "Deleted" nil reason)) ;; May duplicate
 
 (defun skroad--log-node-rename (old node)
   "Record the renaming of OLD to NODE to the current log."
-  (skroad--log-node-op node "Renamed" nil (format "'%s' -> '%s'" old node) old)
-  (skroad--lint-deaden old)) ;; Deaden any old links in the lint log
+  (skroad--log-node-op node "Renamed" nil (format "'%s' -> '%s'" old node) old))
 
 (defun skroad--log-node-merge (victim target)
   "Record the merging of VICTIM into TARGET to the current log."
@@ -3790,12 +3788,6 @@ If ALLOW-INDEX is false, do not track changes or maintain indices for the node."
      (unless ,allow-index
        (add-to-list 'skroad--special-nodes-no-index ,node))))
 
-(defmacro skroad--special-nodes-foreach (&rest body)
-  "Execute BODY for each special node.  If the node does not exist, create it."
-  (let ((special-node (make-symbol "special-node")))
-    `(dolist (,special-node skroad--special-nodes)
-       (skroad--with-node ,special-node t ,@body))))
-
 (defun skroad--init-special-nodes ()
   "Create (if it did not yet exist) and index (if indexable) each special node."
   (dolist (special-node skroad--special-nodes)
@@ -3831,11 +3823,6 @@ If NODE is given, prefix the report with a live link to it."
     (message (concat "Skroad Lint: " report)) ;; Always print to console also
     (skroad--with-node skroad--special-node-lint t
       (skroad--emplace-log-entry report t))))
-
-(defun skroad--lint-deaden (node)
-  "Deaden any links to defunct NODE in the current lint report."
-  (skroad--with-node skroad--special-node-lint t
-    (skroad--link-deaden node)))
 
 (skroad--define-special-node skroad--special-node-stubs "#Stubs" t
   "A node with links to all known stub nodes. A stub node is a regular node
@@ -3934,7 +3921,6 @@ Before deleting, disconnect any remaining live links."
                 (skroad--prompt-delete-node node)) ;; else, ask first.
         (when skroad--lint-in-progress
           (skroad--lint-report "Deleted during lint!") node)
-        ;; TODO: include ephemerals?
         (dolist (peer ;; Disconnect in every peer:
                  (append (skroad--with-node node t ;; Already verified to exist
                            (skroad--link-get-all-live))
@@ -3998,7 +3984,7 @@ After all of this, the VICTIM is permanently deleted."
             (goto-char import-start))) ;; Jump to the start indicator
         (skroad--buf-indices-sync t) ;; Sync indices, but don't run actions
         ;; Nodes that linked to the victim will now link to this node instead:
-        (dolist (peer victim-peers) ;; TODO: include ephemerals?
+        (dolist (peer victim-peers)
           (skroad--defer
            (skroad--with-existing-node peer nil ;; Run actions to merge tails
              (skroad--link-merge victim this-node)
@@ -4029,7 +4015,6 @@ Warning: undo info is lost in all affected buffers!"
       (skroad--log-node-rename old new)
       (skroad--request-refontify) ;; Schedule a refontification.
       (skroad--clear-buf-undo-info) ;; Zap undo info
-      ;; TODO: include ephemerals?
       (dolist (peer (skroad--link-get-all-live))
         (skroad--defer ;; Schedule replacement in peers
          (skroad--with-existing-node peer t ;; Don't perform actions
