@@ -2836,8 +2836,8 @@ lines are highlighted."
 ;; Node History. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--node-get-history (node)
-  "Get a history of NODE (if it exists) via log links in the tail, if any.
-If there is no known history, returns empty string.  If node is missing: nil."
+  "Get a history of NODE (if it exists) via log links in its tail (if any.)
+If the node does not exist, return nil; if no history is found: empty string."
   (skroad--with-existing-node node t
     (let ((result "")) ;; Will remain empty if nothing is found
       (funcall
