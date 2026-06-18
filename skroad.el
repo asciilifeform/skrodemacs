@@ -2835,6 +2835,27 @@ lines are highlighted."
 
 ;; Node History. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun skroad--node-get-history (node)
+  "Get a history of NODE (if it exists) via log links in the tail, if any.
+If there is no known history, returns empty string.  If node is missing: nil."
+  (skroad--with-existing-node node t
+    (let ((result "")) ;; Will remain empty if nothing is found
+      (funcall
+       (get 'skroad--text-link-node-live 'for-all-in-region) ;; Backwards
+       (skroad--node-tail-start-pos)
+       (point-max)
+       #'(lambda ()
+           (let ((log-node (funcall
+                            (get 'skroad--text-link-node-live 'get-match))))
+             (when (and (skroad--node-log-p log-node) ;; Log link?
+                        (skroad--cache-peek log-node)) ;; ... actually exists?
+               (let ((node-history ;; Get the relevant history, if any:
+                      (ignore-errors
+                        (skroad--with-file (skroad--node-path log-node)
+                          (skroad--log-history-of-node node)))))
+                 (setq result (concat result node-history)))))))
+      result)))
+
 (defun skroad--history-render (node &optional refresh-only)
   "Get or create an ephemeral buffer displaying the known history of NODE.
 If REFRESH-ONLY is t, calculate the history only if it is already bufferized."
@@ -2857,7 +2878,7 @@ If REFRESH-ONLY is t, calculate the history only if it is already bufferized."
                 (setq-local revert-buffer-function
                             #'(lambda (_ignore-auto _noconfirm)
                                 (skroad--history-render node)))
-                (insert (format "@Log Entries for '%s'\n" node))
+                (insert (format "@Log History for Node: '%s'\n" node))
                 (insert (or (and history-fail (concat "\n" history-fail))
                             node-history))
                 (skroad--goto-node-body-start)
@@ -3002,27 +3023,6 @@ If TEXT-ONLY is t, return results suitable for hovertext."
         (when day-found-any (setq result (concat "\n" day result)))
         (goto-char next)))
     result))
-
-(defun skroad--node-get-history (node)
-  "Get a history of NODE (if it exists) via log links in the tail, if any.
-If there is no known history, returns empty string.  If node is missing: nil."
-  (skroad--with-existing-node node t
-    (let ((result "")) ;; Will remain empty if nothing is found
-      (funcall
-       (get 'skroad--text-link-node-live 'for-all-in-region) ;; Backwards
-       (skroad--node-tail-start-pos)
-       (point-max)
-       #'(lambda ()
-           (let ((log-node (funcall
-                            (get 'skroad--text-link-node-live 'get-match))))
-             (when (and (skroad--node-log-p log-node) ;; Log link?
-                        (skroad--cache-peek log-node)) ;; ... actually exists?
-               (let ((node-history ;; Get the relevant history, if any:
-                      (ignore-errors
-                        (skroad--with-file (skroad--node-path log-node)
-                          (skroad--log-history-of-node node)))))
-                 (setq result (concat result node-history)))))))
-      result)))
 
 (defun skroad--current-year-log-name ()
   "Generate the name of the current year log node."
