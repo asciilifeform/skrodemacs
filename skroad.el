@@ -3696,7 +3696,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
   "The modeline node link count label for the current buffer.")
 
 (defun skroad--update-modeline-node-link-count-label ()
-  "Update the modeline node link count label for the currently-open node."
+  "Update the modeline node link count label for the current node."
   (when (skroad--mode-p) ;; Only in-mode
     (setq-local skroad--buf-modeline-node-link-count-label
                 (skroad--current-node-get-link-count-label))))
