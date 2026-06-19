@@ -3699,7 +3699,6 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
                      (skroad--get-link-count-label)))
                (buffer-name)))))))
 
-;; (skroad--current-indices-count-type 'skroad--text-link-node-dead)
 ;; Point cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
