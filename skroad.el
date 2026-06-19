@@ -3666,9 +3666,10 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
    (cond ((skroad--node-special-p node) "Special ")
          ((skroad--node-log-p node) "Log ")
          (t (concat
-             (if (skroad--node-orphan-p node) "Orphan " "")
-             (if (skroad--node-stub-p node) "Stub " "")
-             (if (skroad--node-leaf-p node) "Leaf " ""))))
+             (if (skroad--node-orphan-p node)
+                 "Orphan "
+               (if (skroad--node-leaf-p node) "Leaf " ""))
+             (if (skroad--node-stub-p node) "Stub " ""))))
    "Node"))
 
 (defvar-local skroad--buf-modeline-node-label nil
