@@ -411,6 +411,7 @@ confine its edits to the matched text.  Return t if there were any matches."
                        (apply orig-fun args))
                    (apply orig-fun args)))))
 
+;; TODO: make sure it isn't t
 (defun skroad--clear-buf-undo-info ()
   "Clear the undo history for the current buffer."
   (setq-local buffer-undo-list nil))
@@ -1625,13 +1626,6 @@ If there are any, return the count, otherwise nil."
   (skroad--with-text-type-indices text-type (skroad--buf-indices)
     (maphash #'(lambda (key _val) (apply fn (cons key other-args))) index)))
 
-;; (defun skroad--current-indices-any-p (text-type pred)
-;;   "Determine whether PRED is true on some indexed payload of TEXT-TYPE."
-;;   (catch 'found
-;;     (skroad--current-indices-foreach
-;;      text-type
-;;      #'(lambda (k) (when (funcall pred k) (throw 'found k))))))
-
 (defun skroad--current-indices-count-pred (text-type pred n)
   "Try to find at most N indexed payloads of TEXT-TYPE on which PRED is true.
 Stop after finding N (or exhausting the index); return the number found."
@@ -1639,8 +1633,9 @@ Stop after finding N (or exhausting the index); return the number found."
     (let ((count 0))
       (skroad--current-indices-foreach
        text-type
-       #'(lambda (k) (when (and (funcall pred k) (= (setq count (1+ count)) n))
-                       (throw 'found count))))
+       #'(lambda (k)
+           (when (and (funcall pred k) (= (setq count (1+ count)) n))
+             (throw 'found count))))
       count)))
 
 (defun skroad--current-indices-count-type (text-type)
@@ -1737,6 +1732,7 @@ Stop after finding N (or exhausting the index); return the number found."
     (skroad--skip-whitespace-forward)))
 
 ;; Try to activate the renamer in the current zone.
+;; TODO: save/restore undo history?
 (defun skroad--cmd-renamer-activate-here ()
   "Rename"
   (interactive nil skroad-mode skroad-ephemeral-mode)
@@ -3308,7 +3304,7 @@ If this node did not have a tail indicator, this is a no-op."
         (user-error "Node '%s' cannot be deleted!" node)
       (skroad--complete-all-deferred) ;; Pending ops must complete first
       (when (skroad--delete-node node)
-        (skroad--log-node-remove node)
+        (skroad--log-node-remove node "Interactively.")
         (skroad--info "Node '%s' was permanently deleted!" node)))))
 
 ;; Move the tail indicator to the position suggested by the tail heuristic.
@@ -3518,9 +3514,7 @@ If this node did not have a tail indicator, this is a no-op."
 (defun skroad--before-save-common ()
   "Operations to perform before any save (interactive or not)."
   (skroad--do-deferred-replacements)
-  ;; (message "before save: '%s'" (skroad--current-node))
-  (skroad--current-node-update-stub-status)
-  )
+  (skroad--current-node-update-stub-status))
 
 (defun skroad--before-save-hook ()
   "Triggers prior to an interactive save."
@@ -3715,13 +3709,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 (defun skroad--before-kill-buffer-hook ()
   "Triggers prior to a skroad buffer being killed."
   (skroad--renamer-deactivate)
-  (skroad--save-cache-point)
-  ;;; TODO: never evict any node that's live-linked from an open node?
-  ;;; TODO: remove!
-  ;; (message "evicting: %s because closed!" (skroad--current-node))
-  ;; (skroad--cache-invalidate (skroad--current-node)) ;; Evict when closing
-  ;;;
-  )
+  (skroad--save-cache-point))
 
 (defun skroad--maybe-restore-cached-point ()
   "If the current node had been visited in this session, restore the point.
@@ -3763,7 +3751,7 @@ Return the path where the node is found on disk."
 ;;   "Return t if NODE is interned in the cache and has been indexed."
 ;;   (let ((data (skroad--cache-peek node))) (and data (not (eq data 'index-me)))))
 
-;; (memq 'empty '(empty index-me))
+;; (memq 'empty '(nil empty index-me))
 
 (defun skroad--node-ensure-indices (node)
   "Ensure that NODE (created if required) has been indexed; return its indices."
@@ -3781,7 +3769,7 @@ LOCAL is indexed/created if required.  If REMOTE is special, return nil."
 (defun skroad--node-connect (local remote &optional create-local type-actions)
   "If nodes LOCAL and REMOTE exist, ensure that LOCAL has a live link to REMOTE.
 If CREATE-LOCAL is t, allow creating LOCAL if it did not already exist.
-If TYPE-ACTIONS is t, type actions will run.  Return t if connected."
+If TYPE-ACTIONS is t, type actions will run.  Return t if newly-connected."
   (when (and (skroad--cache-peek remote)
              (or create-local (skroad--cache-peek local))
              (not (and (skroad--cache-indexed-p local)
@@ -3790,12 +3778,41 @@ If TYPE-ACTIONS is t, type actions will run.  Return t if connected."
 
 (defun skroad--node-disconnect (local remote &optional type-actions)
   "If node LOCAL exists, ensure that it has NO live links to node REMOTE.
-If TYPE-ACTIONS is t, type actions will run.  Return t if disconnected."
+If TYPE-ACTIONS is t, type actions will run.  Return t if newly-disconnected."
   (when (and (skroad--cache-peek local)
              (or (not (skroad--cache-indexed-p local))
                  (skroad--node-connected-p local remote)))
     (skroad--with-node
       local (not type-actions) (skroad--disconnect-to remote))))
+
+(defun skroad--indices-have-live-p (indices node)
+  "Test whether the given INDICES exist and have any live links to NODE.
+If NODE is special, return nil."
+  (unless (or (null indices)
+              (skroad--node-special-p node)
+              (memq indices '(empty index-me)))
+    (skroad--indices-have-payload-p 'skroad--text-link-node-live node indices)))
+
+;; (defun skroad--node-connect (local remote &optional create-local type-actions)
+;;   "If nodes LOCAL and REMOTE exist, ensure that LOCAL has a live link to REMOTE.
+;; If CREATE-LOCAL is t, allow creating LOCAL if it did not already exist.
+;; If TYPE-ACTIONS is t, type actions will run.  Return t if newly-connected."
+;;   (when (skroad--cache-peek remote) ;; Remote must still exist
+;;     (let ((local-idx (skroad--cache-peek local)))
+;;       (when (and (or local-idx create-local)
+;;                  (not (skroad--indices-have-live-p local-idx remote)))
+;;         (skroad--with-node
+;;           local (not type-actions) (skroad--connect-to remote))))))
+
+;; (defun skroad--node-disconnect (local remote &optional type-actions)
+;;   "If node LOCAL exists, ensure that it has NO live links to node REMOTE.
+;; If TYPE-ACTIONS is t, type actions will run.  Return t if newly-disconnected."
+;;   (let ((local-idx (skroad--cache-peek local)))
+;;     (when (and local-idx
+;;                (or (eq local-idx 'index-me)
+;;                    (skroad--indices-have-live-p local-idx remote)))
+;;       (skroad--with-node
+;;         local (not type-actions) (skroad--disconnect-to remote)))))
 
 ;; Special nodes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -3866,39 +3883,43 @@ If NODE is given, prefix the report with a live link to it."
   "A node with links to all known stub nodes. A stub node is a regular node
 without any text between the title and the tail.  New nodes start out as stubs.
 Stubs which get disconnected do not retain dead links; when orphaned, a stub
-becomes a candidate for auto-deletion (see below.)")
-
-(skroad--define-special-node skroad--special-node-leaves "#Leaves" t
-  "A node with links to all known leaves (regular nodes that have exactly one
-link to a node other than themselves, specials, and logs.)")
+becomes a candidate for auto-deletion (see below.)  Log and special nodes are
+never marked as stubs.")
 
 (skroad--define-special-node skroad--special-node-orphans "#Orphans" t
-  "A node with links to all known orphans (regular nodes that have no live
+  "A node with links to all known orphans (regular nodes that have NO live
 links to nodes other than themselves, specials, and logs.)  A node found to be
 an orphan stub becomes a candidate for automatic deletion: if the node is not
-open in any buffer, it is deleted immediately; otherwise, user must confirm.")
+open in any buffer, it is deleted immediately; otherwise, user must confirm.
+Logs and special nodes are never marked as orphans.")
+
+(skroad--define-special-node skroad--special-node-leaves "#Leaves" t
+  "A node with links to all known leaves (regular nodes that have exactly ONE
+live link to a node other than themselves, specials, and logs.) A newly-created
+node starts out as a leaf (as well as a stub.)  Logs and special nodes are
+never marked as leaves.")
 
 (defun skroad--node-stub-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known stub."
   (skroad--node-connected-p
    skroad--special-node-stubs (or node (skroad--current-node))))
 
-(defun skroad--node-leaf-p (&optional node)
-  "Return t when NODE (if given; else the current node) is a known leaf."
-  (skroad--node-connected-p
-   skroad--special-node-leaves (or node (skroad--current-node))))
-
 (defun skroad--node-orphan-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known orphan."
   (skroad--node-connected-p
    skroad--special-node-orphans (or node (skroad--current-node))))
+
+(defun skroad--node-leaf-p (&optional node)
+  "Return t when NODE (if given; else the current node) is a known leaf."
+  (skroad--node-connected-p
+   skroad--special-node-leaves (or node (skroad--current-node))))
 
 (defun skroad--defer-orphan-stub-check (node)
   "Defer a check for orphan-stub status of NODE; propose deletion if true."
   (skroad--defer
    (when (and (skroad--node-orphan-p node) (skroad--node-stub-p node))
      (when (skroad--delete-node node)
-       (skroad--log-node-remove node)))))
+       (skroad--log-node-remove node "Orphan stub.")))))
 
 (defun skroad--node-set-stub (node status)
   "Set the stub STATUS of NODE.  See also `skroad--node-set-orphan'."
@@ -3927,7 +3948,9 @@ If the tail did not previously exist in the current node, it is emplaced."
 
 (defun skroad--node-set-leaf (node status)
   "Set the orphan STATUS of NODE.  Return t if status has changed."
-  (skroad--set-special-status node skroad--special-node-leaves status))
+  (when (skroad--set-special-status node skroad--special-node-leaves status)
+    (skroad--request-refontify)
+    t))
 
 (defun skroad--node-set-orphan (node status)
   "Set the orphan STATUS of NODE.  If it became an orphan stub, try deleting it.
@@ -3947,7 +3970,7 @@ No-op if the node is a special or log."
             (skroad--current-indices-count-pred
              'skroad--text-link-node-live
              #'(lambda (l) (not (skroad--node-log-p l)))
-             2)) ;; Try to find at most two live, non-log links
+             2)) ;; Try to find at most two live links to regular nodes
            (node (skroad--current-node))
            (changed-orphan (skroad--node-set-orphan node (zerop peer-count)))
            (changed-leaf (skroad--node-set-leaf node (= peer-count 1))))
