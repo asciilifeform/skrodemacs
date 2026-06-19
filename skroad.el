@@ -1503,7 +1503,8 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
                      (or no-actions (skroad--node-special-p)) init))
       (setq-local skroad--buf-indices-table indices)
       (skroad--cache-write (skroad--current-node) indices)
-      (skroad--current-node-update-orphan-and-leaf-status))))
+      (skroad--current-node-update-orphan-and-leaf-status)
+      (skroad--update-modeline-node-link-count-label))))
 
 (defvar-local skroad--scan-in-progress nil
   "When true, indicates that scan is currently in progress.")
@@ -3614,6 +3615,7 @@ If this node did not have a tail indicator, this is a no-op."
   (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
   (skroad--skip-whitespace-forward)
   (skroad--update-modeline-node-label)
+  (skroad--update-modeline-node-link-count-label)
   )
 
 ;; Floating header line. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -3670,7 +3672,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
    "Node"))
 
 (defvar-local skroad--buf-modeline-node-label nil
-  "The modeline label for the current buffer.")
+  "The modeline node label for the current buffer.")
 
 (defun skroad--update-modeline-node-label ()
   "Update the modeline label for the currently-open node."
@@ -3678,7 +3680,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
     (setq-local skroad--buf-modeline-node-label
                 (skroad--get-node-label (skroad--current-node)))))
 
-(defun skroad--get-link-count-label ()
+(defun skroad--current-node-get-link-count-label ()
   "Generate the link count label for the current node."
   (let ((n-live
          (skroad--current-indices-count-type 'skroad--text-link-node-live))
@@ -3689,6 +3691,17 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
      (concat (format "L:%s" (or n-live "?"))
              (or (and n-dead (not (zerop n-dead)) (format " D:%s" n-dead))
                  "")))))
+
+(defvar-local skroad--buf-modeline-node-link-count-label nil
+  "The modeline node link count label for the current buffer.")
+
+(defun skroad--update-modeline-node-link-count-label ()
+  "Update the modeline node link count label for the currently-open node."
+  (when (skroad--mode-p) ;; Only in-mode
+    (setq-local skroad--buf-modeline-node-link-count-label
+                (skroad--current-node-get-link-count-label))
+    (message "updated link count label")
+    ))
 
 (defun skroad--setup-mode-line ()
   "Replace the buffer name in the mode with a node description."
@@ -3701,7 +3714,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
                (and (stringp skroad--buf-modeline-node-label)
                     (concat
                      skroad--buf-modeline-node-label
-                     (skroad--get-link-count-label)))
+                     (or skroad--buf-modeline-node-link-count-label "")))
                (buffer-name)))))))
 
 ;; Point cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
