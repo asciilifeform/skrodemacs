@@ -3678,6 +3678,13 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
     (setq-local skroad--buf-modeline-node-label
                 (skroad--get-node-label (skroad--current-node)))))
 
+(defun skroad--get-link-count-label ()
+  "Generate the link count label for the current node."
+  (format
+   " (L:%s D:%s)"
+   (or (skroad--current-indices-count-type 'skroad--text-link-node-live) "?")
+   (or (skroad--current-indices-count-type 'skroad--text-link-node-dead) "?")))
+
 (defun skroad--setup-mode-line ()
   "Replace the buffer name in the mode with a node description."
   (setq-local
@@ -3689,13 +3696,10 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
                (and (stringp skroad--buf-modeline-node-label)
                     (concat
                      skroad--buf-modeline-node-label
-                     (format
-                      " (%s)"
-                      (or (skroad--current-indices-count-type
-                           'skroad--text-link-node-live)
-                          "Unindexed"))))
+                     (skroad--get-link-count-label)))
                (buffer-name)))))))
 
+;; (skroad--current-indices-count-type 'skroad--text-link-node-dead)
 ;; Point cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
