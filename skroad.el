@@ -86,7 +86,7 @@
 (defface skroad--node-link-decor-face
   '((t :background "black"
        :box t))
-  "Face inherited from by node link faces used outside of autocomplete."
+  "Face inherited from by node link faces appearing inside nodes or ephemerals."
   :group 'skroad-faces)
 
 (defface skroad--highlight-link-face
@@ -102,6 +102,11 @@
 (defface skroad--live-deleted-link-face
   '((t :inherit skroad--live-link-face :strike-through t))
   "Face used for live links to nodes which no longer exist."
+  :group 'skroad-faces)
+
+(defface skroad--leaf-link-face-decor
+  '((t :slant italic))
+  "Face inherited from by node link faces for nodes which are currently leaves."
   :group 'skroad-faces)
 
 (defface skroad--log-link-face
@@ -1497,7 +1502,7 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
                      (or no-actions (skroad--node-special-p)) init))
       (setq-local skroad--buf-indices-table indices)
       (skroad--cache-write (skroad--current-node) indices)
-      (skroad--current-node-update-orphan-status))))
+      (skroad--current-node-update-orphan-and-leaf-status))))
 
 (defvar-local skroad--scan-in-progress nil
   "When true, indicates that scan is currently in progress.")
@@ -1620,14 +1625,23 @@ If there are any, return the count, otherwise nil."
   (skroad--with-text-type-indices text-type (skroad--buf-indices)
     (maphash #'(lambda (key _val) (apply fn (cons key other-args))) index)))
 
-(defun skroad--current-indices-any-p (text-type pred)
-  "Determine whether PRED is true on some indexed payload of TEXT-TYPE."
-  (skroad--with-text-type-indices text-type (skroad--buf-indices)
-    (catch 'found
-      (maphash (lambda (k _v)
-                 (when (funcall pred k)
-                   (throw 'found k)))
-               index))))
+;; (defun skroad--current-indices-any-p (text-type pred)
+;;   "Determine whether PRED is true on some indexed payload of TEXT-TYPE."
+;;   (catch 'found
+;;     (skroad--current-indices-foreach
+;;      text-type
+;;      #'(lambda (k) (when (funcall pred k) (throw 'found k))))))
+
+(defun skroad--current-indices-count-pred (text-type pred n)
+  "Try to find at most N indexed payloads of TEXT-TYPE on which PRED is true.
+Stop after finding N (or exhausting the index); return the number found."
+  (catch 'found
+    (let ((count 0))
+      (skroad--current-indices-foreach
+       text-type
+       #'(lambda (k) (when (and (funcall pred k) (= (setq count (1+ count)) n))
+                       (throw 'found count))))
+      count)))
 
 (defun skroad--current-indices-count-type (text-type)
   "Return the number of unique objects of TEXT-TYPE in the current indices."
@@ -2093,6 +2107,7 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
             "<return>" #'skroad--cmd-link-activate
             "M-<return>" #'skroad--cmd-link-activate-new-win))
 
+;; TODO: rewrite so hovertext always goes through inhib subst
 (defun skroad--mouseover-node-preview (_window buf position)
   "User is mousing over a link in WINDOW, BUF, at POSITION.  Preview body."
   (with-current-buffer buf
@@ -2330,6 +2345,32 @@ Do NOT run type actions in either node."
   (message "disconnected: local=%s remote=%s" local remote)
   (skroad--node-disconnect remote local))
 
+;; (defun skroad--live-link-get-face (node)
+;;   "Return the base face for the display of a live link to NODE anywhere."
+;;   (cond ((skroad--node-self-p node) 'skroad--self-link-face)
+;;         ((skroad--node-special-p node) 'skroad--special-link-face)
+;;         ((skroad--node-log-p node) 'skroad--log-link-face)
+;;         ((skroad--node-stub-p node) 'skroad--stub-link-face)
+;;         (t 'skroad--live-link-face)))
+
+(defun skroad--live-link-get-face (node)
+  "Return the base face for the display of a live link to NODE anywhere."
+  (cond ((skroad--node-self-p node) 'skroad--self-link-face)
+        ((skroad--node-special-p node) 'skroad--special-link-face)
+        ((skroad--node-log-p node) 'skroad--log-link-face)
+        ((skroad--node-stub-p node) 'skroad--stub-link-face)
+        (t 'skroad--live-link-face)))
+
+;; skroad--leaf-link-face-decor
+
+(defun skroad--node-live-link-get-face (node)
+  "Return the face for the display of a live link to NODE inside some node."
+  (list
+   (if (skroad--cache-peek node)
+       (skroad--live-link-get-face node)
+     'skroad--live-deleted-link-face)
+   'skroad--node-link-decor-face))
+
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
   :order 100
@@ -2338,17 +2379,7 @@ Do NOT run type actions in either node."
   :on-create #'skroad--node-connect-back-create
   :on-destroy #'skroad--node-disconnect-back
   :on-activate #'skroad--action-live-link-activate
-  :face-function
-  '(lambda (payload)
-     (list
-      (if (skroad--cache-peek payload)
-          (cond ((skroad--node-self-p payload) 'skroad--self-link-face)
-                ((skroad--node-special-p payload) 'skroad--special-link-face)
-                ((skroad--node-log-p payload) 'skroad--log-link-face)
-                ((skroad--node-stub-p payload) 'skroad--stub-link-face)
-                (t 'skroad--live-link-face))
-        'skroad--live-deleted-link-face)
-      'skroad--node-link-decor-face))
+  :face-function #'skroad--node-live-link-get-face
   :begins skroad--link-node-live-start-delim
   :ends skroad--link-node-live-end-delim
   :keymap (skroad--define-keymap
@@ -2403,6 +2434,13 @@ Do NOT run type actions in either node."
   (skroad--modes-only)
   (skroad--link-revive (skroad--data-at)))
 
+(defun skroad--node-dead-link-get-face (node)
+  "Return the face appropriate for the display of a dead link to NODE."
+  (list (if (skroad--cache-peek node)
+            'skroad--dead-link-face
+          'skroad--dead-deleted-link-face)
+        'skroad--node-link-decor-face))
+
 (skroad--deftype skroad--text-link-node-dead
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
   :order 101
@@ -2410,12 +2448,7 @@ Do NOT run type actions in either node."
   :on-init #'skroad--action-dead-link-init
   :on-create #'skroad--action-dead-link-create
   :begins "[-[" :ends "]-]"
-  :face-function
-  '(lambda (payload)
-     (list (if (skroad--cache-peek payload)
-               'skroad--dead-link-face
-             'skroad--dead-deleted-link-face)
-           'skroad--node-link-decor-face))
+  :face-function #'skroad--node-dead-link-get-face
   :keymap (skroad--define-keymap
             "t" #'skroad--cmd-atomic-delimited-textify
             "<return>" #'ignore
@@ -2835,6 +2868,7 @@ lines are highlighted."
 
 ;; Node History. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: use all log links, not only in tail?
 (defun skroad--node-get-history (node)
   "Get a history of NODE (if it exists) via log links in its tail (if any.)
 If the node does not exist, return nil; if no history is found: empty string."
@@ -3633,21 +3667,25 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 
 ;; Modeline. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun skroad--get-node-label (node)
+  "Generate a label describing the given NODE."
+  (concat
+   (cond ((skroad--node-special-p node) "Special ")
+         ((skroad--node-log-p node) "Log ")
+         ((skroad--node-orphan-p node) "Orphan ")
+         (t (concat
+             (if (skroad--node-stub-p node) "Stub " "")
+             (if (skroad--node-leaf-p node) "Leaf " ""))))
+   "Node"))
+
 (defvar-local skroad--buf-modeline-node-label nil
   "The modeline label for the current buffer.")
 
 (defun skroad--update-modeline-node-label ()
   "Update the modeline label for the currently-open node."
   (when (skroad--mode-p) ;; Only in-mode
-    (setq-local
-     skroad--buf-modeline-node-label
-     (concat
-      (cond ((skroad--node-special-p) "Special ")
-            ((skroad--node-log-p) "Log ")
-            (t (concat
-                (if (skroad--node-orphan-p) "Orphan " "")
-                (if (skroad--node-stub-p) "Stub " ""))))
-      "Node"))))
+    (setq-local skroad--buf-modeline-node-label
+                (skroad--get-node-label (skroad--current-node)))))
 
 (defun skroad--setup-mode-line ()
   "Replace the buffer name in the mode with a node description."
@@ -3830,6 +3868,10 @@ without any text between the title and the tail.  New nodes start out as stubs.
 Stubs which get disconnected do not retain dead links; when orphaned, a stub
 becomes a candidate for auto-deletion (see below.)")
 
+(skroad--define-special-node skroad--special-node-leaves "#Leaves" t
+  "A node with links to all known leaves (regular nodes that have exactly one
+link to a node other than themselves, specials, and logs.)")
+
 (skroad--define-special-node skroad--special-node-orphans "#Orphans" t
   "A node with links to all known orphans (regular nodes that have no live
 links to nodes other than themselves, specials, and logs.)  A node found to be
@@ -3840,6 +3882,11 @@ open in any buffer, it is deleted immediately; otherwise, user must confirm.")
   "Return t when NODE (if given; else the current node) is a known stub."
   (skroad--node-connected-p
    skroad--special-node-stubs (or node (skroad--current-node))))
+
+(defun skroad--node-leaf-p (&optional node)
+  "Return t when NODE (if given; else the current node) is a known leaf."
+  (skroad--node-connected-p
+   skroad--special-node-leaves (or node (skroad--current-node))))
 
 (defun skroad--node-orphan-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known orphan."
@@ -3878,6 +3925,10 @@ If the tail did not previously exist in the current node, it is emplaced."
            (skroad--current-node) (skroad--current-node-stubbed-p))
       (skroad--update-modeline-node-label))))
 
+(defun skroad--node-set-leaf (node status)
+  "Set the orphan STATUS of NODE.  Return t if status has changed."
+  (skroad--set-special-status node skroad--special-node-leaves status))
+
 (defun skroad--node-set-orphan (node status)
   "Set the orphan STATUS of NODE.  If it became an orphan stub, try deleting it.
 If deletion is blocked, no new auto-deletion attempt will be made until and
@@ -3888,19 +3939,20 @@ or until a lint is performed (node will be silently deleted unless open.)"
       (skroad--defer-orphan-stub-check node)) ;; Possible deletion
     t)) ;; Return t if status changed.
 
-(defun skroad--current-node-orphaned-p ()
-  "Determine whether the current node is presently an orphan.
-The current node's indices must exist."
-  (not (skroad--current-indices-any-p
-        'skroad--text-link-node-live ;; If indices have live links: not orphan
-        #'(lambda (l) (not (skroad--node-log-p l)))))) ;; Log links don't count
-
-(defun skroad--current-node-update-orphan-status ()
-  "Unless the current node is a special or log, update its saved orphan status."
+(defun skroad--current-node-update-orphan-and-leaf-status ()
+  "Update the current node's saved orphan and leaf status.
+No-op if the node is a special or log."
   (unless (or (skroad--node-special-p) (skroad--node-log-p))
-    (when (skroad--node-set-orphan
-           (skroad--current-node) (skroad--current-node-orphaned-p))
-      (skroad--update-modeline-node-label))))
+    (let* ((peer-count
+            (skroad--current-indices-count-pred
+             'skroad--text-link-node-live
+             #'(lambda (l) (not (skroad--node-log-p l)))
+             2)) ;; Try to find at most two live, non-log links
+           (node (skroad--current-node))
+           (changed-orphan (skroad--node-set-orphan node (zerop peer-count)))
+           (changed-leaf (skroad--node-set-leaf node (= peer-count 1))))
+      (when (or changed-orphan changed-leaf)
+        (skroad--update-modeline-node-label)))))
 
 (defun skroad--prompt-delete-node (node)
   "Prompt to confirm the deletion of NODE and return the answer."
@@ -4068,12 +4120,7 @@ Warning: undo info is lost in all affected buffers!"
 (defun skroad--autocomplete-affixation (candidates)
   "Propertize filtered completion CANDIDATES before they are displayed."
   (mapcar (lambda (c)
-            (list (propertize
-                   c 'face
-                   (cond ((skroad--node-log-p c) 'skroad--log-link-face)
-                         ((skroad--node-special-p c) 'skroad--special-link-face)
-                         ((skroad--node-stub-p c) 'skroad--stub-link-face)
-                         (t 'skroad--live-link-face)))
+            (list (propertize c 'face (skroad--live-link-get-face c))
                   ""
                   (if (skroad--node-orphan-p c) " (Orphan)" "")))
           candidates))
