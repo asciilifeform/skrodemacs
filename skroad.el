@@ -1607,8 +1607,9 @@ These may occur if ill-behaved minor modes are in use.")
 (defmacro skroad--with-text-type-indices (text-type indices &rest body)
   "If INDICES has a TEXT-TYPE index, evaluate BODY with `index' bound to it."
   (declare (indent defun))
-  `(when-let* ((index (alist-get ,text-type ,indices)))
-     ,@body))
+  `(when (listp ,indices)
+     (when-let* ((index (alist-get ,text-type ,indices)))
+       ,@body)))
 
 (defun skroad--indices-have-payload-p (text-type payload indices)
   "Test whether a PAYLOAD of TEXT-TYPE exists in INDICES.
@@ -2419,10 +2420,6 @@ Do NOT run type actions in either node."
 (defun skroad--link-get-all-live ()
   "Return all live links indexed in the current node."
   (skroad--current-indices-get-all-type 'skroad--text-link-node-live))
-
-(defun skroad--current-indices-live-link-count ()
-  "Return the number of live links in the current node's indices."
-  (skroad--current-indices-count-type 'skroad--text-link-node-live))
 
 (defun skroad--cmd-liven-at (&rest _args)
   "Liven"
@@ -3683,18 +3680,21 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 
 (defun skroad--setup-mode-line ()
   "Replace the buffer name in the mode with a node description."
-  (setq-local mode-line-buffer-identification
-              '(:eval
-                (propertized-buffer-identification
-                 (format "%s"
-                         (or
-                          (and (stringp skroad--buf-modeline-node-label)
-                               (concat
-                                skroad--buf-modeline-node-label
-                                (format
-                                 " (%s)"
-                                 (skroad--current-indices-live-link-count))))
-                          (buffer-name)))))))
+  (setq-local
+   mode-line-buffer-identification
+   '(:eval
+     (propertized-buffer-identification
+      (format "%s"
+              (or
+               (and (stringp skroad--buf-modeline-node-label)
+                    (concat
+                     skroad--buf-modeline-node-label
+                     (format
+                      " (%s)"
+                      (or (skroad--current-indices-count-type
+                           'skroad--text-link-node-live)
+                          "Unindexed"))))
+               (buffer-name)))))))
 
 ;; Point cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
