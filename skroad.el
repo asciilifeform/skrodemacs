@@ -3680,10 +3680,15 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 
 (defun skroad--get-link-count-label ()
   "Generate the link count label for the current node."
-  (format
-   " (L:%s D:%s)"
-   (or (skroad--current-indices-count-type 'skroad--text-link-node-live) "?")
-   (or (skroad--current-indices-count-type 'skroad--text-link-node-dead) "?")))
+  (let ((n-live
+         (skroad--current-indices-count-type 'skroad--text-link-node-live))
+        (n-dead
+         (skroad--current-indices-count-type 'skroad--text-link-node-dead)))
+    (format
+     " (%s)"
+     (concat (format "L:%s" (or n-live "?"))
+             (or (and n-dead (not (zerop n-dead)) (format " D:%s" n-dead))
+                 "")))))
 
 (defun skroad--setup-mode-line ()
   "Replace the buffer name in the mode with a node description."
