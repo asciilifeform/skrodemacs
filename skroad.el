@@ -3688,8 +3688,8 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
          (skroad--current-indices-count-type 'skroad--text-link-node-dead)))
     (format
      " (%s)"
-     (concat (format "L:%s" (or n-live "?"))
-             (or (and n-dead (not (zerop n-dead)) (format " D:%s" n-dead))
+     (concat (format "%sL" (or n-live "?"))
+             (or (and n-dead (not (zerop n-dead)) (format " %sD" n-dead))
                  "")))))
 
 (defvar-local skroad--buf-modeline-node-link-count-label nil
