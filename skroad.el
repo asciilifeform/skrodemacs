@@ -3708,13 +3708,9 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
    mode-line-buffer-identification
    '(:eval
      (propertized-buffer-identification
-      (format "%s"
-              (or
-               (and (stringp skroad--buf-modeline-node-label)
-                    (concat
-                     skroad--buf-modeline-node-label
-                     (or skroad--buf-modeline-node-link-count-label "")))
-               (buffer-name)))))))
+      (concat
+       (or skroad--buf-modeline-node-label (buffer-name))
+       skroad--buf-modeline-node-link-count-label)))))
 
 ;; Point cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
