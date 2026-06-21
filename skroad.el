@@ -2308,7 +2308,7 @@ assuming that the node was actually shown."
 (defconst skroad--link-node-live-end-delim "]]"
   "Delimiter indicating the end of a live Skroad link.")
 
-;; TODO: needs fix, this restores backlink when we're trying to delete fwd
+;; TODO: do this only during lint or when local is open interactively?
 (defun skroad--node-connect-back-verify (local remote)
   "Live link(s) to REMOTE were found during the initial indexing of LOCAL.
 Ensure that if LOCAL still exists, REMOTE (if it exists) has a live link to it.
@@ -2342,6 +2342,7 @@ Do NOT run type actions in either node."
   (skroad--node-disconnect remote local))
 
 ;; TODO: face cache?
+;; TODO: cache logitude
 (defun skroad--link-face (node &optional dead ac)
   "Return the effective face/facelist for a link to NODE in the current context.
 Use the live link face (or if DEAD is t: the dead link face) as the base face.
@@ -2362,7 +2363,11 @@ The returned result may be a single face or a list with mixins on a base face."
               (cond
                (irregular irregular)
                ((skroad--node-leaf-p node) 'skroad--face-mixin-link-leaf)
-               ((skroad--node-orphan-p node) 'skroad--face-mixin-link-orphan))))
+               ((and (or ac ;; Orphans appear in AC...
+                         (skroad--ephemeral-mode-p) ;; .. and ephemerals
+                         (skroad--node-log-p))
+                     (skroad--node-orphan-p node))
+                'skroad--face-mixin-link-orphan))))
         (when decor (push decor faces))
         (when stub (push stub faces))))
     (unless ac ;; Autocomplete can be presumed to display only known nodes
