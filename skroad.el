@@ -2863,7 +2863,7 @@ lines are highlighted."
 ;; Node History. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--node-get-history (node)
-  "Assemble a history of NODE (if it exists) via log links in its tail.
+  "Assemble a history of NODE (if it exists) via log links found in its tail.
 The log links, if they exist, are visited in reverse chronological order.
 If the node does not exist, return nil; if no history is found: empty string."
   (skroad--with-existing-node node t
