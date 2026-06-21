@@ -2862,9 +2862,9 @@ lines are highlighted."
 
 ;; Node History. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: use all log links, not only in tail?
 (defun skroad--node-get-history (node)
-  "Get a history of NODE (if it exists) via log links in its tail (if any.)
+  "Assemble a history of NODE (if it exists) via log links in its tail.
+The log links, if they exist, are visited in reverse chronological order.
 If the node does not exist, return nil; if no history is found: empty string."
   (skroad--with-existing-node node t
     (let ((result "")) ;; Will remain empty if nothing is found
