@@ -2102,7 +2102,6 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
             "<return>" #'skroad--cmd-link-activate
             "M-<return>" #'skroad--cmd-link-activate-new-win))
 
-;; TODO: rewrite so hovertext always goes through inhib subst
 (defun skroad--mouseover-node-preview (_window buf position)
   "User is mousing over a link in WINDOW, BUF, at POSITION.  Preview body."
   (with-current-buffer buf
