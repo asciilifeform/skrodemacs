@@ -129,7 +129,7 @@
   :group 'skroad-faces)
 
 (defface skroad--face-mixin-link-orphan
-  '((t :foreground "systemGrayColor"))
+  '((t :inverse-video t))
   "Face mixin for a link to an orphan node (in autocomplete/logs/ephemerals)."
   :group 'skroad-faces)
 
