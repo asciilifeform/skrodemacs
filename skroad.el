@@ -2356,14 +2356,13 @@ The returned result may be a single face or a list with mixins on a base face."
                'skroad--face-mixin-link-self)
               ((skroad--node-special-p node) 'skroad--face-mixin-link-special)
               ((skroad--node-log-p node) 'skroad--face-mixin-link-log))))
-        (if face-irregular
-            (push face-irregular faces)
-          (when (skroad--node-stub-p node)
-            (push 'skroad--face-mixin-link-stub faces))
-          (cond ((skroad--node-leaf-p node)
-                 (push 'skroad--face-mixin-link-leaf faces))
-                ((skroad--node-orphan-p node)
-                 (push 'skroad--face-mixin-link-orphan faces))))))
+        (cond (face-irregular (push face-irregular faces))
+              ((skroad--node-leaf-p node)
+               (push 'skroad--face-mixin-link-leaf faces))
+              ((skroad--node-orphan-p node)
+               (push 'skroad--face-mixin-link-orphan faces)))
+        (when (and (not face-irregular) (skroad--node-stub-p node))
+          (push 'skroad--face-mixin-link-stub faces))))
     (when in-mode
       (unless (or (cdr faces) (skroad--cache-peek node)) ;; Unknown node?
         (push 'skroad--face-mixin-link-deleted faces))
