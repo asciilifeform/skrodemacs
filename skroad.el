@@ -2341,7 +2341,6 @@ Do NOT run type actions in either node."
   (skroad--node-disconnect remote local))
 
 ;; TODO: face cache?
-;; TODO: can we assume that known stubs/orphans/leaves/logs are in cache?
 (defun skroad--link-face (node &optional dead)
   "Return the effective face/facelist for a link to NODE in the current context.
 Use the live link face (or if DEAD is t: the dead link face) as the base face.
@@ -2366,7 +2365,7 @@ The returned result may be a single face or a list with mixins on a base face."
                 ((skroad--node-orphan-p node)
                  (push 'skroad--face-mixin-link-orphan faces))))))
     (when in-mode
-      (unless (skroad--cache-peek node)
+      (unless (or (cdr faces) (skroad--cache-peek node)) ;; Unknown node?
         (push 'skroad--face-mixin-link-deleted faces))
       (push 'skroad--face-mixin-link-in-node faces)) ;; Add in-node mixin.
     (if (cdr faces)
