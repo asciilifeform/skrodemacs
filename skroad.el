@@ -2345,26 +2345,25 @@ Do NOT run type actions in either node."
   "Return the effective face/facelist for a link to NODE in the current context.
 Use the live link face (or if DEAD is t: the dead link face) as the base face.
 The returned result may be a single face or a list with mixins on a base face."
-  (let* ((in-mode (skroad--mode-or-ephemeral-p)) ;; Exclude from autocomp buffer
-         (faces ;; Start with the base face:
-          (list (if dead 'skroad--face-node-link-dead
-                  'skroad--face-node-link-live)))
-         (face-irregular ;; Irregular node faces
-          (unless dead ;; ... never apply to dead links
-            (cond
-             ((and in-mode (skroad--node-self-p node))
-              'skroad--face-mixin-link-self)
-             ((skroad--node-special-p node) 'skroad--face-mixin-link-special)
-             ((skroad--node-log-p node) 'skroad--face-mixin-link-log)))))
+  (let ((in-mode (skroad--mode-or-ephemeral-p)) ;; Exclude from autocomp buffer
+        (faces ;; Start with the base face:
+         (list (if dead 'skroad--face-node-link-dead
+                 'skroad--face-node-link-live))))
     (unless dead ;; None of these apply to dead links
-      (if face-irregular
-          (push face-irregular faces)
-        (when (skroad--node-stub-p node)
-          (push 'skroad--face-mixin-link-stub faces))
-        (if (skroad--node-leaf-p node)
-            (push 'skroad--face-mixin-link-leaf faces)
-          (when (skroad--node-orphan-p node)
-            (push 'skroad--face-mixin-link-orphan faces)))))
+      (let ((face-irregular ;; Irregular node faces
+             (cond
+              ((and in-mode (skroad--node-self-p node))
+               'skroad--face-mixin-link-self)
+              ((skroad--node-special-p node) 'skroad--face-mixin-link-special)
+              ((skroad--node-log-p node) 'skroad--face-mixin-link-log))))
+        (if face-irregular
+            (push face-irregular faces)
+          (when (skroad--node-stub-p node)
+            (push 'skroad--face-mixin-link-stub faces))
+          (if (skroad--node-leaf-p node)
+              (push 'skroad--face-mixin-link-leaf faces)
+            (when (skroad--node-orphan-p node)
+              (push 'skroad--face-mixin-link-orphan faces))))))
     (when in-mode
       (unless (skroad--cache-peek node)
         (push 'skroad--face-mixin-link-deleted faces))
