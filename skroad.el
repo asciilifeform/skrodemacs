@@ -2347,8 +2347,8 @@ Use the live link face (or if DEAD is t: the dead link face) as the base face.
 The returned result may be a single face or a list with mixins on a base face."
   (let ((in-mode (skroad--mode-or-ephemeral-p)) ;; Exclude from autocomp buffer
         (faces ;; Start with the base face:
-         (list (if dead 'skroad--face-node-link-dead
-                 'skroad--face-node-link-live))))
+         (list
+          (if dead 'skroad--face-node-link-dead 'skroad--face-node-link-live))))
     (unless dead ;; None of these apply to dead links
       (let ((face-irregular ;; Irregular node faces
              (cond
