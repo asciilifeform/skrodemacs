@@ -2108,22 +2108,22 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   (with-current-buffer buf
     (let ((origin (skroad--current-node))
           (node (skroad--data-at position)))
-      (when (stringp node)
-        (cond ((skroad--node-self-p node) "This node!")
-              ((skroad--cache-peek node)
-               (let ((text
-                      (or (ignore-errors
-                            (skroad--with-file (skroad--node-path node)
-                              (if (skroad--node-log-p)
-                                  (skroad--log-history-of-node origin t)
-                                (skroad--current-node-extract-body))))
-                          "This node is missing from the data directory !?")))
-                 (propertize
-                  (concat
-                   (skroad--get-node-label node)
-                   (and (not (string-empty-p text)) (concat ":\n\n" text)))
-                  'help-echo-inhibit-substitution t))) ;; Emacs 29+
-              (t "A deleted node."))))))
+      (cond ((or (not (stringp node)) (string-empty-p node)) nil)
+            ((skroad--node-self-p node) "This node!")
+            ((skroad--cache-peek node)
+             (let ((text
+                    (or (ignore-errors
+                          (skroad--with-file (skroad--node-path node)
+                            (if (skroad--node-log-p)
+                                (skroad--log-history-of-node origin t)
+                              (skroad--current-node-extract-body))))
+                        "This node is missing from the data directory !?")))
+               (propertize
+                (concat
+                 (skroad--get-node-label node)
+                 (and (not (string-empty-p text)) (concat ":\n\n" text)))
+                'help-echo-inhibit-substitution t))) ;; Emacs 29+
+            (t "A deleted node.")))))
 
 (defun skroad--link-escaper (payload)
   "Escape PAYLOAD for links."
