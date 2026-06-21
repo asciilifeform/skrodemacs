@@ -83,62 +83,59 @@
   "Face used as a base for all node links."
   :group 'skroad-faces)
 
-(defface skroad--node-link-decor-face
-  '((t :background "black"
-       :box t))
-  "Face inherited from by node link faces appearing inside nodes or ephemerals."
-  :group 'skroad-faces)
-
 (defface skroad--highlight-link-face
   '((t :inherit highlight :box t))
   "Face used for highlighted links."
   :group 'skroad-faces)
 
-(defface skroad--live-link-face
+(defface skroad--face-node-link-live
   '((t :inherit skroad--node-link-face))
   "Face used for live links."
   :group 'skroad-faces)
 
-(defface skroad--live-deleted-link-face
-  '((t :inherit skroad--live-link-face :strike-through t))
-  "Face used for live links to nodes which no longer exist."
-  :group 'skroad-faces)
-
-(defface skroad--leaf-link-face-decor
-  '((t :slant italic))
-  "Face inherited from by node link faces for nodes which are currently leaves."
-  :group 'skroad-faces)
-
-(defface skroad--log-link-face
-  '((t :inherit skroad--node-link-face :foreground "white"))
-  "Face used for live log links."
-  :group 'skroad-faces)
-
-(defface skroad--stub-link-face
-  '((t :inherit skroad--node-link-face :foreground "Orange"))
-  "Face used for live stub links."
-  :group 'skroad-faces)
-
-(defface skroad--special-link-face
-  '((t :inherit skroad--node-link-face
-       :foreground "black" :background "white"))
-  "Face used for live special links."
-  :group 'skroad-faces)
-
-(defface skroad--self-link-face
-  '((t :inherit skroad--node-link-face
-       :foreground "white" :background "purple"))
-  "Face used for live self links."
-  :group 'skroad-faces)
-
-(defface skroad--dead-link-face
+(defface skroad--face-node-link-dead
   '((t :inherit skroad--node-link-face :foreground "red"))
   "Face used for dead links."
   :group 'skroad-faces)
 
-(defface skroad--dead-deleted-link-face
-  '((t :inherit skroad--dead-link-face :strike-through t))
-  "Face used for dead links to nodes which no longer exist."
+(defface skroad--face-mixin-link-log
+  '((t :foreground "white"))
+  "Face mixin for a link to a log node."
+  :group 'skroad-faces)
+
+(defface skroad--face-mixin-link-stub
+  '((t :foreground "Orange"))
+  "Face mixin for a link to a stub node."
+  :group 'skroad-faces)
+
+(defface skroad--face-mixin-link-special
+  '((t :foreground "white" :inverse-video t))
+  "Face mixin for a link to a special node."
+  :group 'skroad-faces)
+
+(defface skroad--face-mixin-link-self
+  '((t :foreground "white" :background "purple"))
+  "Face mixin for a link to a self-link."
+  :group 'skroad-faces)
+
+(defface skroad--face-mixin-link-deleted
+  '((t :strike-through t))
+  "Face mixin for a link to a non-existing node (in nodes and ephemerals)."
+  :group 'skroad-faces)
+
+(defface skroad--face-mixin-link-leaf
+  '((t :slant italic))
+  "Face mixin for a link to a leaf node."
+  :group 'skroad-faces)
+
+(defface skroad--face-mixin-link-orphan
+  '((t :foreground "systemGrayColor"))
+  "Face mixin for a link to an orphan node (in autocomplete/logs/ephemerals)."
+  :group 'skroad-faces)
+
+(defface skroad--face-mixin-link-in-node
+  '((t :background "black" :box t))
+  "Face mixin for all links appearing inside a node or ephemeral."
   :group 'skroad-faces)
 
 (defface skroad--invalid-text-face
@@ -2343,31 +2340,38 @@ Do NOT run type actions in either node."
   (message "disconnected: local=%s remote=%s" local remote)
   (skroad--node-disconnect remote local))
 
-;; (defun skroad--live-link-get-face (node)
-;;   "Return the base face for the display of a live link to NODE anywhere."
-;;   (cond ((skroad--node-self-p node) 'skroad--self-link-face)
-;;         ((skroad--node-special-p node) 'skroad--special-link-face)
-;;         ((skroad--node-log-p node) 'skroad--log-link-face)
-;;         ((skroad--node-stub-p node) 'skroad--stub-link-face)
-;;         (t 'skroad--live-link-face)))
-
-(defun skroad--live-link-get-face (node)
-  "Return the base face for the display of a live link to NODE anywhere."
-  (cond ((skroad--node-self-p node) 'skroad--self-link-face)
-        ((skroad--node-special-p node) 'skroad--special-link-face)
-        ((skroad--node-log-p node) 'skroad--log-link-face)
-        ((skroad--node-stub-p node) 'skroad--stub-link-face)
-        (t 'skroad--live-link-face)))
-
-;; skroad--leaf-link-face-decor
-
-(defun skroad--node-live-link-get-face (node)
-  "Return the face for the display of a live link to NODE inside some node."
-  (list
-   (if (skroad--cache-peek node)
-       (skroad--live-link-get-face node)
-     'skroad--live-deleted-link-face)
-   'skroad--node-link-decor-face))
+;; TODO: face cache?
+(defun skroad--link-face (node &optional dead)
+  "Return the effective face/facelist for a link to NODE in the current context.
+Use the live link face (or if DEAD is t: the dead link face) as the base face.
+The returned result may be a single face or a list with mixins on a base face."
+  (let* ((in-mode (skroad--mode-or-ephemeral-p)) ;; Exclude from autocomp buffer
+         (faces ;; Start with the base face:
+          (list (if dead 'skroad--face-node-link-dead
+                  'skroad--face-node-link-live)))
+         (face-irregular ;; Irregular node faces
+          (unless dead ;; ... never apply to dead links
+            (cond
+             ((and in-mode (skroad--node-self-p node))
+              'skroad--face-mixin-link-self)
+             ((skroad--node-special-p node) 'skroad--face-mixin-link-special)
+             ((skroad--node-log-p node) 'skroad--face-mixin-link-log)))))
+    (unless dead ;; None of these apply to dead links
+      (if face-irregular
+          (push face-irregular faces)
+        (when (skroad--node-stub-p node)
+          (push 'skroad--face-mixin-link-stub faces))
+        (if (skroad--node-leaf-p node)
+            (push 'skroad--face-mixin-link-leaf faces)
+          (when (skroad--node-orphan-p node)
+            (push 'skroad--face-mixin-link-orphan faces)))))
+    (when in-mode
+      (unless (skroad--cache-peek node)
+        (push 'skroad--face-mixin-link-deleted faces))
+      (push 'skroad--face-mixin-link-in-node faces)) ;; Add in-node mixin.
+    (if (cdr faces)
+        faces ;; Return facelist if we have a composition...
+      (car faces)))) ;; ... otherwise: the single face.
 
 (skroad--deftype skroad--text-link-node-live
   :doc "Live (i.e. navigable, and producing backlink) link to a skroad node."
@@ -2377,7 +2381,7 @@ Do NOT run type actions in either node."
   :on-create #'skroad--node-connect-back-create
   :on-destroy #'skroad--node-disconnect-back
   :on-activate #'skroad--action-live-link-activate
-  :face-function #'skroad--node-live-link-get-face
+  :face-function #'skroad--link-face
   :begins skroad--link-node-live-start-delim
   :ends skroad--link-node-live-end-delim
   :keymap (skroad--define-keymap
@@ -2430,10 +2434,7 @@ Do NOT run type actions in either node."
 
 (defun skroad--node-dead-link-get-face (node)
   "Return the face appropriate for the display of a dead link to NODE."
-  (list (if (skroad--cache-peek node)
-            'skroad--dead-link-face
-          'skroad--dead-deleted-link-face)
-        'skroad--node-link-decor-face))
+  (skroad--link-face node t))
 
 (skroad--deftype skroad--text-link-node-dead
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
@@ -4157,16 +4158,16 @@ Warning: undo info is lost in all affected buffers!"
 
 (defun skroad--autocomplete-affixation (candidates)
   "Propertize filtered completion CANDIDATES before they are displayed."
-  (mapcar (lambda (c)
-            (list (propertize c 'face (skroad--live-link-get-face c))
-                  ""
-                  (if (skroad--node-orphan-p c) " (Orphan)" "")))
+  (mapcar #'(lambda (c)
+              (list (propertize c 'face (skroad--link-face c))
+                    ""
+                    (if (skroad--node-orphan-p c) " (Orphan)" "")))
           candidates))
 
 (defun skroad--autocomplete-collection (string pred action)
   "Completion table over cache entry keys, ignoring values."
   (let ((table (skroad--cache))
-        (kpred (when pred (lambda (k _v) (funcall pred k)))))
+        (kpred (when pred #'(lambda (k _v) (funcall pred k)))))
     (cond
      ((eq action 'metadata)
       '(metadata (affixation-function . skroad--autocomplete-affixation)))
