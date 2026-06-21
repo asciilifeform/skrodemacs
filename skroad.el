@@ -114,7 +114,7 @@
   :group 'skroad-faces)
 
 (defface skroad--face-mixin-link-self
-  '((t :foreground "white" :background "purple"))
+  '((t :foreground "purple" :inverse-video t))
   "Face mixin for a link to a self-link."
   :group 'skroad-faces)
 
@@ -129,7 +129,7 @@
   :group 'skroad-faces)
 
 (defface skroad--face-mixin-link-orphan
-  '((t :inverse-video t))
+  '((t :foreground "yellow" :inverse-video t))
   "Face mixin for a link to an orphan node (in autocomplete/logs/ephemerals)."
   :group 'skroad-faces)
 
@@ -2341,29 +2341,30 @@ Do NOT run type actions in either node."
   (skroad--node-disconnect remote local))
 
 ;; TODO: face cache?
-(defun skroad--link-face (node &optional dead)
+(defun skroad--link-face (node &optional dead ac)
   "Return the effective face/facelist for a link to NODE in the current context.
 Use the live link face (or if DEAD is t: the dead link face) as the base face.
+When AC is t, use faces appropriate for autocomplete.
 The returned result may be a single face or a list with mixins on a base face."
-  (let ((in-mode (skroad--mode-or-ephemeral-p)) ;; Exclude from autocomp buffer
-        (faces ;; Start with the base face:
+  (let ((faces ;; Start with the base face:
          (list
           (if dead 'skroad--face-node-link-dead 'skroad--face-node-link-live))))
     (unless dead ;; None of these apply to dead links
-      (let ((face-irregular ;; Irregular node faces
-             (cond
-              ((and in-mode (skroad--node-self-p node))
-               'skroad--face-mixin-link-self)
-              ((skroad--node-special-p node) 'skroad--face-mixin-link-special)
-              ((skroad--node-log-p node) 'skroad--face-mixin-link-log))))
-        (cond (face-irregular (push face-irregular faces))
-              ((skroad--node-leaf-p node)
-               (push 'skroad--face-mixin-link-leaf faces))
-              ((skroad--node-orphan-p node)
-               (push 'skroad--face-mixin-link-orphan faces)))
-        (when (and (not face-irregular) (skroad--node-stub-p node))
-          (push 'skroad--face-mixin-link-stub faces))))
-    (when in-mode
+      (let* ((irregular ;; Irregular node faces
+              (cond
+               ((skroad--node-self-p node) 'skroad--face-mixin-link-self)
+               ((skroad--node-special-p node) 'skroad--face-mixin-link-special)
+               ((skroad--node-log-p node) 'skroad--face-mixin-link-log)))
+             (stub (and (not irregular) (skroad--node-stub-p node)
+                        'skroad--face-mixin-link-stub))
+             (decor
+              (cond
+               (irregular irregular)
+               ((skroad--node-leaf-p node) 'skroad--face-mixin-link-leaf)
+               ((skroad--node-orphan-p node) 'skroad--face-mixin-link-orphan))))
+        (when decor (push decor faces))
+        (when stub (push stub faces))))
+    (unless ac ;; Autocomplete can be presumed to display only known nodes
       (unless (or (cdr faces) (skroad--cache-peek node)) ;; Unknown node?
         (push 'skroad--face-mixin-link-deleted faces))
       (push 'skroad--face-mixin-link-in-node faces)) ;; Add in-node mixin.
@@ -2430,7 +2431,7 @@ The returned result may be a single face or a list with mixins on a base face."
   (skroad--modes-only)
   (skroad--link-revive (skroad--data-at)))
 
-(defun skroad--node-dead-link-get-face (node)
+(defun skroad--dead-link-face (node)
   "Return the face appropriate for the display of a dead link to NODE."
   (skroad--link-face node t))
 
@@ -2441,7 +2442,7 @@ The returned result may be a single face or a list with mixins on a base face."
   :on-init #'skroad--action-dead-link-init
   :on-create #'skroad--action-dead-link-create
   :begins "[-[" :ends "]-]"
-  :face-function #'skroad--node-dead-link-get-face
+  :face-function #'skroad--dead-link-face
   :keymap (skroad--define-keymap
             "t" #'skroad--cmd-atomic-delimited-textify
             "<return>" #'ignore
@@ -2872,13 +2873,13 @@ If the node does not exist, return nil; if no history is found: empty string."
        (skroad--node-tail-start-pos)
        (point-max)
        #'(lambda ()
-           (let ((log-node (funcall
-                            (get 'skroad--text-link-node-live 'get-match))))
-             (when (and (skroad--node-log-p log-node) ;; Log link?
-                        (skroad--cache-peek log-node)) ;; ... actually exists?
+           (let ((peer (funcall
+                        (get 'skroad--text-link-node-live 'get-match))))
+             (when (and (skroad--node-log-p peer) ;; Log link?
+                        (skroad--cache-peek peer)) ;; ... actually exists?
                (let ((node-history ;; Get the relevant history, if any:
                       (ignore-errors
-                        (skroad--with-file (skroad--node-path log-node)
+                        (skroad--with-file (skroad--node-path peer)
                           (skroad--log-history-of-node node)))))
                  (setq result (concat result node-history)))))))
       result)))
@@ -4157,7 +4158,7 @@ Warning: undo info is lost in all affected buffers!"
 (defun skroad--autocomplete-affixation (candidates)
   "Propertize filtered completion CANDIDATES before they are displayed."
   (mapcar #'(lambda (c)
-              (list (propertize c 'face (skroad--link-face c))
+              (list (propertize c 'face (skroad--link-face c nil t))
                     ""
                     (if (skroad--node-orphan-p c) " (Orphan)" "")))
           candidates))
