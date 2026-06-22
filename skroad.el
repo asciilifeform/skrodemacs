@@ -2341,8 +2341,6 @@ Do NOT run type actions in either node."
   (message "disconnected: local=%s remote=%s" local remote)
   (skroad--node-disconnect remote local))
 
-;; TODO: face cache?
-;; TODO: cache logitude
 (defun skroad--link-face (node &optional dead ac)
   "Return the effective face/facelist for a link to NODE in the current context.
 Use the live link face (or if DEAD is t: the dead link face) as the base face.
@@ -2372,11 +2370,12 @@ The returned result may be a single face or a list with mixins on a base face."
         (when decor (push decor faces))
         (when stub (push stub faces))))
     (unless ac ;; Autocomplete can be presumed to display only known nodes
-      (unless (or (cdr faces) (skroad--cache-peek node)) ;; Unknown node?
-        (push 'skroad--face-mixin-link-deleted faces))
+      (unless (or (cdr faces) ;; If node has decor/is stub, assume it exists;
+                  (skroad--cache-peek node)) ;; ... if not, actually check.
+        (push 'skroad--face-mixin-link-deleted faces)) ;; strikethrough if not.
       (push 'skroad--face-mixin-link-in-node faces)) ;; Add in-node mixin.
     (if (cdr faces)
-        faces ;; Return facelist if we have a composition...
+        faces ;; Return facelist if we have mixins...
       (car faces)))) ;; ... otherwise: the single face.
 
 (skroad--deftype skroad--text-link-node-live
