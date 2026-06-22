@@ -2365,6 +2365,7 @@ The returned result may be a single face or a list with mixins on a base face."
                ((skroad--node-leaf-p node) 'skroad--face-mixin-link-leaf)
                ((and (or ac ;; Orphans appear in AC...
                          (skroad--ephemeral-mode-p) ;; .. and ephemerals
+                         (skroad--node-special-p) ;; ... and specials
                          (skroad--node-log-p)) ;; ... and logs.
                      (skroad--node-orphan-p node))
                 'skroad--face-mixin-link-orphan))))
