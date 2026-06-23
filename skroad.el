@@ -1613,10 +1613,10 @@ No-op when INDICES don't exist (nil), invalid (index-me), or empty for type."
 If there are any, return the count, otherwise nil."
   (skroad--with-text-type-indices indices text-type (gethash payload index)))
 
-(defun skroad--indices-foreach (indices text-type fn &rest other-args)
+(defun skroad--indices-foreach (indices text-type fn &rest fn-args)
   "Apply FN to all payloads of TEXT-TYPE in the given INDICES."
   (skroad--with-text-type-indices indices text-type
-    (maphash #'(lambda (key _val) (apply fn (cons key other-args))) index)))
+    (maphash #'(lambda (key _val) (apply fn (cons key fn-args))) index)))
 
 (defun skroad--indices-count-pred (indices text-type pred n)
   "Try to find at most N payloads of TEXT-TYPE in INDICES on which PRED is true.
@@ -2314,6 +2314,7 @@ Do NOT run type actions in either node.  Log any resulting changes to lint."
                (skroad--link-generate-dead remote))
        local))))
 
+;; TODO: assert
 (defun skroad--node-connect-back-create (local remote)
   "A live link to REMOTE was introduced into LOCAL, which previously had none.
 Ensure that if LOCAL still exists, REMOTE will exist and have a live link to it.
@@ -2321,6 +2322,7 @@ No-op if LOCAL no longer exists.  Do NOT run type actions in either node."
   (message "connected: local=%s remote=%s" local remote)
   (skroad--node-connect remote local t))
 
+;; TODO: assert
 (defun skroad--node-disconnect-back (local remote)
   "The node LOCAL once had live link(s) to REMOTE, but the last one was removed.
 Ensure that REMOTE (if it still exists) does NOT have any live links to LOCAL.
@@ -2414,6 +2416,11 @@ The returned result may be a single face or a list with mixins on a base face."
   "Return all live links indexed in the current node."
   (skroad--indices-get-all-type
    (skroad--buf-indices) 'skroad--text-link-node-live))
+
+(defun skroad--link-foreach-live (fn &rest fn-args)
+  "Apply FN (with optional FN-ARGS) to each live link in the current node."
+  (skroad--indices-foreach
+   (skroad--buf-indices) 'skroad--text-link-node-live fn fn-args))
 
 (defun skroad--cmd-liven-at (&rest _args)
   "Liven"
@@ -3703,12 +3710,11 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 
 (defun skroad--current-node-get-link-count-label ()
   "Generate the link count label for the current node."
-  (let ((n-live
-         (skroad--indices-count-type
-          (skroad--buf-indices) 'skroad--text-link-node-live))
-        (n-dead
-         (skroad--indices-count-type
-          (skroad--buf-indices)'skroad--text-link-node-dead)))
+  (let* ((indices (skroad--buf-indices))
+         (n-live
+          (skroad--indices-count-type indices 'skroad--text-link-node-live))
+         (n-dead
+          (skroad--indices-count-type indices 'skroad--text-link-node-dead)))
     (format
      " (%s)"
      (concat (format "%sL" (or n-live "?"))
@@ -3963,11 +3969,12 @@ Before deleting, disconnect any remaining live links."
                 (skroad--prompt-delete-node node)) ;; else, ask first.
         (when skroad--lint-in-progress
           (skroad--lint-report "Deleted during lint!") node)
-        (dolist (peer ;; Disconnect in every peer:
-                 (append (skroad--with-node node t ;; Already verified to exist
-                           (skroad--link-get-all-live))
-                         skroad--special-nodes)) ;; Also zap in specials
-          (skroad--node-disconnect peer node))
+        (skroad--with-node node nil ;; Run actions to disconnect all peers
+          (delete-region
+           (skroad--node-body-start-pos) (skroad--node-body-end-pos))
+          (delete-region (skroad--node-tail-start-pos) (point-max)))
+        (dolist (special-node skroad--special-nodes) ;; Clear in all specials
+          (skroad--node-disconnect special-node node))
         (unless node-closed ;; Unless already closed, clean it up and close:
           (with-current-buffer visiting-buffer
             (let ((inhibit-read-only t))
@@ -4057,11 +4064,12 @@ Warning: undo info is lost in all affected buffers!"
       (skroad--log-node-rename old new)
       (skroad--request-refontify) ;; Schedule a refontification.
       (skroad--clear-buf-undo-info) ;; Zap undo info
-      (dolist (peer (skroad--link-get-all-live))
-        (skroad--defer ;; Schedule replacement in peers
-         (skroad--with-existing-node peer t ;; Don't perform actions
-           (skroad--link-replace old new)
-           (skroad--clear-buf-undo-info))))))
+      (skroad--link-foreach-live ;; Schedule replacement in each peer
+       #'(lambda (peer &rest _)
+           (skroad--defer
+            (skroad--with-existing-node peer t ;; Don't perform actions
+              (skroad--link-replace old new)
+              (skroad--clear-buf-undo-info)))))))
    (t (error "Could not rename node '%s' to '%s'!" old new))))
 
 ;; Lint. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
