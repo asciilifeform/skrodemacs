@@ -1366,10 +1366,6 @@ or the node's indices, if it has been indexed; or `empty' (indices are null).")
   "Return indices for NODE; or `index-me' if not indexed; or nil if empty."
   (let ((data (skroad--cache-peek node))) (when (not (eq data 'empty)) data)))
 
-(defun skroad--cache-indexed-p (node)
-  "Return t if NODE is interned in the cache and has been indexed."
-  (let ((data (skroad--cache-peek node))) (and data (not (eq data 'index-me)))))
-
 (defun skroad--cache-intern (node)
   "If NODE is already in the cache, do nothing.  Otherwise, intern it."
   (unless (skroad--cache-peek node) (skroad--cache-intern-unindexed node)))
@@ -1602,51 +1598,49 @@ These may occur if ill-behaved minor modes are in use.")
     (add-hook 'after-change-functions 'skroad--after-change-function nil t)
     (setq-local skroad--buf-indices-change-tracker-installed t)))
 
-(defmacro skroad--with-text-type-indices (text-type indices &rest body)
-  "If INDICES has a TEXT-TYPE index, evaluate BODY with `index' bound to it."
+;;; Index ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defmacro skroad--with-text-type-indices (indices text-type &rest body)
+  "If INDICES has a TEXT-TYPE index, evaluate BODY with `index' bound to it.
+No-op when INDICES don't exist (nil), invalid (index-me), or empty for type."
   (declare (indent defun))
   `(when (listp ,indices)
      (when-let* ((index (alist-get ,text-type ,indices)))
        ,@body)))
 
-(defun skroad--indices-have-payload-p (text-type payload indices)
+(defun skroad--indices-have-payload-p (indices text-type payload)
   "Test whether a PAYLOAD of TEXT-TYPE exists in INDICES.
 If there are any, return the count, otherwise nil."
-  (skroad--with-text-type-indices text-type indices
-    (gethash payload index)))
+  (skroad--with-text-type-indices indices text-type (gethash payload index)))
 
-(defun skroad--current-indices-have-payload-p (text-type payload)
-  "Test whether a PAYLOAD of TEXT-TYPE exists in the current node's indices.
-If there are any, return the count, otherwise nil."
-  (skroad--indices-have-payload-p text-type payload (skroad--buf-indices)))
-
-(defun skroad--current-indices-foreach (text-type fn &rest other-args)
-  "Apply FN to all payloads of TEXT-TYPE in the current node's indices."
-  (skroad--with-text-type-indices text-type (skroad--buf-indices)
+(defun skroad--indices-foreach (indices text-type fn &rest other-args)
+  "Apply FN to all payloads of TEXT-TYPE in the given INDICES."
+  (skroad--with-text-type-indices indices text-type
     (maphash #'(lambda (key _val) (apply fn (cons key other-args))) index)))
 
-(defun skroad--current-indices-count-pred (text-type pred n)
-  "Try to find at most N indexed payloads of TEXT-TYPE on which PRED is true.
+(defun skroad--indices-count-pred (indices text-type pred n)
+  "Try to find at most N payloads of TEXT-TYPE in INDICES on which PRED is true.
 Stop after finding N (or exhausting the index); return the number found."
   (catch 'found
     (let ((count 0))
-      (skroad--current-indices-foreach
+      (skroad--indices-foreach
+       indices
        text-type
        #'(lambda (k)
            (when (and (funcall pred k) (= (setq count (1+ count)) n))
              (throw 'found count))))
       count)))
 
-(defun skroad--current-indices-count-type (text-type)
-  "Return the number of unique objects of TEXT-TYPE in the current indices."
-  (or (skroad--with-text-type-indices text-type (skroad--buf-indices)
+(defun skroad--indices-count-type (indices text-type)
+  "Return the number of unique objects of TEXT-TYPE in the given INDICES."
+  (or (skroad--with-text-type-indices indices text-type
         (hash-table-count index))
       0))
 
-(defun skroad--current-indices-get-all-type (text-type)
-  "Return a list of all unique objects of TEXT-TYPE in the current indices."
+(defun skroad--indices-get-all-type (indices text-type)
+  "Return a list of all unique objects of TEXT-TYPE in the given INDICES."
   (let (result)
-    (skroad--current-indices-foreach text-type #'(lambda (o) (push o result)))
+    (skroad--indices-foreach indices text-type #'(lambda (o) (push o result)))
     result))
 
 ;;; Atomic Text Type. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -2229,20 +2223,12 @@ assuming that the node was actually shown."
 (defun skroad--action-dead-link-init (origin target)
   "A dead link to TARGET was found to exist during the indexing of ORIGIN."
   (message "dead init: origin=%s target=%s" origin target)
-  ;; (when (and (skroad--cache-peek origin) (skroad--cache-peek target)
-  ;;            (skroad--node-connected-p target origin))
-  ;;   (message "dead link in '%s' to '%s' should be revived!" origin target)
-  ;;   )
   )
 
 (defun skroad--action-dead-link-create (origin target)
   "A dead link to TARGET was first introduced into an already-indexed ORIGIN."
   (message "dead create: origin=%s target=%s dist=%s" origin target
            skroad--at-a-distance)
-  ;; (when (and (skroad--cache-peek origin) (skroad--cache-peek target)
-  ;;            (skroad--node-connected-p origin target))
-  ;;   (message "new dead link in '%s' to '%s' should be revived!" origin target)
-  ;;   )
   )
 
 ;; Yank (with optional ARGS) into a node when standing on a live link to it.
@@ -2287,7 +2273,8 @@ assuming that the node was actually shown."
   (skroad--buf-indices-sync) ;; Make sure this node's indices are up to date
   (let* ((node (skroad--data-at)) ;; The live link being banished
          (single ;; Is this the last remaining copy of an indexed live link?
-          (eq (skroad--link-has-live-p node) 1))) ;; nil for self/specials/dupes
+          ;; nil for self/specials/dupes:
+          (eq (skroad--indices-connected-p (skroad--buf-indices) node) 1)))
     (if (and single (skroad--in-node-tail-p)) ;; No-op if a single in the tail
         (skroad--info "'%s' is already in the tail and has no duplicates!" node)
       (when single ;; About to delete a single from the body?
@@ -2423,13 +2410,10 @@ The returned result may be a single face or a list with mixins on a base face."
   "Insert a live link to NODE at the current point."
   (insert (skroad--link-generate-live node)))
 
-(defun skroad--link-has-live-p (node)
-  "Determine whether the current node has at least one live link to NODE."
-  (skroad--current-indices-have-payload-p 'skroad--text-link-node-live node))
-
 (defun skroad--link-get-all-live ()
   "Return all live links indexed in the current node."
-  (skroad--current-indices-get-all-type 'skroad--text-link-node-live))
+  (skroad--indices-get-all-type
+   (skroad--buf-indices) 'skroad--text-link-node-live))
 
 (defun skroad--cmd-liven-at (&rest _args)
   "Liven"
@@ -2457,10 +2441,6 @@ The returned result may be a single face or a list with mixins on a base face."
   :finder-filter #'skroad--after-node-title-p
   :use 'skroad--text-mixin-atomic-delimited
   :use 'skroad--text-mixin-indexed)
-
-(defun skroad--link-has-dead-p (node)
-  "Determine whether the current node has at least one dead link to NODE."
-  (skroad--current-indices-have-payload-p 'skroad--text-link-node-dead node))
 
 (defun skroad--link-generate-dead (node)
   "Generate a dead link to NODE."
@@ -2506,31 +2486,65 @@ If START/END are given, constrain the replacement to that range."
   (skroad--link-delete-in-tail victim) ;; Always remove victim from tail.
   (if (skroad--link-replace-in-body victim target) ;; Replaced in body?
       (skroad--link-delete-in-tail target) ;; ... delete target in tail;
-    (skroad--connect-to target))) ;; ... if not, ensure a link to target.
+    (skroad--link-connect target))) ;; ... if not, ensure a link exists.
 
 (defun skroad--link-revive-to (node)
   "If the current node has at least one dead link to NODE, revive that link.
 Return true if any such links were in fact revived."
-  (and (skroad--link-has-dead-p node) ;; Any dead links to node?
+  (and (skroad--indices-have-payload-p
+        (skroad--buf-indices) 'skroad--text-link-node-dead node)
        (skroad--link-revive node))) ;; Liven the dead links.
 
-(defun skroad--connect-to (node)
+(defun skroad--indices-connected-p (indices node)
+  "Return t when INDICES exist and have live link(s) to NODE."
+  (skroad--indices-have-payload-p indices 'skroad--text-link-node-live node))
+
+(defun skroad--node-known-connected-p (origin &optional target)
+  "True if ORIGIN has live link(s) to TARGET (if given; else, current node).
+If ORIGIN does not exist, has no index, or if TARGET is special, return nil."
+  (let ((node (or target (skroad--current-node))))
+    (unless (skroad--node-special-p node)
+      (skroad--indices-connected-p (skroad--cache-fetch origin) node))))
+
+(defun skroad--link-connect (node)
   "Ensure that the current node has at least one live link to NODE.
 If it had dead links to NODE, liven them; else, test for existing live links;
 failing either of the above, emplace a new live link in the tail.
 Return t if there had previously been no live links to NODE."
   (unless (skroad--node-self-p node) ;; May not connect to self
-    (let ((had-live (skroad--link-has-live-p node)))
+    (let ((had-live (skroad--indices-connected-p (skroad--buf-indices) node)))
       (unless (or (skroad--link-revive-to node) had-live)
         (skroad--link-insert-live-in-tail node))
       (not had-live))))
 
-(defun skroad--disconnect-to (node)
+(defun skroad--link-disconnect (node)
   "Ensure that the current node does NOT have any live links to NODE.
 Return t if there had actually been a live link to NODE previously."
-  (when (skroad--link-has-live-p node)
+  (when (skroad--indices-connected-p (skroad--buf-indices) node)
     (skroad--link-unlink node)
     t))
+
+(defun skroad--node-connect (origin target &optional create-origin)
+  "If ORIGIN and TARGET exist, ensure that ORIGIN has a live link to TARGET.
+If ORIGIN does not exist, create it (if CREATE-ORIGIN is t; otherwise, no-op.)
+Do not run type actions.  ORIGIN is indexed if it had not been indexed prior.
+Return t strictly when ORIGIN has been newly-connected to TARGET."
+  (when (skroad--cache-peek target) ;; Target must exist, or no-op.
+    (let ((origin-indices (skroad--cache-peek origin)))
+      (when (if origin-indices ;; Make sure there isn't a known connection yet:
+                (not (skroad--indices-connected-p origin-indices target))
+              create-origin) ;; Origin doesn't exist? Check if we may create it.
+        (skroad--with-node origin t (skroad--link-connect target))))))
+
+(defun skroad--node-disconnect (origin target)
+  "If node ORIGIN exists, ensure that it has NO live links to node TARGET.
+Do not run type actions.  ORIGIN is indexed if it had not been indexed prior.
+Return t strictly when ORIGIN has been newly-disconnected from TARGET."
+  (let ((origin-indices (skroad--cache-peek origin)))
+    (when (and origin-indices ;; Origin must exist, or no-op
+               (or (eq origin-indices 'index-me) ;; Proceed if orig not indexed
+                   (skroad--indices-connected-p origin-indices target)))
+      (skroad--with-node origin t (skroad--link-disconnect target)))))
 
 ;; URLs. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -3066,6 +3080,7 @@ If TEXT-ONLY is t, return results suitable for hovertext."
   "Generate the name of the current log node."
   (skroad--make-log-node (skroad--make-date-string skroad--log-month-format)))
 
+;; TODO: move cached pos to current entry? (if log isn't open?)
 (defun skroad--log-node-op (node op &optional unique reason aux-node)
   "Record an OP on NODE to the current log node.
 The current log node is created if it did not previously exist.
@@ -3084,8 +3099,8 @@ If AUX-NODE is given, refresh its history as well as that of NODE."
        (when node-exists
          (skroad--link-revive-to node)) ;; Revive if adding a live link
        (skroad--emplace-log-entry log-entry unique)
-       (skroad--connect-to (skroad--make-log-node "Log"))
-       (skroad--connect-to (skroad--current-year-log-name)))
+       (skroad--link-connect (skroad--make-log-node "Log"))
+       (skroad--link-connect (skroad--current-year-log-name)))
      (skroad--defer ;; Refresh history, if bufferized, after all of this is done
       (skroad--history-render node t)
       (when aux-node (skroad--history-render aux-node t))))))
@@ -3689,9 +3704,11 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 (defun skroad--current-node-get-link-count-label ()
   "Generate the link count label for the current node."
   (let ((n-live
-         (skroad--current-indices-count-type 'skroad--text-link-node-live))
+         (skroad--indices-count-type
+          (skroad--buf-indices) 'skroad--text-link-node-live))
         (n-dead
-         (skroad--current-indices-count-type 'skroad--text-link-node-dead)))
+         (skroad--indices-count-type
+          (skroad--buf-indices)'skroad--text-link-node-dead)))
     (format
      " (%s)"
      (concat (format "%sL" (or n-live "?"))
@@ -3763,77 +3780,6 @@ Return the path where the node is found on disk."
         (skroad--log-node-create node)) ;; Report creation to log.
        (t (error "Could not activate node '%s'!" node))))
     node-path))
-
-;; (defun skroad--cache-fetch (node)
-;;   "Return indices for NODE; or `index-me' if not indexed; or nil if empty."
-;;   (let ((data (skroad--cache-peek node))) (when (not (eq data 'empty)) data)))
-
-;; (defun skroad--cache-indexed-p (node)
-;;   "Return t if NODE is interned in the cache and has been indexed."
-;;   (let ((data (skroad--cache-peek node))) (and data (not (eq data 'index-me)))))
-
-;; (memq 'empty '(nil empty index-me))
-
-(defun skroad--node-ensure-indices (node)
-  "Ensure that NODE (created if required) has been indexed; return its indices."
-  (if (skroad--cache-indexed-p node)
-      (skroad--cache-fetch node)
-    (skroad--with-node node nil (skroad--buf-indices)))) ;; Runs actions!
-
-(defun skroad--node-connected-p (local remote)
-  "Test whether LOCAL has any live links to REMOTE.
-LOCAL is indexed/created if required.  If REMOTE is special, return nil."
-  (unless (skroad--node-special-p remote)
-    (skroad--indices-have-payload-p
-     'skroad--text-link-node-live remote (skroad--node-ensure-indices local))))
-
-(defun skroad--node-connect (local remote &optional create-local type-actions)
-  "If nodes LOCAL and REMOTE exist, ensure that LOCAL has a live link to REMOTE.
-If CREATE-LOCAL is t, allow creating LOCAL if it did not already exist.
-If TYPE-ACTIONS is t, type actions will run.  Return t if newly-connected."
-  (when (and (skroad--cache-peek remote)
-             (or create-local (skroad--cache-peek local))
-             (not (and (skroad--cache-indexed-p local)
-                       (skroad--node-connected-p local remote))))
-    (skroad--with-node local (not type-actions) (skroad--connect-to remote))))
-
-(defun skroad--node-disconnect (local remote &optional type-actions)
-  "If node LOCAL exists, ensure that it has NO live links to node REMOTE.
-If TYPE-ACTIONS is t, type actions will run.  Return t if newly-disconnected."
-  (when (and (skroad--cache-peek local)
-             (or (not (skroad--cache-indexed-p local))
-                 (skroad--node-connected-p local remote)))
-    (skroad--with-node
-      local (not type-actions) (skroad--disconnect-to remote))))
-
-(defun skroad--indices-have-live-p (indices node)
-  "Test whether the given INDICES exist and have any live links to NODE.
-If NODE is special, return nil."
-  (unless (or (null indices)
-              (skroad--node-special-p node)
-              (memq indices '(empty index-me)))
-    (skroad--indices-have-payload-p 'skroad--text-link-node-live node indices)))
-
-;; (defun skroad--node-connect (local remote &optional create-local type-actions)
-;;   "If nodes LOCAL and REMOTE exist, ensure that LOCAL has a live link to REMOTE.
-;; If CREATE-LOCAL is t, allow creating LOCAL if it did not already exist.
-;; If TYPE-ACTIONS is t, type actions will run.  Return t if newly-connected."
-;;   (when (skroad--cache-peek remote) ;; Remote must still exist
-;;     (let ((local-idx (skroad--cache-peek local)))
-;;       (when (and (or local-idx create-local)
-;;                  (not (skroad--indices-have-live-p local-idx remote)))
-;;         (skroad--with-node
-;;           local (not type-actions) (skroad--connect-to remote))))))
-
-;; (defun skroad--node-disconnect (local remote &optional type-actions)
-;;   "If node LOCAL exists, ensure that it has NO live links to node REMOTE.
-;; If TYPE-ACTIONS is t, type actions will run.  Return t if newly-disconnected."
-;;   (let ((local-idx (skroad--cache-peek local)))
-;;     (when (and local-idx
-;;                (or (eq local-idx 'index-me)
-;;                    (skroad--indices-have-live-p local-idx remote)))
-;;       (skroad--with-node
-;;         local (not type-actions) (skroad--disconnect-to remote)))))
 
 ;; Special nodes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -3922,18 +3868,15 @@ never marked as leaves.")
 
 (defun skroad--node-stub-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known stub."
-  (skroad--node-connected-p
-   skroad--special-node-stubs (or node (skroad--current-node))))
+  (skroad--node-known-connected-p skroad--special-node-stubs node))
 
 (defun skroad--node-orphan-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known orphan."
-  (skroad--node-connected-p
-   skroad--special-node-orphans (or node (skroad--current-node))))
+  (skroad--node-known-connected-p skroad--special-node-orphans node))
 
 (defun skroad--node-leaf-p (&optional node)
   "Return t when NODE (if given; else the current node) is a known leaf."
-  (skroad--node-connected-p
-   skroad--special-node-leaves (or node (skroad--current-node))))
+  (skroad--node-known-connected-p skroad--special-node-leaves node))
 
 (defun skroad--defer-orphan-stub-check (node)
   "Defer a check for orphan-stub status of NODE; propose deletion if true."
@@ -3988,7 +3931,8 @@ or until a lint is performed (node will be silently deleted unless open.)"
 No-op if the node is a special or log."
   (unless (or (skroad--node-special-p) (skroad--node-log-p))
     (let* ((peer-count
-            (skroad--current-indices-count-pred
+            (skroad--indices-count-pred
+             (skroad--buf-indices)
              'skroad--text-link-node-live
              #'(lambda (l) (not (skroad--node-log-p l)))
              2)) ;; Try to find at most two live links to regular nodes
@@ -3997,6 +3941,8 @@ No-op if the node is a special or log."
            (changed-leaf (skroad--node-set-leaf node (= peer-count 1))))
       (when (or changed-orphan changed-leaf)
         (skroad--update-modeline-node-label)))))
+
+;; Misc. Interactive Node Commands. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--prompt-delete-node (node)
   "Prompt to confirm the deletion of NODE and return the answer."
@@ -4100,7 +4046,7 @@ Warning: undo info is lost in all affected buffers!"
    ((and (skroad--cache-rename old new)
          (skroad--mv-file (skroad--node-path old) (skroad--node-path new)))
     (dolist (special-node skroad--special-nodes) ;; Replace in specials first
-      (when (skroad--node-connected-p special-node old)
+      (when (skroad--node-known-connected-p special-node old)
         (skroad--with-node special-node t
           (skroad--link-replace old new))))
     (skroad--with-node new t
@@ -4117,6 +4063,8 @@ Warning: undo info is lost in all affected buffers!"
            (skroad--link-replace old new)
            (skroad--clear-buf-undo-info))))))
    (t (error "Could not rename node '%s' to '%s'!" old new))))
+
+;; Lint. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; TODO: write log entry if changing
 (defun skroad--rectify-node-title ()
