@@ -3274,6 +3274,15 @@ A non-log link is emplaced at the top of the tail, just below the indicator."
             (t (goto-char tail-start) ;; An ordinary link?
                (insert link "\n"))))))
 
+(defun skroad--node-delete-body ()
+  "Delete the entire body of the current node."
+  (delete-region
+   (skroad--node-body-start-pos) (skroad--node-body-end-pos)))
+
+(defun skroad--node-delete-tail ()
+  "Delete the entire tail of the current node."
+  (delete-region (skroad--node-tail-start-pos) (point-max)))
+
 ;; Tail text highlighting. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--render-tail-indicator (limit)
@@ -3826,8 +3835,7 @@ If ALLOW-INDEX is false, do not track changes or maintain indices for the node."
   (when (skroad--node-special-p node)
     (skroad--with-node node t
       (skroad--change-internal-title node)
-      (delete-region (skroad--node-tail-start-pos) (point-max))
-      )))
+      (skroad--node-delete-tail))))
 
 (defun skroad--set-special-status (node special status)
   "Set connection STATUS of NODE from the given SPECIAL (assumed) node.
@@ -3970,9 +3978,8 @@ Before deleting, disconnect any remaining live links."
         (when skroad--lint-in-progress
           (skroad--lint-report "Deleted during lint!") node)
         (skroad--with-node node nil ;; Run actions to disconnect all peers
-          (delete-region
-           (skroad--node-body-start-pos) (skroad--node-body-end-pos))
-          (delete-region (skroad--node-tail-start-pos) (point-max)))
+          (skroad--node-delete-body)
+          (skroad--node-delete-tail))
         (dolist (special-node skroad--special-nodes) ;; Clear in all specials
           (skroad--node-disconnect special-node node))
         (unless node-closed ;; Unless already closed, clean it up and close:
