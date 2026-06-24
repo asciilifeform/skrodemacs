@@ -2220,17 +2220,6 @@ assuming that the node was actually shown."
       (isearch-mode t) ;; Set up a forward isearch...
       (isearch-yank-string from-search)))) ;; ... using current search string.
 
-(defun skroad--action-dead-link-init (origin target)
-  "A dead link to TARGET was found to exist during the indexing of ORIGIN."
-  (message "dead init: origin=%s target=%s" origin target)
-  )
-
-(defun skroad--action-dead-link-create (origin target)
-  "A dead link to TARGET was first introduced into an already-indexed ORIGIN."
-  (message "dead create: origin=%s target=%s dist=%s" origin target
-           skroad--at-a-distance)
-  )
-
 ;; Yank (with optional ARGS) into a node when standing on a live link to it.
 (defun skroad--cmd-teleyank-at (&rest args)
   "YankTo"
@@ -2314,21 +2303,25 @@ Do NOT run type actions in either node.  Log any resulting changes to lint."
                (skroad--link-generate-dead remote))
        local))))
 
-;; TODO: assert
 (defun skroad--node-connect-back-create (local remote)
   "A live link to REMOTE was introduced into LOCAL, which previously had none.
 Ensure that if LOCAL still exists, REMOTE will exist and have a live link to it.
 No-op if LOCAL no longer exists.  Do NOT run type actions in either node."
   (message "connected: local=%s remote=%s" local remote)
-  (skroad--node-connect remote local t))
+  (unless (skroad--node-connect remote local t)
+    (skroad--lint-report
+     (format "Back-connecting to '%s', but was already connected." local)
+     remote)))
 
-;; TODO: assert
 (defun skroad--node-disconnect-back (local remote)
   "The node LOCAL once had live link(s) to REMOTE, but the last one was removed.
 Ensure that REMOTE (if it still exists) does NOT have any live links to LOCAL.
 Do NOT run type actions in either node."
   (message "disconnected: local=%s remote=%s" local remote)
-  (skroad--node-disconnect remote local))
+  (unless (skroad--node-disconnect remote local)
+    (skroad--lint-report
+     (format "Disconnecting from '%s', but was already disconnected." local)
+     remote)))
 
 (defun skroad--link-face (node &optional dead ac)
   "Return the effective face/facelist for a link to NODE in the current context.
@@ -2431,6 +2424,17 @@ The returned result may be a single face or a list with mixins on a base face."
 (defun skroad--dead-link-face (node)
   "Return the face appropriate for the display of a dead link to NODE."
   (skroad--link-face node t))
+
+(defun skroad--action-dead-link-init (origin target)
+  "A dead link to TARGET was found to exist during the indexing of ORIGIN."
+  (message "dead init: origin=%s target=%s" origin target)
+  )
+
+(defun skroad--action-dead-link-create (origin target)
+  "A dead link to TARGET was first introduced into an already-indexed ORIGIN."
+  (message "dead create: origin=%s target=%s dist=%s" origin target
+           skroad--at-a-distance)
+  )
 
 (skroad--deftype skroad--text-link-node-dead
   :doc "Dead (i.e. revivable placeholder) link to a skroad node."
@@ -3852,6 +3856,7 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
         (skroad--node-connect special node t) ;; Create the special if required
       (skroad--node-disconnect special node)))) ;; No-op unless special exists
 
+;; TODO: make lint log indexable?
 (skroad--define-special-node skroad--special-node-lint "#Lint" nil
   "Record of all lint output (including problems corrected at run time).")
 
