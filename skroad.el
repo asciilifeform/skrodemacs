@@ -4100,6 +4100,9 @@ Warning: undo info is lost in all affected buffers!"
   (unless skroad--lint-in-progress
     (skroad--complete-all-deferred) ;; Ensure no ops are pending
     (setq skroad--lint-in-progress t)
+    (skroad--with-node skroad--special-node-lint nil ;; Zap lint log
+      (skroad--node-delete-body)
+      (skroad--node-delete-tail))
     (dolist (node ;; Hollow out (don't delete) the nodes we regenerate :
              (list skroad--special-node-orphans
                    skroad--special-node-stubs))
