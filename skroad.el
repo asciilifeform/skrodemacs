@@ -253,7 +253,8 @@
 (defmacro skroad--with-file (file &rest body)
   "Evaluate BODY, operating on FILE (must exist).  Use existing buffer, if any."
   (declare (indent defun))
-  (let ((visiting-buffer (make-symbol "visiting-buffer")))
+  (let ((large-file-warning-threshold nil)
+        (visiting-buffer (make-symbol "visiting-buffer")))
     `(let ((,visiting-buffer (find-buffer-visiting ,file)))
        (if ,visiting-buffer ;; If a buffer is visiting this file, use it:
            (with-current-buffer ,visiting-buffer
@@ -4342,6 +4343,7 @@ repeating a search already in progress is a no-op."
   "Init aspects common to both skroad-mode and skroad-ephemeral-mode."
   (font-lock-mode 1)
   (visual-line-mode 1)
+  (setq-local large-file-warning-threshold nil)
   ;; Handle word boundaries correctly (atomics are treated as unitary words) :
   (setq-local find-word-boundary-function-table
               skroad--find-word-boundary-function-table)
