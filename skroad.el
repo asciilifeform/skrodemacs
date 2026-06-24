@@ -2310,7 +2310,7 @@ No-op if LOCAL no longer exists.  Do NOT run type actions in either node."
   (message "connected: local=%s remote=%s" local remote)
   (unless (skroad--node-connect remote local t)
     (skroad--lint-report
-     (format "Back-connecting '%s', but was already connected." local)
+     (format "Back-connecting '%s', but was already connected?" local)
      remote)))
 
 (defun skroad--node-disconnect-back (local remote)
@@ -2320,7 +2320,7 @@ Do NOT run type actions in either node."
   (message "disconnected: local=%s remote=%s" local remote)
   (unless (skroad--node-disconnect remote local)
     (skroad--lint-report
-     (format "Back-disconnecting '%s', but was already disconnected." local)
+     (format "Back-disconnecting '%s', but was already disconnected?" local)
      remote)))
 
 (defun skroad--link-face (node &optional dead ac)
@@ -4077,15 +4077,15 @@ Warning: undo info is lost in all affected buffers!"
       (setq-local skroad--current-node-title nil) ;; Zap cached title
       (let ((inhibit-modification-hooks t))
         (skroad--link-replace old new)) ;; Update any self-links
-      (skroad--log-node-rename old new)
-      (skroad--request-refontify) ;; Schedule a refontification.
-      (skroad--clear-buf-undo-info) ;; Zap undo info
       (skroad--link-foreach-live ;; Schedule replacement in each peer
        #'(lambda (peer &rest _)
            (skroad--defer
             (skroad--with-existing-node peer t ;; Don't perform actions
               (skroad--link-replace old new)
-              (skroad--clear-buf-undo-info)))))))
+              (skroad--clear-buf-undo-info)))))
+      (skroad--log-node-rename old new)
+      (skroad--request-refontify) ;; Schedule a refontification.
+      (skroad--clear-buf-undo-info))) ;; Zap undo info
    (t (error "Could not rename node '%s' to '%s'!" old new))))
 
 ;; Lint. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
