@@ -3283,6 +3283,11 @@ A non-log link is emplaced at the top of the tail, just below the indicator."
   "Delete the entire tail of the current node."
   (delete-region (skroad--node-tail-start-pos) (point-max)))
 
+(defun skroad--node-delete-all ()
+  "Delete the entire contents of the current node."
+  (skroad--node-delete-body)
+  (skroad--node-delete-tail))
+
 ;; Tail text highlighting. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--render-tail-indicator (limit)
@@ -3978,8 +3983,7 @@ Before deleting, disconnect any remaining live links."
         (when skroad--lint-in-progress
           (skroad--lint-report "Deleted during lint!") node)
         (skroad--with-node node nil ;; Run actions to disconnect all peers
-          (skroad--node-delete-body)
-          (skroad--node-delete-tail))
+          (skroad--node-delete-all))
         (dolist (special-node skroad--special-nodes) ;; Clear in all specials
           (skroad--node-disconnect special-node node))
         (unless node-closed ;; Unless already closed, clean it up and close:
@@ -4101,8 +4105,7 @@ Warning: undo info is lost in all affected buffers!"
     (skroad--complete-all-deferred) ;; Ensure no ops are pending
     (setq skroad--lint-in-progress t)
     (skroad--with-node skroad--special-node-lint nil ;; Zap lint log
-      (skroad--node-delete-body)
-      (skroad--node-delete-tail))
+      (skroad--node-delete-all))
     (dolist (node ;; Hollow out (don't delete) the nodes we regenerate :
              (list skroad--special-node-orphans
                    skroad--special-node-stubs))
