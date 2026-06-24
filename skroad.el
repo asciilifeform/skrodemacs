@@ -3039,7 +3039,7 @@ If UNIQUE is true, TEXT found to be a duplicate is simply moved to the end."
   (let ((n (or node (skroad--current-node))))
     (and (stringp n) (string-prefix-p skroad--log-node-prefix n))))
 
-(defun skroad--make-log-node (title)
+(defun skroad--make-log-title (title)
   "Create a log node from the given TITLE."
   (concat skroad--log-node-prefix title))
 
@@ -3081,11 +3081,11 @@ If TEXT-ONLY is t, return results suitable for hovertext."
 
 (defun skroad--current-year-log-name ()
   "Generate the name of the current year log node."
-  (skroad--make-log-node (skroad--make-date-string skroad--log-year-format)))
+  (skroad--make-log-title (skroad--make-date-string skroad--log-year-format)))
 
 (defun skroad--current-log-name ()
   "Generate the name of the current log node."
-  (skroad--make-log-node (skroad--make-date-string skroad--log-month-format)))
+  (skroad--make-log-title (skroad--make-date-string skroad--log-month-format)))
 
 ;; TODO: move cached pos to current entry? (if log isn't open?)
 (defun skroad--log-node-op (node op &optional unique reason aux-node)
@@ -3106,7 +3106,7 @@ If AUX-NODE is given, refresh its history as well as that of NODE."
        (when node-exists
          (skroad--link-revive-to node)) ;; Revive if adding a live link
        (skroad--emplace-log-entry log-entry unique)
-       (skroad--link-connect (skroad--make-log-node "Log"))
+       (skroad--link-connect (skroad--make-log-title "Log"))
        (skroad--link-connect (skroad--current-year-log-name)))
      (skroad--defer ;; Refresh history, if bufferized, after all of this is done
       (skroad--history-render node t)
