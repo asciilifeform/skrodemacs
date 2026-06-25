@@ -425,6 +425,9 @@ If we're in ephemeral mode, return the name of the buffer."
 
 ;; Node visitation. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defvar skroad--lint-in-progress nil
+  "Indicates that lint is currently in progress.")
+
 (defmacro skroad--visit-open-nodes (&rest body)
   "Evaluate BODY in each currently-live node or ephemeral buffer."
   (declare (indent defun))
@@ -547,6 +550,12 @@ If BUF was hidden, sync and close it."
   "Disable residence in all currently-resident nodes.  Close the hidden ones."
   (skroad--visit-open-nodes
     (skroad--buf-disable-resident (current-buffer))))
+
+(defun skroad--save-all-resident ()
+  "Save all resident nodes."
+  (skroad--visit-open-nodes
+    (when skroad--buf-is-resident
+      (save-buffer))))
 
 (defvar skroad--at-a-distance nil
   "Will equal t if we are executing inside a `skroad--with-node'.")
@@ -677,7 +686,9 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
 (defun skroad--save-current-node ()
   "Save the current node."
   (when (and (skroad--current-buffer-node-p)
-             buffer-file-name)
+             buffer-file-name
+             (not (and skroad--buf-is-resident ;; Don't save residents in lint
+                       skroad--lint-in-progress)))
     (setq-local require-final-newline t) ;; Insert final newline if absent
     (save-buffer)))
 
@@ -1560,9 +1571,6 @@ Also execute the following text type actions (unless NO-ACTIONS) :
 
 (defvar-local skroad--buf-indices-table 'fetch-me
   "Cached text type indices for the current node.  Do not access directly.")
-
-(defvar skroad--lint-in-progress nil
-  "Indicates that lint is currently in progress.")
 
 (defun skroad--buf-indices ()
   "Obtain the current node's text type indices."
@@ -4217,7 +4225,8 @@ Warning: undo info is lost in all affected buffers!"
         (skroad--lint-report
          (format "Lint complete, linted %s nodes." count))
         (skroad--request-refontify) ;; Schedule a refontification.
-        (setq skroad--lint-in-progress nil))))))
+        (setq skroad--lint-in-progress nil)
+        (skroad--save-all-resident)))))) ;; Finally save the residents.
 
 ;; Autocomplete for live node links. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
