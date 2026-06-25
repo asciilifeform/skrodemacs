@@ -468,6 +468,12 @@ Return the path where the node is found on disk."
        (t (error "Could not activate node '%s'!" node))))
     node-path))
 
+(defun skroad--close-current-node ()
+  "Sync and close the current node."
+  (skroad--buf-indices-sync)
+  (skroad--save-current-node)
+  (kill-buffer))
+
 (defun skroad--buf-hidden-p (buf)
   "Determine whether BUF is currently hidden."
   (string-prefix-p " " buf))
@@ -533,10 +539,8 @@ If BUF was hidden, sync and close it."
       (remove-hook 'window-buffer-change-functions #'skroad--win-expose-buf t)
       (setq-local skroad--buf-is-resident nil)
       (message "Node '%s' is no longer resident." (skroad--current-node))
-      (unless (get-buffer-window buf t)
-        (skroad--buf-indices-sync)
-        (skroad--save-current-node)
-        (kill-buffer)))))
+      (unless (get-buffer-window buf t) ;; If it was hidden, close it:
+        (skroad--close-current-node)))))
 
 (defun skroad--disable-resident-all ()
   "Disable residence in all currently-resident nodes.  Close the hidden ones."
@@ -2300,9 +2304,7 @@ If it doesn't exist yet, try completing all deferred actions before giving up."
           (unless (or (get-buffer-window from-buf t) ;; Origin buf not buried?
                       (skroad--node-special-p node)) ;; ... or opened a special?
             (with-current-buffer from-buf ;; Sync and close the buried node:
-              (skroad--buf-indices-sync)
-              (skroad--save-current-node)
-              (kill-buffer)))))
+              (skroad--close-current-node)))))
       t))) ;; Return t when displayed.
 
 (defun skroad--action-live-link-activate (node)
