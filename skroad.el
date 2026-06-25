@@ -3205,9 +3205,11 @@ If AUX-NODE is given, refresh its history as well as that of NODE."
                     (skroad--link-generate-live node)
                   (skroad--link-generate-dead node)))
           (annotation (or (and (stringp reason) (concat " (" reason ")")) ""))
-          (log-entry (concat op " " link annotation)))
+          (log-entry (concat op " " link annotation))
+          (current-log-node (skroad--current-log-name)))
      (message (concat "Skroad Log Entry: " log-entry))
-     (skroad--with-node (skroad--current-log-name) nil ;; Run actions!
+     (skroad--node-enable-resident current-log-node) ;; TODO: disable any old?
+     (skroad--with-node current-log-node nil ;; Run actions!
        (when node-exists
          (skroad--link-revive-to node)) ;; Revive if adding a live link
        (skroad--emplace-log-entry log-entry unique)
@@ -4420,6 +4422,7 @@ repeating a search already in progress is a no-op."
     (skroad--silence-modifications 'add-face-text-property)
     (skroad--cache)
     (skroad--init-special-nodes)
+    (skroad--node-enable-resident (skroad--current-log-name))
     ;; Make sure desktop-save doesn't try to save hidden resident nodes:
     (add-hook 'kill-emacs-hook #'skroad--disable-resident-all -90)
     (when skroad--lint-on-boot ;; Perform a lint on boot?
