@@ -512,7 +512,9 @@ Return the path where the node is found on disk."
 (put 'skroad--win-expose-buf 'permanent-local-hook t)
 
 (defvar-local skroad--buf-is-resident nil
-  "Indicates whether the current buffer is resident.")
+  "Indicates whether the current buffer is resident.
+Such buffers do not die when killed, but are hidden (with font-lock suspended.)
+When a resident node is displayed, its buffer is unhidden and refontified.")
 
 (defun skroad--node-enable-resident (node)
   "Visit NODE (create/index if required) in a resident buffer."
