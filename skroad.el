@@ -518,35 +518,36 @@ Return the path where the node is found on disk."
                   (let ((large-file-warning-threshold nil))
                     (find-file-noselect node-path)))))
     (with-current-buffer buf
-      (add-hook 'kill-buffer-query-functions
-                #'skroad--current-buf-bury-and-hide nil t)
-      (add-hook 'window-buffer-change-functions #'skroad--win-expose-buf nil t)
-      (setq-local skroad--buf-is-resident t)
-      (if (get-buffer-window buf t)
-          (skroad--buf-unhide buf)
-        (skroad--buf-hide buf)))
-    (message "Node '%s' is now resident." node)
-    t))
+      (unless skroad--buf-is-resident
+        (add-hook 'kill-buffer-query-functions
+                  #'skroad--current-buf-bury-and-hide nil t)
+        (add-hook 'window-buffer-change-functions #'skroad--win-expose-buf nil t)
+        (setq-local skroad--buf-is-resident t)
+        (message "Node '%s' is now resident." node)
+        (if (get-buffer-window buf t)
+            (skroad--buf-unhide buf)
+          (skroad--buf-hide buf))
+        t))))
 
 (defun skroad--buf-disable-resident (buf)
   "Ensure that BUF becomes a killable file buffer.
 If BUF was hidden, sync and close it."
   (when (buffer-live-p buf) ;; No-op if not resident
     (with-current-buffer buf
-      (skroad--buf-unhide (current-buffer))
-      (remove-hook 'kill-buffer-query-functions
-                   #'skroad--current-buf-bury-and-hide t)
-      (remove-hook 'window-buffer-change-functions #'skroad--win-expose-buf t)
-      (setq-local skroad--buf-is-resident nil)
-      (message "Node '%s' is no longer resident." (skroad--current-node))
-      (unless (get-buffer-window buf t) ;; If it was hidden, close it:
-        (skroad--close-current-node)))))
+      (when skroad--buf-is-resident
+        (skroad--buf-unhide (current-buffer))
+        (remove-hook 'kill-buffer-query-functions
+                     #'skroad--current-buf-bury-and-hide t)
+        (remove-hook 'window-buffer-change-functions #'skroad--win-expose-buf t)
+        (setq-local skroad--buf-is-resident nil)
+        (message "Node '%s' is no longer resident." (skroad--current-node))
+        (unless (get-buffer-window buf t) ;; If it was not visible, close it:
+          (skroad--close-current-node))))))
 
 (defun skroad--disable-resident-all ()
   "Disable residence in all currently-resident nodes.  Close the hidden ones."
   (skroad--visit-open-nodes
-    (when skroad--buf-is-resident
-      (skroad--buf-disable-resident (current-buffer)))))
+    (skroad--buf-disable-resident (current-buffer))))
 
 (defvar skroad--at-a-distance nil
   "Will equal t if we are executing inside a `skroad--with-node'.")
