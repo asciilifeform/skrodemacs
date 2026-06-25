@@ -2273,8 +2273,8 @@ If an invalid link was seen during indexing, report it to the lint."
               (skroad--node-special-p node)))))
 
 (defun skroad--buf-pop-win (buf)
-  "Display BUF.  If that creates a window, delete it when BUF is killed —
-unless the window is ever shown another buffer, which cancels it for good."
+  "Display BUF.  If a window is created, delete it when BUF is killed —
+unless the window has ever been used to display another buffer."
   (when (buffer-live-p buf)
     (let ((before (window-list nil 'nomini)))
       (pop-to-buffer buf)
