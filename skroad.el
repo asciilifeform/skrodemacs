@@ -250,58 +250,6 @@
     (user-error
      "This command works only in skroad-mode and skroad-ephemeral-mode!")))
 
-(defmacro skroad--with-file (file &rest body)
-  "Evaluate BODY, operating on FILE (must exist).  Use existing buffer, if any."
-  (declare (indent defun))
-  (let ((large-file-warning-threshold nil)
-        (visiting-buffer (make-symbol "visiting-buffer")))
-    `(let ((,visiting-buffer (find-buffer-visiting ,file)))
-       (if ,visiting-buffer ;; If a buffer is visiting this file, use it:
-           (with-current-buffer ,visiting-buffer
-             (let ((inhibit-read-only t)) ;; Allow changing special nodes
-               (save-mark-and-excursion
-                 (atomic-change-group ,@body))))
-         (with-temp-buffer ;; No visiting buffer, so make one:
-           (insert-file-contents ,file t nil nil t) ;; set as unmodified
-           ,@body)))))
-
-(defvar skroad--at-a-distance nil
-  "Will equal t if we are executing inside a `skroad--with-node'.")
-
-(defmacro skroad--with-node (node no-actions &rest body)
-  "If NODE does not exist, it is created and interned in the cache.
-NODE's indices are synced with any pending changes (or, if absent, created.)
-Optional BODY is evaluated with NODE buffer; new changes are synced and saved.
-When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
-  (declare (indent defun))
-  `(let ((skroad--at-a-distance t))
-     (skroad--with-file (skroad--node-ensure ,node)
-       (skroad--buf-indices-sync)
-       ,(if body
-            `(unwind-protect (progn ,@body)
-               (when (buffer-modified-p)
-                 (skroad--buf-indices-sync ,no-actions)
-                 (skroad--before-save-common)
-                 (skroad--save-current-node))
-               (when (skroad--mode-p)
-                 (skroad--selector-update)))
-          t))))
-
-(defmacro skroad--with-existing-node (node no-actions &rest body)
-  "Like `skroad--with-node', but do not create the node if it does not exist."
-  (declare (indent defun))
-  `(when (skroad--cache-peek ,node)
-     (skroad--with-node ,node ,no-actions ,@body)))
-
-(defmacro skroad--visit-open-nodes (&rest body)
-  "Evaluate BODY in each currently-open node or ephemeral buffer."
-  (declare (indent defun))
-  (let ((visiting-buffer (make-symbol "visiting-buffer")))
-    `(dolist (,visiting-buffer (buffer-list))
-       (with-current-buffer ,visiting-buffer
-         (when (skroad--mode-or-ephemeral-p)
-           ,@body)))))
-
 (defun skroad--keyword-to-symbol (exp)
   "If EXP is a keyword, convert it to a symbol.  If not, return it as-is."
   (unless (keywordp exp) (error "%s is not a keyword!" exp))
@@ -475,6 +423,155 @@ If we're in ephemeral mode, return the name of the buffer."
       (skroad--fontify-current-line)
       (delete-region (point) (progn (forward-line 1) (point))))))
 
+;; Node visitation. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defmacro skroad--visit-open-nodes (&rest body)
+  "Evaluate BODY in each currently-live node or ephemeral buffer."
+  (declare (indent defun))
+  (let ((visiting-buffer (make-symbol "visiting-buffer")))
+    `(dolist (,visiting-buffer (buffer-list))
+       (when (buffer-live-p ,visiting-buffer)
+         (with-current-buffer ,visiting-buffer
+           (when (skroad--mode-or-ephemeral-p)
+             ,@body))))))
+
+(defmacro skroad--with-file (file &rest body)
+  "Evaluate BODY, operating on FILE (must exist).  Use existing buffer, if any."
+  (declare (indent defun))
+  (let ((large-file-warning-threshold nil)
+        (visiting-buffer (make-symbol "visiting-buffer")))
+    `(let ((,visiting-buffer (find-buffer-visiting ,file)))
+       (if ,visiting-buffer ;; If a buffer is visiting this file, use it:
+           (with-current-buffer ,visiting-buffer
+             (let ((inhibit-read-only t)) ;; Allow changing special nodes
+               (save-mark-and-excursion
+                 (atomic-change-group ,@body))))
+         (with-temp-buffer ;; No visiting buffer, so make one:
+           (insert-file-contents ,file t nil nil t) ;; set as unmodified
+           ,@body)))))
+
+(defun skroad--node-ensure (node)
+  "Find or create NODE, and ensure that it is interned in the cache.
+Return the path where the node is found on disk."
+  (let ((node-path (skroad--node-path node))) ;; Path where it would exist
+    (unless (skroad--cache-peek node) ;; Do nothing if node is already active
+      (cond
+       ((file-exists-p node-path) ;; Found on disk, but needs internment
+        (skroad--cache-intern-unindexed node)) ;; Intern, index on demand
+       ((file-writable-p node-path) ;; Not found on disk, but can be made:
+        (write-region
+         (concat node "\n" skroad--node-tail-indicator)
+         nil node-path nil 0) ;; Insert title and tail indicator.
+        (skroad--cache-write node nil) ;; Intern the node with an empty index
+        (skroad--node-set-stub node t) ;; It starts as a stub (unless special)
+        (skroad--log-node-create node)) ;; Report creation to log.
+       (t (error "Could not activate node '%s'!" node))))
+    node-path))
+
+(defun skroad--buf-hidden-p (buf)
+  "Determine whether BUF is currently hidden."
+  (string-prefix-p " " buf))
+
+(defun skroad--buf-hide (buf)
+  "Vanish BUF from buffer lists and suspend font lock in it."
+  (with-current-buffer buf
+    (unless (skroad--buf-hidden-p (buffer-name))
+      (rename-buffer (concat " " (buffer-name)) t)
+      (skroad--suspend-font-lock))))
+
+(defun skroad--buf-unhide (buf)
+  "Resume font lock in BUF and restore it to buffer lists."
+  (with-current-buffer buf
+    (when (skroad--buf-hidden-p (buffer-name))
+      (skroad--resume-font-lock)
+      (skroad--refontify-current-buffer)
+      (rename-buffer (substring (buffer-name) 1) t))))
+
+(defun skroad--current-buf-bury-and-hide ()
+  "Buffer-local `kill-buffer-query-functions' entry: hide instead of kill."
+  (let ((buf (current-buffer)))
+    (replace-buffer-in-windows buf) ;; Bury
+    (skroad--buf-hide buf) ;; Exclude from buffer list
+    nil)) ;; Buffer never dies
+
+(put 'skroad--current-buf-bury-and-hide 'permanent-local-hook t)
+
+(defun skroad--win-expose-buf (window)
+  "Buffer-local `window-buffer-change-functions' entry: expose when shown."
+  (skroad--buf-unhide (window-buffer window)))
+
+(put 'skroad--win-expose-buf 'permanent-local-hook t)
+
+(defvar-local skroad--buf-is-resident nil
+  "Indicates whether the current buffer is resident.")
+
+(defun skroad--node-enable-resident (node)
+  "Visit NODE (create/index if required) in a resident buffer."
+  (let* ((node-path (skroad--node-ensure node))
+         (buf (or (find-buffer-visiting node-path)
+                  (let ((large-file-warning-threshold nil))
+                    (find-file-noselect node-path)))))
+    (with-current-buffer buf
+      (add-hook 'kill-buffer-query-functions
+                #'skroad--current-buf-bury-and-hide nil t)
+      (add-hook 'window-buffer-change-functions #'skroad--win-expose-buf nil t)
+      (setq-local skroad--buf-is-resident t)
+      (if (get-buffer-window buf t)
+          (skroad--buf-unhide buf)
+        (skroad--buf-hide buf)))
+    (message "Node '%s' is now resident." node)
+    t))
+
+(defun skroad--buf-disable-resident (buf)
+  "Ensure that BUF becomes a killable file buffer.
+If BUF was hidden, sync and close it."
+  (when (buffer-live-p buf) ;; No-op if not resident
+    (with-current-buffer buf
+      (skroad--buf-unhide (current-buffer))
+      (remove-hook 'kill-buffer-query-functions
+                   #'skroad--current-buf-bury-and-hide t)
+      (remove-hook 'window-buffer-change-functions #'skroad--win-expose-buf t)
+      (setq-local skroad--buf-is-resident nil)
+      (message "Node '%s' is no longer resident." (skroad--current-node))
+      (unless (get-buffer-window buf t)
+        (skroad--buf-indices-sync)
+        (skroad--save-current-node)
+        (kill-buffer)))))
+
+(defun skroad--disable-resident-all ()
+  "Disable residence in all currently-resident nodes.  Close the hidden ones."
+  (skroad--visit-open-nodes
+    (when skroad--buf-is-resident
+      (skroad--buf-disable-resident (current-buffer)))))
+
+(defvar skroad--at-a-distance nil
+  "Will equal t if we are executing inside a `skroad--with-node'.")
+
+(defmacro skroad--with-node (node no-actions &rest body)
+  "If NODE does not exist, it is created and interned in the cache.
+NODE's indices are synced with any pending changes (or, if absent, created.)
+Optional BODY is evaluated with NODE buffer; new changes are synced and saved.
+When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
+  (declare (indent defun))
+  `(let ((skroad--at-a-distance t))
+     (skroad--with-file (skroad--node-ensure ,node)
+       (skroad--buf-indices-sync)
+       ,(if body
+            `(unwind-protect (progn ,@body)
+               (when (buffer-modified-p)
+                 (skroad--buf-indices-sync ,no-actions)
+                 (skroad--before-save-common)
+                 (skroad--save-current-node))
+               (when (skroad--mode-p)
+                 (skroad--selector-update)))
+          t))))
+
+(defmacro skroad--with-existing-node (node no-actions &rest body)
+  "Like `skroad--with-node', but do not create the node if it does not exist."
+  (declare (indent defun))
+  `(when (skroad--cache-peek ,node)
+     (skroad--with-node ,node ,no-actions ,@body)))
+
 ;; Idle queue for background ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--idle-work-queue nil
@@ -572,11 +669,11 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
 
 ;; TODO: actions at a distance always save?!!!!!
 ;; TODO: prevent backup files litter?
+;; TODO: zap renamer if it's in the current buffer!
 (defun skroad--save-current-node ()
   "Save the current node."
   (when (and (skroad--current-buffer-node-p)
-             buffer-file-name
-             (not (skroad--renamer-active-p)))
+             buffer-file-name)
     (setq-local require-final-newline t) ;; Insert final newline if absent
     (save-buffer)))
 
@@ -3789,24 +3886,6 @@ Returns t when a cached position was actually found."
 
 ;; TODO: 'import buffer as node' interactive command?
 
-(defun skroad--node-ensure (node)
-  "Find or create NODE, and ensure that it is interned in the cache.
-Return the path where the node is found on disk."
-  (let ((node-path (skroad--node-path node))) ;; Path where it would exist
-    (unless (skroad--cache-peek node) ;; Do nothing if node is already active
-      (cond
-       ((file-exists-p node-path) ;; Found on disk, but needs internment
-        (skroad--cache-intern-unindexed node)) ;; Intern, index on demand
-       ((file-writable-p node-path) ;; Not found on disk, but can be made:
-        (write-region
-         (concat node "\n" skroad--node-tail-indicator)
-         nil node-path nil 0) ;; Insert title and tail indicator.
-        (skroad--cache-write node nil) ;; Intern the node with an empty index
-        (skroad--node-set-stub node t) ;; It starts as a stub (unless special)
-        (skroad--log-node-create node)) ;; Report creation to log.
-       (t (error "Could not activate node '%s'!" node))))
-    node-path))
-
 ;; Special nodes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--special-nodes nil
@@ -3839,7 +3918,7 @@ If ALLOW-INDEX is false, do not track changes or maintain indices for the node."
 (defun skroad--init-special-nodes ()
   "Create (if it did not yet exist) and index (if indexable) each special node."
   (dolist (special-node skroad--special-nodes)
-    (skroad--with-node special-node t t)))
+    (skroad--node-enable-resident special-node)))
 
 (defun skroad--reset-special-node (node)
   "Hollow out the given special NODE."
@@ -4129,11 +4208,12 @@ Warning: undo info is lost in all affected buffers!"
                 (skroad--current-node-update-stub-status)
                 (skroad--clear-buf-undo-info)
                 )))))
-      (skroad--defer
-       (skroad--lint-report
-        (format "Lint complete, linted %s nodes." count))
-       (skroad--request-refontify) ;; Schedule a refontification.
-       (setq skroad--lint-in-progress nil)))))
+      (skroad--defer ;; Make sure this happens after all deferred lint ops
+       (skroad--defer
+        (skroad--lint-report
+         (format "Lint complete, linted %s nodes." count))
+        (skroad--request-refontify) ;; Schedule a refontification.
+        (setq skroad--lint-in-progress nil))))))
 
 ;; Autocomplete for live node links. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -4327,6 +4407,8 @@ repeating a search already in progress is a no-op."
 (defun skroad--ensure-global-init ()
   "Perform the mode global init if it has not been done in this session."
   (unless skroad--global-init-done
+    (setq skroad--global-init-done t)
+    (message "Skroad Global Init Running...")
     ;; Prohibit change hooks firing when only text properties have changed:
     (skroad--silence-modifications 'put-text-property)
     (skroad--silence-modifications 'add-text-properties)
@@ -4334,10 +4416,12 @@ repeating a search already in progress is a no-op."
     (skroad--silence-modifications 'remove-list-of-text-properties)
     (skroad--silence-modifications 'set-text-properties)
     (skroad--silence-modifications 'add-face-text-property)
+    (skroad--cache)
     (skroad--init-special-nodes)
+    ;; Make sure desktop-save doesn't try to save hidden resident nodes:
+    (add-hook 'kill-emacs-hook #'skroad--disable-resident-all -90)
     (when skroad--lint-on-boot ;; Perform a lint on boot?
-      (run-with-idle-timer 0 nil #'skroad--lint))
-    (setq skroad--global-init-done t)))
+      (run-with-idle-timer 0 nil #'skroad--lint))))
 
 (defun skroad--mode-common-init ()
   "Init aspects common to both skroad-mode and skroad-ephemeral-mode."
@@ -4366,6 +4450,7 @@ repeating a search already in progress is a no-op."
 
 ;; TODO: proper mode exit cleanup
 ;; TODO: do NOT set the mode if file is not in the data dir
+;; TODO: revert handler (and autorevert?)
 (define-derived-mode skroad-mode text-mode "Skroad"
   (skroad--ensure-global-init)
   (skroad--mode-common-init)
