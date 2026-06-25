@@ -502,13 +502,11 @@ Return the path where the node is found on disk."
     (replace-buffer-in-windows buf) ;; Bury
     (skroad--buf-hide buf) ;; Exclude from buffer list
     nil)) ;; Buffer never dies
-
 (put 'skroad--current-buf-bury-and-hide 'permanent-local-hook t)
 
 (defun skroad--win-expose-buf (window)
   "Buffer-local `window-buffer-change-functions' entry: expose when shown."
   (skroad--buf-unhide (window-buffer window)))
-
 (put 'skroad--win-expose-buf 'permanent-local-hook t)
 
 (defvar-local skroad--buf-is-resident nil
@@ -2274,6 +2272,32 @@ If an invalid link was seen during indexing, report it to the lint."
      (not (or (skroad--node-self-p node)
               (skroad--node-special-p node)))))
 
+(defun skroad--buf-pop-win (buf)
+  "Display BUF.  If that creates a window, delete it when BUF is killed —
+unless the window is ever shown another buffer, which cancels it for good."
+  (when (buffer-live-p buf)
+    (let ((before (window-list nil 'nomini)))
+      (pop-to-buffer buf)
+      (let ((win (get-buffer-window buf)))
+        (when (and win (not (memq win before)))
+          (with-current-buffer buf
+            (letrec ((initial t)
+                     (killer #'(lambda ()
+                                 (when (and (window-live-p win)
+                                            (eq (window-buffer win) buf)
+                                            (window-parent win))
+                                   (delete-window win))))
+                     (poison
+                      #'(lambda (w)
+                          (when (eq w win)
+                            (if initial (setq initial nil)
+                              (with-current-buffer buf
+                                (remove-hook 'kill-buffer-hook killer t)
+                                (remove-hook 'window-buffer-change-functions
+                                             poison t)))))))
+              (add-hook 'kill-buffer-hook killer nil t)
+              (add-hook 'window-buffer-change-functions poison nil t))))))))
+
 (defun skroad--foreground-node (node)
   "If NODE is visible somewhere, go there; otherwise open in the current window.
 If NODE does not exist, this is a no-op with a warning.  On success, return t."
@@ -2292,7 +2316,7 @@ If NODE does not exist, this is a no-op with a warning.  On success, return t."
           ;; Node was not already open anywhere; load it:
           (unless (file-exists-p node-path)
             (user-error "Node '%s' not found on disk! Try again?" node))
-          (pop-to-buffer (find-file-noselect node-path)))
+          (skroad--buf-pop-win (find-file-noselect node-path)))
         t) ;; Return t when node actually got displayed.
     (user-error "Node '%s' does not exist!" node) ;; If it did not exist
     nil)) ;; Return nil if it did not get displayed.
@@ -2386,7 +2410,7 @@ assuming that the node was actually shown."
   (interactive nil skroad-mode skroad-ephemeral-mode)
   (skroad--modes-only)
   (let ((node (skroad--data-at)))
-    (pop-to-buffer (skroad--history-render node))))
+    (skroad--buf-pop-win (skroad--history-render node))))
 
 (defconst skroad--link-node-live-start-delim "[["
   "Delimiter indicating the start of a live Skroad link.")
@@ -2721,7 +2745,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
                (browse-url url)
                (current-buffer))))
     (unless (eq buf (current-buffer))
-      (pop-to-buffer buf))))
+      (skroad--buf-pop-win buf))))
 
 ;; Turn the URL at point into plain text by placing a space after the prefix.
 (defun skroad--cmd-bare-url-comment ()
@@ -3483,7 +3507,7 @@ If this node did not have a tail indicator, this is a no-op."
   (interactive nil skroad-mode)
   (skroad--modes-only)
   (let ((node (skroad--current-node)))
-    (pop-to-buffer (skroad--history-render node))))
+    (skroad--buf-pop-win (skroad--history-render node))))
 
 (skroad--deftype skroad--text-node-title
   :doc "Node title."
@@ -4408,7 +4432,7 @@ repeating a search already in progress is a no-op."
   (interactive (list (read-string "Search all Skroad nodes for: ")))
   (when (string-empty-p string)
     (user-error "Empty search string!"))
-  (pop-to-buffer (skroad--search-render string)))
+  (skroad--buf-pop-win (skroad--search-render string)))
 
 ;; Global binding for find-node and node text search:
 (keymap-global-set "M-o" #'find-skroad-node)
