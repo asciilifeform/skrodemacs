@@ -426,7 +426,24 @@ If we're in ephemeral mode, return the name of the buffer."
 ;; Node visitation. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--lint-in-progress nil
-  "Indicates that lint is currently in progress.")
+  "Indicates that a lint is currently in progress.")
+
+(defvar-local skroad--buf-is-resident nil
+  "Indicates whether the current buffer is resident.
+Such buffers do not die when killed, but are hidden (with font-lock suspended.)
+When a resident node is displayed, its buffer is unhidden and refontified.")
+
+;; TODO: actions at a distance always save?!!!!!
+;; TODO: prevent backup files litter?
+;; TODO: zap renamer if it's in the current buffer!
+(defun skroad--save-current-node ()
+  "Save the current node."
+  (when (and (skroad--current-buffer-node-p)
+             buffer-file-name
+             (not (and skroad--buf-is-resident ;; Don't save residents in lint
+                       skroad--lint-in-progress)))
+    (setq-local require-final-newline t) ;; Insert final newline if absent
+    (save-buffer)))
 
 (defmacro skroad--visit-open-nodes (&rest body)
   "Evaluate BODY in each currently-live node or ephemeral buffer."
@@ -479,19 +496,19 @@ Return the path where the node is found on disk."
 
 (defun skroad--buf-hidden-p (buf)
   "Determine whether BUF is currently hidden."
-  (string-prefix-p " " buf))
+  (string-prefix-p " " (buffer-name buf)))
 
 (defun skroad--buf-hide (buf)
   "Vanish BUF from buffer lists and suspend font lock in it."
-  (with-current-buffer buf
-    (unless (skroad--buf-hidden-p (buffer-name))
+  (unless (skroad--buf-hidden-p buf)
+    (with-current-buffer buf
       (rename-buffer (concat " " (buffer-name)) t)
       (skroad--suspend-font-lock))))
 
 (defun skroad--buf-unhide (buf)
   "Resume font lock in BUF and restore it to buffer lists."
-  (with-current-buffer buf
-    (when (skroad--buf-hidden-p (buffer-name))
+  (when (skroad--buf-hidden-p buf)
+    (with-current-buffer buf
       (skroad--resume-font-lock)
       (skroad--refontify-current-buffer)
       (rename-buffer (substring (buffer-name) 1) t))))
@@ -508,11 +525,6 @@ Return the path where the node is found on disk."
   "Buffer-local `window-buffer-change-functions' entry: expose when shown."
   (skroad--buf-unhide (window-buffer window)))
 (put 'skroad--win-expose-buf 'permanent-local-hook t)
-
-(defvar-local skroad--buf-is-resident nil
-  "Indicates whether the current buffer is resident.
-Such buffers do not die when killed, but are hidden (with font-lock suspended.)
-When a resident node is displayed, its buffer is unhidden and refontified.")
 
 (defun skroad--node-enable-resident (node)
   "Visit NODE (create/index if required) in a resident buffer."
@@ -679,18 +691,6 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
   (not (skroad--idle-no-work-p)))
 
 ;; File and directory ops. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; TODO: actions at a distance always save?!!!!!
-;; TODO: prevent backup files litter?
-;; TODO: zap renamer if it's in the current buffer!
-(defun skroad--save-current-node ()
-  "Save the current node."
-  (when (and (skroad--current-buffer-node-p)
-             buffer-file-name
-             (not (and skroad--buf-is-resident ;; Don't save residents in lint
-                       skroad--lint-in-progress)))
-    (setq-local require-final-newline t) ;; Insert final newline if absent
-    (save-buffer)))
 
 (defun skroad--mv-file (old-file new-file &optional overwrite)
   "Move OLD-FILE to NEW-FILE (may NOT be equal), updating buffers if required.
