@@ -438,10 +438,10 @@ When a resident node is displayed, its buffer is unhidden and refontified.")
 ;; TODO: zap renamer if it's in the current buffer!
 (defun skroad--save-current-node ()
   "Save the current node."
-  (when (and (skroad--current-buffer-node-p)
-             buffer-file-name
+  (when (and buffer-file-name
              (not (and skroad--buf-is-resident ;; Don't save residents in lint
                        skroad--lint-in-progress)))
+    (skroad--renamer-deactivate t) ;; Deactivate if here
     (setq-local require-final-newline t) ;; Insert final newline if absent
     (save-buffer)))
 
@@ -1834,6 +1834,16 @@ Stop after finding N (or exhausting the index); return the number found."
   (unless (string-empty-p (skroad--get-renamer-text))
     (skroad--skip-whitespace-forward)))
 
+(defun skroad--renamer-add-hooks ()
+  "Install the local and global renamer hooks when activating renamer."
+  (add-hook 'kill-buffer-hook #'skroad--renamer-deactivate nil t)
+  (add-hook 'post-command-hook #'skroad--renamer-validate))
+
+(defun skroad--renamer-remove-hooks ()
+  "Remove the local and global renamer hooks when deactivating renamer."
+  (remove-hook 'kill-buffer-hook #'skroad--renamer-deactivate t)
+  (remove-hook 'post-command-hook #'skroad--renamer-validate))
+
 ;; Try to activate the renamer in the current zone.
 ;; TODO: save/restore undo history?
 (defun skroad--cmd-renamer-activate-here ()
@@ -1872,7 +1882,7 @@ Stop after finding N (or exhausting the index); return the number found."
                 (overlay-put skroad--renamer 'snapshot snapshot))
               (set-buffer-modified-p nil)
               (skroad--renamer-go-to-text-start)
-              (add-hook 'post-command-hook #'skroad--renamer-validate)))))))))
+              (skroad--renamer-add-hooks)))))))))
 
 (defun skroad--cmd-direct-renamer-activate-here ()
   "Rename"
@@ -1880,23 +1890,26 @@ Stop after finding N (or exhausting the index); return the number found."
   (skroad--modes-only)
   (call-interactively #'skroad--cmd-renamer-activate-here))
 
-(defun skroad--renamer-deactivate ()
-  "Deactivate the renamer if it is currently active."
+(defun skroad--renamer-deactivate (&optional if-here)
+  "Deactivate the renamer if it is currently active.
+If IF-HERE is true, do it only if the renamer is active in the current buffer."
   (when (skroad--renamer-active-p)
     (let ((renamer-buffer (overlay-buffer skroad--renamer)))
-      (when (buffer-live-p renamer-buffer)
-        (with-current-buffer renamer-buffer
-          (skroad--deactivate-mark)
-          (when-let* ((snapshot (overlay-get skroad--renamer 'snapshot)))
-            (undo-amalgamate-change-group snapshot)
-            (cancel-change-group snapshot))
-          (delete-overlay (overlay-get skroad--renamer 'hider))
-          (delete-overlay skroad--renamer)
-          (skroad--resume-font-lock)
-          (setq-local inhibit-modification-hooks nil)
-          (skroad--set-writability)
-          (skroad--selector-update))))
-    (remove-hook 'post-command-hook #'skroad--renamer-validate)
+      (when (or (not if-here)
+                (eq renamer-buffer (current-buffer)))
+        (skroad--renamer-remove-hooks)
+        (skroad--resume-font-lock)
+        (when (buffer-live-p renamer-buffer)
+          (with-current-buffer renamer-buffer
+            (skroad--deactivate-mark)
+            (when-let* ((snapshot (overlay-get skroad--renamer 'snapshot)))
+              (undo-amalgamate-change-group snapshot)
+              (cancel-change-group snapshot))
+            (delete-overlay (overlay-get skroad--renamer 'hider))
+            (delete-overlay skroad--renamer)
+            (setq-local inhibit-modification-hooks nil)
+            (skroad--set-writability)
+            (skroad--selector-update)))))
     (setq skroad--renamer nil)))
 
 (defun skroad--get-renamer-text ()
@@ -3907,7 +3920,6 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 
 (defun skroad--before-kill-buffer-hook ()
   "Triggers prior to a skroad buffer being killed."
-  (skroad--renamer-deactivate)
   (skroad--save-cache-point))
 
 (defun skroad--maybe-restore-cached-point ()
