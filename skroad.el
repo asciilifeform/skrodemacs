@@ -517,6 +517,7 @@ Return the path where the node is found on disk."
     (with-current-buffer buf
       (skroad--resume-font-lock)
       (skroad--refontify-current-buffer)
+      (skroad--update-modeline-node-label)
       (rename-buffer (substring (buffer-name) 1) t))))
 
 (defun skroad--current-buf-bury-and-hide ()
@@ -3241,13 +3242,27 @@ If TEXT-ONLY is t, return results suitable for hovertext."
         (goto-char next)))
     result))
 
-(defun skroad--current-year-log-name ()
+(defun skroad--current-year-log-title ()
   "Generate the name of the current year log node."
   (skroad--make-log-title (skroad--make-date-string skroad--log-year-format)))
 
-(defun skroad--current-log-name ()
+(defun skroad--current-log-title ()
   "Generate the name of the current log node."
   (skroad--make-log-title (skroad--make-date-string skroad--log-month-format)))
+
+(defvar skroad--current-log-node nil "Current log node.")
+
+(defun skroad--get-current-log-node ()
+  "Return the current log node (initialized if req'd, and close old, if any)."
+  (let ((prev-log skroad--current-log-node)
+        (now-log (skroad--current-log-title)))
+    (when (not (equal now-log prev-log)) ;; Initialization, or rolling over?
+      (when prev-log ;; De-resident the previous log, if there was one:
+        (skroad--with-existing-node prev-log t
+          (skroad--buf-disable-resident (current-buffer))))
+      (skroad--node-enable-resident now-log)
+      (setq skroad--current-log-node now-log))
+    now-log))
 
 ;; TODO: move cached pos to current entry? (if log isn't open?)
 (defun skroad--log-node-op (node op &optional unique reason aux-node)
@@ -3262,16 +3277,14 @@ If AUX-NODE is given, refresh its history as well as that of NODE."
                     (skroad--link-generate-live node)
                   (skroad--link-generate-dead node)))
           (annotation (or (and (stringp reason) (concat " (" reason ")")) ""))
-          (log-entry (concat op " " link annotation))
-          (current-log-node (skroad--current-log-name)))
+          (log-entry (concat op " " link annotation)))
      (message (concat "Skroad Log Entry: " log-entry))
-     (skroad--node-enable-resident current-log-node) ;; TODO: disable any old?
-     (skroad--with-node current-log-node nil ;; Run actions!
+     (skroad--with-node (skroad--get-current-log-node) nil ;; Run actions!
        (when node-exists
          (skroad--link-revive-to node)) ;; Revive if adding a live link
        (skroad--emplace-log-entry log-entry unique)
        (skroad--link-connect (skroad--make-log-title "Log"))
-       (skroad--link-connect (skroad--current-year-log-name)))
+       (skroad--link-connect (skroad--current-year-log-title)))
      (skroad--defer ;; Refresh history, if bufferized, after all of this is done
       (skroad--history-render node t)
       (when aux-node (skroad--history-render aux-node t))))))
@@ -3864,12 +3877,14 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
                header-updater)))))))
 
 ;; Modeline. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (defun skroad--get-node-label (node)
   "Generate a label describing the given NODE."
   (concat
    (cond ((skroad--node-special-p node) "Special ")
-         ((skroad--node-log-p node) "Log ") ;; TODO: display "Current" when so
+         ((skroad--node-log-p node)
+          (concat
+           (when (equal skroad--current-log-node node) "Current ")
+           "Log "))
          (t (concat
              (cond ((skroad--node-leaf-p node) "Leaf ")
                    ((skroad--node-orphan-p node) "Orphan "))
@@ -4006,11 +4021,11 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
 (defun skroad--lint-report (text &optional node)
   "Log TEXT to the current lint report (when it does not already appear there.)
 If NODE is given, prefix the report with a link to it."
-  (let* ((link (if (skroad--cache-peek node)
-                   (skroad--link-generate-live node)
-                 (skroad--link-generate-dead node)))
-         (prefix
-          (or (and node (concat link ": ")) ""))
+  (let* ((prefix
+          (or (and node
+                   (concat (if (skroad--cache-peek node)
+                               (skroad--link-generate-live node)
+                             (skroad--link-generate-dead node)) ": ")) ""))
          (report (concat prefix text)))
     (message (concat "Skroad Lint: " report)) ;; Always print to console also
     (skroad--with-node skroad--special-node-lint t
@@ -4205,8 +4220,7 @@ After all of this, the VICTIM is permanently deleted."
       (skroad--clear-buf-undo-info) ;; Zap undo info
       (skroad--delete-node victim t) ;; Permanently delete the victim!
       (skroad--log-node-merge victim this-node)
-      (skroad--request-refontify) ;; Schedule a refontification.
-      )))
+      (skroad--request-refontify)))) ;; Schedule a refontification.
 
 (defun skroad--rename-node (old new)
   "Rename node OLD to NEW.  OLD is presumed to exist; NEW is a valid title.
@@ -4486,7 +4500,7 @@ repeating a search already in progress is a no-op."
     (skroad--silence-modifications 'add-face-text-property)
     (skroad--cache)
     (skroad--init-special-nodes)
-    (skroad--node-enable-resident (skroad--current-log-name))
+    (skroad--get-current-log-node) ;; Init the current log
     ;; Make sure desktop-save doesn't try to save hidden resident nodes:
     (add-hook 'kill-emacs-hook #'skroad--disable-resident-all -90)
     (when skroad--lint-on-boot ;; Perform a lint on boot?
