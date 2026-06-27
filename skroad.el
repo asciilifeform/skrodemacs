@@ -3048,6 +3048,8 @@ lines are highlighted."
   "Assemble a history of NODE (if it exists) via log links found in its tail.
 The log links, if they exist, are visited in reverse chronological order.
 If the node does not exist, return nil; if no history is found: empty string."
+  (when (skroad--node-special-p node)
+    (user-error "Special nodes do not have history!"))
   (skroad--with-existing-node node t
     (let ((result "")) ;; Will remain empty if nothing is found
       (funcall
@@ -3989,9 +3991,8 @@ If NODE is given, prefix the report with a live link to it."
           (or (and node (concat (skroad--link-generate-live node) ": ")) ""))
          (report (concat prefix text)))
     (message (concat "Skroad Lint: " report)) ;; Always print to console also
-    (skroad--defer
-     (skroad--with-node skroad--special-node-lint t
-       (skroad--emplace-log-entry report t)))))
+    (skroad--with-node skroad--special-node-lint t
+      (skroad--emplace-log-entry report t))))
 
 (skroad--define-special-node skroad--special-node-stubs "#Stubs"
   "A node with links to all known stub nodes. A stub node is a regular node
