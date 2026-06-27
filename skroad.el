@@ -3953,7 +3953,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 
 (defun skroad--maybe-restore-cached-point ()
   "If the current node had been visited in this session, restore the point.
-Returns t when a cached position was actually found.  No-op if prohibited."
+Returns the cached position, if one was found.  No-op if prohibited."
   (when (skroad--allow-cache-point)
     (let ((cached-point (skroad--fetch-cache-point (skroad--current-node))))
       (if cached-point
