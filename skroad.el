@@ -3982,7 +3982,7 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
       (skroad--node-disconnect special node)))) ;; No-op unless special exists
 
 (skroad--define-special-node skroad--special-node-lint "#Lint"
-  "Record of all lint output (including problems corrected at run time).")
+  "Record of all lint output (including problems found/corrected at run time).")
 
 (defun skroad--lint-report (text &optional node)
   "Log TEXT to the current lint report (when it does not already appear there.)
