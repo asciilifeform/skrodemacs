@@ -2050,6 +2050,7 @@ suppression that `suppress-keymap' installs via command remapping."
 
 (defun skroad--node-renamer-do-rename (current proposed)
   "Rename the node titled CURRENT to PROPOSED."
+  (skroad--complete-all-deferred) ;; Ensure no ops are pending
   (skroad--rename-node current proposed))
 
 (skroad--deftype skroad--text-mixin-node-renamer
@@ -4224,7 +4225,6 @@ After all of this, the VICTIM is permanently deleted."
 (defun skroad--rename-node (old new)
   "Rename node OLD to NEW.  OLD is presumed to exist; NEW is a valid title.
 Warning: undo info is lost in all affected buffers!"
-  (skroad--complete-all-deferred) ;; Ensure no ops are pending
   (cond
    ((and (skroad--cache-rename old new)
          (skroad--mv-file (skroad--node-path old) (skroad--node-path new)))
