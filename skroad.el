@@ -3936,8 +3936,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
   (gethash node skroad--point-cache))
 
 (defun skroad--save-cache-point ()
-  "Save the current node's point to the point cache.
-No-op if the current buffer does not contain a node or is resident."
+  "Save the current node's point to the point cache, if permitted."
   (when (skroad--allow-cache-point)
     (skroad--store-cache-point (skroad--current-node) (point))))
 
@@ -3954,7 +3953,7 @@ No-op if the current buffer does not contain a node or is resident."
 
 (defun skroad--maybe-restore-cached-point ()
   "If the current node had been visited in this session, restore the point.
-Returns t when a cached position was actually found."
+Returns t when a cached position was actually found.  No-op if prohibited."
   (when (skroad--allow-cache-point)
     (let ((cached-point (skroad--fetch-cache-point (skroad--current-node))))
       (if cached-point
