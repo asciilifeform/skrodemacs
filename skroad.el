@@ -3508,7 +3508,7 @@ If this node did not have a tail indicator, this is a no-op."
         (user-error "Node '%s' cannot be deleted!" node)
       (skroad--complete-all-deferred) ;; Pending ops must complete first
       (when (skroad--delete-node node)
-        (skroad--log-node-remove node "Requested")
+        (skroad--log-node-remove node "Manual")
         (skroad--info "Node '%s' was permanently deleted!" node)))))
 
 ;; Move the tail indicator to the position suggested by the tail heuristic.
@@ -4053,7 +4053,7 @@ never marked as leaves.")
   (skroad--defer
    (when (and (skroad--node-orphan-p node) (skroad--node-stub-p node))
      (when (skroad--delete-node node)
-       (skroad--log-node-remove node "Orphan stub")))))
+       (skroad--log-node-remove node "Orphan Stub")))))
 
 (defun skroad--node-set-stub (node status)
   "Set the stub STATUS of NODE.  See also `skroad--node-set-orphan'."
