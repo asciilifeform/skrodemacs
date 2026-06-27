@@ -3264,7 +3264,6 @@ If TEXT-ONLY is t, return results suitable for hovertext."
       (setq skroad--current-log-node now-log))
     now-log))
 
-;; TODO: move cached pos to current entry? (if log isn't open?)
 (defun skroad--log-node-op (node op &optional unique reason aux-node)
   "Record an OP on NODE to the current log node.
 The current log node is created if it did not previously exist.
