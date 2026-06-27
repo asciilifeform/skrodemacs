@@ -448,6 +448,7 @@ When a resident node is displayed, its buffer is unhidden and refontified.")
 ;; TODO: sync and save?
 (defun skroad--before-kill-buffer-hook ()
   "Triggers prior to a skroad buffer being killed."
+  ;; (message "closing: %s" (skroad--current-node))
   (skroad--save-cache-point))
 
 (defmacro skroad--visit-open-nodes (&rest body)
@@ -2171,7 +2172,6 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
       (select-window window))
     (goto-char (skroad--zone-start click-pos))
     (skroad--selector-update) ;; Make sure we update before leaving a node
-    (skroad--save-cache-point)
     (let ((old-buf (current-buffer)))
       (skroad--do-link-action click-pos display-mode)
       (unless (eq old-buf (current-buffer)) ;; Don't warp if remained in buffer
@@ -3703,8 +3703,7 @@ If this node did not have a tail indicator, this is a no-op."
     (unless (and isearch-mode (not (use-region-p)))
       (skroad--point-zone-handler skroad--buf-pre-command-point-state))
     (skroad--selector-update)
-    (skroad--adjust-mark-if-present)
-    (skroad--save-cache-point))
+    (skroad--adjust-mark-if-present))
   (when (or (skroad--idle-no-work-p) skroad--lint-in-progress)
     (skroad--maybe-refontify-now (skroad--idle-have-work-p))))
 
