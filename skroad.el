@@ -4195,7 +4195,6 @@ Warning: undo info is lost in all affected buffers!"
     (dolist (special-node skroad--special-nodes) ;; Replace in specials first
       (when (skroad--node-known-connected-p special-node old)
         (skroad--with-node special-node t
-          (message "replacing in %s: %s -> %s" special-node old new)
           (skroad--link-replace old new))))
     (skroad--with-node new t
       (skroad--change-internal-title new)
