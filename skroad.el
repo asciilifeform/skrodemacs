@@ -445,6 +445,11 @@ When a resident node is displayed, its buffer is unhidden and refontified.")
     (setq-local require-final-newline t) ;; Insert final newline if absent
     (save-buffer)))
 
+;; TODO: sync and save?
+(defun skroad--before-kill-buffer-hook ()
+  "Triggers prior to a skroad buffer being killed."
+  (skroad--save-cache-point))
+
 (defmacro skroad--visit-open-nodes (&rest body)
   "Evaluate BODY in each currently-live node or ephemeral buffer."
   (declare (indent defun))
@@ -3918,20 +3923,40 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 (defvar skroad--point-cache (make-hash-table :test 'equal)
   "Cache storing the last known interactive point position in a node.")
 
-(defun skroad--save-cache-point ()
-  "Save the current node's point to the point cache."
-  (when (skroad--current-buffer-node-p)
-    (puthash (skroad--current-node) (point) skroad--point-cache)))
+(defun skroad--store-cache-point (node pos)
+  "Save POS as the current cached point for NODE."
+  (puthash node pos skroad--point-cache))
 
-(defun skroad--before-kill-buffer-hook ()
-  "Triggers prior to a skroad buffer being killed."
-  (skroad--save-cache-point))
+(defun skroad--fetch-cache-point (node)
+  "Get the current cached point for NODE (return nil if there is none)."
+  (gethash node skroad--point-cache))
+
+(defun skroad--buf-allow-cache-point ()
+  "Return t when the current buffer is eligible for point caching."
+  (and (skroad--current-buffer-node-p) (not skroad--buf-is-resident)))
+
+(defun skroad--save-cache-point ()
+  "Save the current node's point to the point cache.
+No-op if the current buffer does not contain a node or is resident."
+  (when (skroad--buf-allow-cache-point)
+    (skroad--store-cache-point (skroad--current-node) (point))))
+
+(defun skroad--delete-cache-point (node)
+  "Remove the cached point for NODE, if there is one."
+  (remhash node skroad--point-cache))
+
+(defun skroad--mv-cache-point (old new)
+  "Transfer the cached point, if there is one, from OLD node to NEW node."
+  (let ((old-pos (skroad--fetch-cache-point old)))
+    (when old-pos
+      (skroad--delete-cache-point old)
+      (skroad--store-cache-point new old-pos))))
 
 (defun skroad--maybe-restore-cached-point ()
   "If the current node had been visited in this session, restore the point.
 Returns t when a cached position was actually found."
-  (when (skroad--current-buffer-node-p)
-    (let ((cached-point (gethash (skroad--current-node) skroad--point-cache)))
+  (when (skroad--buf-allow-cache-point)
+    (let ((cached-point (skroad--fetch-cache-point (skroad--current-node))))
       (if cached-point
           (goto-char (min (point-max) cached-point))
         (skroad--goto-node-body-start)
@@ -4122,6 +4147,7 @@ Before deleting, disconnect any remaining live links."
               (kill-buffer))))
         (skroad--cache-evict node) ;; Banish it from the cache
         (delete-file node-path) ;; Permanently delete the node file!
+        (skroad--delete-cache-point node) ;; Zap cached point, if any
         (skroad--request-refontify) ;; Schedule a refontification.
         t)))) ;; Return t when actually deleted.
 
@@ -4206,6 +4232,7 @@ Warning: undo info is lost in all affected buffers!"
             (skroad--with-existing-node peer t ;; Don't perform actions
               (skroad--link-replace old new)
               (skroad--clear-buf-undo-info)))))
+      (skroad--mv-cache-point old new) ;; Move cached point, if any
       (skroad--log-node-rename old new)
       (skroad--request-refontify) ;; Schedule a refontification.
       (skroad--clear-buf-undo-info))) ;; Zap undo info
