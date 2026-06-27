@@ -3983,8 +3983,7 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
 (defun skroad--lint-report (text &optional node)
   "Log TEXT to the current lint report (when it does not already appear there.)
 If NODE is given, prefix the report with a link to it."
-  (let* ((node-exists (skroad--cache-peek node)) ;; Does node still exist?
-         (link (if node-exists
+  (let* ((link (if (skroad--cache-peek node)
                    (skroad--link-generate-live node)
                  (skroad--link-generate-dead node)))
          (prefix
