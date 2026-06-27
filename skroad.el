@@ -3246,7 +3246,7 @@ If TEXT-ONLY is t, return results suitable for hovertext."
   "Generate the name of the current year log node."
   (skroad--make-log-title (skroad--make-date-string skroad--log-year-format)))
 
-(defun skroad--current-log-title ()
+(defun skroad--current-month-log-title ()
   "Generate the name of the current log node."
   (skroad--make-log-title (skroad--make-date-string skroad--log-month-format)))
 
@@ -3255,7 +3255,7 @@ If TEXT-ONLY is t, return results suitable for hovertext."
 (defun skroad--get-current-log-node ()
   "Return the current log node (initialized if req'd, and close old, if any)."
   (let ((prev-log skroad--current-log-node)
-        (now-log (skroad--current-log-title)))
+        (now-log (skroad--current-month-log-title)))
     (when (not (equal now-log prev-log)) ;; Initialization, or rolling over?
       (when prev-log ;; De-resident the previous log, if there was one:
         (skroad--with-existing-node prev-log t
