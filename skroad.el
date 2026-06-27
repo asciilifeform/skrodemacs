@@ -3920,7 +3920,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 
 ;; Point cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun skroad--buf-allow-cache-point ()
+(defun skroad--allow-cache-point ()
   "Return t when the current buffer is eligible for point caching."
   (and (skroad--current-buffer-node-p) (not skroad--buf-is-resident)))
 
@@ -3938,7 +3938,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 (defun skroad--save-cache-point ()
   "Save the current node's point to the point cache.
 No-op if the current buffer does not contain a node or is resident."
-  (when (skroad--buf-allow-cache-point)
+  (when (skroad--allow-cache-point)
     (skroad--store-cache-point (skroad--current-node) (point))))
 
 (defun skroad--delete-cache-point (node)
@@ -3955,7 +3955,7 @@ No-op if the current buffer does not contain a node or is resident."
 (defun skroad--maybe-restore-cached-point ()
   "If the current node had been visited in this session, restore the point.
 Returns t when a cached position was actually found."
-  (when (skroad--buf-allow-cache-point)
+  (when (skroad--allow-cache-point)
     (let ((cached-point (skroad--fetch-cache-point (skroad--current-node))))
       (if cached-point
           (goto-char (min (point-max) cached-point))
