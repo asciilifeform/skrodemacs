@@ -3972,7 +3972,7 @@ Returns the cached position, if one was found.  No-op if prohibited."
     (let ((cached-point (skroad--fetch-cache-point (skroad--current-node))))
       (if cached-point
           (goto-char (min (point-max) cached-point))
-        (skroad--goto-node-body-start)
+        (skroad--goto-node-body-start) ;; Jump to body start if not cached
         nil))))
 
 ;; Special nodes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
