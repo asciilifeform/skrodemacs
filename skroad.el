@@ -3520,7 +3520,7 @@ If this node did not have a tail indicator, this is a no-op."
 
 (defun skroad--cmd-title-show-node-history ()
   "History"
-  (interactive nil skroad-mode)
+  (interactive "*" skroad-mode) ;; Exclude specials
   (skroad--modes-only)
   (let ((node (skroad--current-node)))
     (skroad--buf-pop-win (skroad--history-render node))))
