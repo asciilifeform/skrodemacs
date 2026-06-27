@@ -1587,23 +1587,23 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
   (let* ((indices (skroad--buf-indices))
          (init (eq indices 'index-me))
          (have-changes (skroad--buf-indices-have-pending-p)))
-    (unless (skroad--node-disable-index-p)
-      (skroad--buf-indices-ensure-change-tracker)) ;; Init tracker if not yet
+    (skroad--buf-indices-ensure-change-tracker) ;; Init tracker if not yet
     (when init
-      (unless (skroad--node-disable-index-p)
-        (when have-changes
-          (message "Tried to apply changes to unindexed node: '%s', rescanning!"
-                   (skroad--current-node))
-          (setq-local skroad--buf-indices-pending nil))
-        (skroad--scan-region (point-min) (point-max) 1))
+      (when have-changes
+        (message "Tried to apply changes to unindexed node: '%s', rescanning!"
+                 (skroad--current-node))
+        (setq-local skroad--buf-indices-pending nil))
+      (skroad--scan-region (point-min) (point-max) 1)
       (setq have-changes t)
       (setq indices nil)
       (skroad--clear-buf-undo-info) ;; May have rectified links, so zap undo;
       (skroad--save-current-node)) ;; ... and save the node.
     (when have-changes
-      (setq indices (skroad--indices-update
-                     indices skroad--buf-indices-pending
-                     (or no-actions (skroad--node-special-p)) init))
+      (let ((prohibit-actions
+             (or no-actions (skroad--node-special-p) (null buffer-file-name))))
+        (setq indices
+              (skroad--indices-update
+               indices skroad--buf-indices-pending prohibit-actions init)))
       (setq-local skroad--buf-indices-table indices)
       (skroad--cache-write (skroad--current-node) indices)
       (skroad--current-node-update-orphan-and-leaf-status)
@@ -2264,7 +2264,10 @@ If an invalid link was seen during indexing, report it to the lint."
   (let ((valid
          (or (skroad--cache-peek payload) ;; Already in the cache? valid!
              (skroad--validate-node-title payload)))) ;; or actually validate.
-    (when (and (not valid) skroad--scan-in-progress)
+    (when (and (not valid)
+               skroad--scan-in-progress ;; Only report in scan, not font-lock
+               (or (not skroad--at-a-distance) ;; Only report if interactive...
+                   skroad--lint-in-progress)) ;; ... or during lint.
       (skroad--lint-report
        (format "Invalid link: '%s'" payload) (skroad--current-node)))
     valid))
@@ -3860,7 +3863,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
   "Generate a label describing the given NODE."
   (concat
    (cond ((skroad--node-special-p node) "Special ")
-         ((skroad--node-log-p node) "Log ")
+         ((skroad--node-log-p node) "Log ") ;; TODO: display "Current" when so
          (t (concat
              (cond ((skroad--node-leaf-p node) "Leaf ")
                    ((skroad--node-orphan-p node) "Orphan "))
@@ -3947,23 +3950,12 @@ or edited interactively.  Special nodes are not subject to auto-backlinking.")
   "Return t if NODE (if given; else the current node) is a special node."
   (member (or node (skroad--current-node)) skroad--special-nodes))
 
-(defvar skroad--special-nodes-no-index nil
-  "List of pre-defined special nodes where indexing is inhibited.")
-
-(defun skroad--node-disable-index-p ()
-  "Return t if the current node has indexing inhibited."
-  (or (null buffer-file-name)
-      (member (skroad--current-node) skroad--special-nodes-no-index)))
-
-(defmacro skroad--define-special-node (handle node allow-index &rest legend)
-  "Define a special NODE; store title in HANDLE.
-If ALLOW-INDEX is false, do not track changes or maintain indices for the node."
+(defmacro skroad--define-special-node (handle node &rest legend)
+  "Define a special NODE; store title in HANDLE."
   (declare (indent defun))
   `(progn
      (defconst ,handle ,node ,@legend)
-     (add-to-list 'skroad--special-nodes ,node)
-     (unless ,allow-index
-       (add-to-list 'skroad--special-nodes-no-index ,node))))
+     (add-to-list 'skroad--special-nodes ,node)))
 
 (defun skroad--init-special-nodes ()
   "Create (if it did not yet exist) and index (if indexable) each special node."
@@ -3987,8 +3979,7 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
         (skroad--node-connect special node t) ;; Create the special if required
       (skroad--node-disconnect special node)))) ;; No-op unless special exists
 
-;; TODO: make lint log indexable?
-(skroad--define-special-node skroad--special-node-lint "#Lint" nil
+(skroad--define-special-node skroad--special-node-lint "#Lint"
   "Record of all lint output (including problems corrected at run time).")
 
 (defun skroad--lint-report (text &optional node)
@@ -3998,24 +3989,25 @@ If NODE is given, prefix the report with a live link to it."
           (or (and node (concat (skroad--link-generate-live node) ": ")) ""))
          (report (concat prefix text)))
     (message (concat "Skroad Lint: " report)) ;; Always print to console also
-    (skroad--with-node skroad--special-node-lint t
-      (skroad--emplace-log-entry report t))))
+    (skroad--defer
+     (skroad--with-node skroad--special-node-lint t
+       (skroad--emplace-log-entry report t)))))
 
-(skroad--define-special-node skroad--special-node-stubs "#Stubs" t
+(skroad--define-special-node skroad--special-node-stubs "#Stubs"
   "A node with links to all known stub nodes. A stub node is a regular node
 without any text between the title and the tail.  New nodes start out as stubs.
 Stubs which get disconnected do not retain dead links; when orphaned, a stub
 becomes a candidate for auto-deletion (see below.)  Log and special nodes are
 never marked as stubs.")
 
-(skroad--define-special-node skroad--special-node-orphans "#Orphans" t
+(skroad--define-special-node skroad--special-node-orphans "#Orphans"
   "A node with links to all known orphans (regular nodes that have NO live
 links to nodes other than themselves, specials, and logs.)  A node found to be
 an orphan stub becomes a candidate for automatic deletion: if the node is not
 open in any buffer, it is deleted immediately; otherwise, user must confirm.
 Logs and special nodes are never marked as orphans.")
 
-(skroad--define-special-node skroad--special-node-leaves "#Leaves" t
+(skroad--define-special-node skroad--special-node-leaves "#Leaves"
   "A node with links to all known leaves (regular nodes that have exactly ONE
 live link to a node other than themselves, specials, and logs.) A newly-created
 node starts out as a leaf (as well as a stub.)  Logs and special nodes are
@@ -4202,6 +4194,7 @@ Warning: undo info is lost in all affected buffers!"
     (dolist (special-node skroad--special-nodes) ;; Replace in specials first
       (when (skroad--node-known-connected-p special-node old)
         (skroad--with-node special-node t
+          (message "replacing in %s: %s -> %s" special-node old new)
           (skroad--link-replace old new))))
     (skroad--with-node new t
       (skroad--change-internal-title new)
