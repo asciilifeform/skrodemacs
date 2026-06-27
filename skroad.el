@@ -3921,7 +3921,7 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
 
 (defun skroad--allow-cache-point ()
   "Return t when the current buffer is eligible for point caching."
-  (and (skroad--current-buffer-node-p) (not skroad--buf-is-resident)))
+  (skroad--current-buffer-node-p))
 
 (defvar skroad--point-cache (make-hash-table :test 'equal)
   "Cache storing the last known interactive point position in a node.")
