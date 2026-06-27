@@ -3937,10 +3937,6 @@ Returns t when a cached position was actually found."
         (skroad--goto-node-body-start)
         nil))))
 
-;; Back-end. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; TODO: 'import buffer as node' interactive command?
-
 ;; Special nodes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar skroad--special-nodes nil
