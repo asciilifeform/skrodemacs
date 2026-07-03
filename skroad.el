@@ -510,14 +510,14 @@ confine its edits to the matched text.  Return t if there were any matches."
   :finder-filter t
   :validator t
   :hide-escapes nil
-  :escape #'identity
-  :unescape #'identity
+  :encode #'identity
+  :decode #'identity
   )
 
 (skroad--deftype skroad--text-mixin-findable
   :doc "Mixin for all findable text types. (Internal use only.)"
   :mixin t
-  :require '(regex-any finder-filter escape unescape validator)
+  :require '(regex-any finder-filter encode decode validator)
   :defaults '((visible-match-number nil))
   :validate
   '(lambda (payload)
@@ -536,9 +536,9 @@ confine its edits to the matched text.  Return t if there were any matches."
      (skroad--re-foreach regex-any fn finder-filter start end))
   :get-match
   '(lambda () (match-string-no-properties match-number))
-  :get-unescaped-payload
+  :get-decoded-payload
   '(lambda ()
-     (funcall unescape (skroad--clean-whitespace (funcall get-match))))
+     (funcall decode (skroad--clean-whitespace (funcall get-match))))
   :swap-match
   '(lambda (new-payload &optional only-payload)
      (replace-match new-payload t t nil (and only-payload match-number)))
@@ -558,14 +558,14 @@ confine its edits to the matched text.  Return t if there were any matches."
   :use 'skroad--text-mixin-findable
   :generate
   '(lambda (payload)
-     (concat begins (funcall escape payload) ends))
+     (concat begins (funcall encode payload) ends))
   :make-escaped-regex
   '(lambda (payload)
-     (funcall make-regex (rx (literal (funcall escape payload)))))
+     (funcall make-regex (rx (literal (funcall encode payload)))))
   :regex-validator '(rx bos (regexp payload-regex) eos)
   :regex-validate
   '(lambda (payload)
-     (string-match-p regex-validator (funcall escape payload)))
+     (string-match-p regex-validator (funcall encode payload)))
   :search
   '(lambda (payload &optional lim)
      (funcall find #'re-search-forward
@@ -1510,23 +1510,23 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
         for-all-in-region start end
         #'(lambda ()
             (let* ((raw-match (funcall get-match))
-                   (payload (funcall get-unescaped-payload))
-                   (escaped-payload (funcall escape payload)))
+                   (payload (funcall get-decoded-payload))
+                   (encoded-payload (funcall encode payload)))
               (when (and (funcall validate payload)
                          (or (not (functionp index-filter))
                              (funcall index-filter payload)))
                 (skroad--index-delta pending-index payload delta))
               ;; Rectify, if not removing, undoing, or already canonical:
               (when (and (= delta 1) (not undo-in-progress)
-                         (not (string-equal raw-match escaped-payload)))
+                         (not (string-equal raw-match encoded-payload)))
                 (let ((inhibit-read-only t)
                       (inhibit-modification-hooks t))
                   (if skroad--change-hook-in-progress ;; Must defer if in chg hook
                       (skroad--deferred-replace
                        (match-beginning match-number)
                        (match-end match-number)
-                       escaped-payload)
-                    (funcall swap-match escaped-payload t)))) ;; ...if not, now.
+                       encoded-payload)
+                    (funcall swap-match encoded-payload t)))) ;; ...if not, now.
               )))))
   :register 'skroad--text-types-indexed)
 
@@ -1757,12 +1757,12 @@ touched lines are marked stale via `fontified' so redisplay refreshes them."
 (skroad--deftype skroad--text-mixin-rendered-zoned
   :doc "Mixin for zoned text types rendered by font-lock."
   :mixin t
-  :require '(face face-function get-unescaped-payload validate)
+  :require '(face face-function get-decoded-payload validate)
   :render
   '(lambda ()
      (let ((start (match-beginning 0))
            (end (match-end 0))
-           (payload (funcall get-unescaped-payload)))
+           (payload (funcall get-decoded-payload)))
        (if (funcall validate payload) ;; If there's a validator, use it
            (let* ((zone (gensym))
                   (props
@@ -2529,8 +2529,8 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   :payload-regex skroad--regexp-text-in-brackets
   :visible-match-number 1
   :hide-escapes t
-  :escape #'skroad--node-link-encode
-  :unescape #'skroad--node-link-decode
+  :encode #'skroad--node-link-encode
+  :decode #'skroad--node-link-decode
   :index-filter ;; Do not index self-links or links to special nodes
   '(lambda (node)
      (not (or (skroad--node-self-p node)
@@ -3052,7 +3052,7 @@ Already-encoded URLs are left untouched to avoid double-encoding."
      text nil t)))
 
 (defun skroad--isearch-search-fun ()
-  "Return a search function that treats escape backslashes as optional."
+  "Return a search function that treats escaped backslashes as optional."
   (lambda (string &optional bound noerror count)
     (let* ((re (regexp-quote string))
            (adjusted (replace-regexp-in-string
