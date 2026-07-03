@@ -990,30 +990,40 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
   (when node
     (let ((node-nowhite (skroad--clean-whitespace node)))
       (when (not (string-empty-p node-nowhite))
-        (let* ((encoded
-                (replace-regexp-in-string
-                 (rx (| (any "\x00-\x1f\x7f" ?/ ?\\ ?: ?* ?? ?\" ?< ?> ?| ?%)
-                        (seq bos (| (+ ".") "~"))
-                        (seq (+ ".") eos)))
-                 #'(lambda (m)
-                     (mapconcat (lambda (ch) (format "%%%02X" ch)) m ""))
-                 node-nowhite t t))
-               (filename (skroad--append-extension encoded)))
-          (when (<= (length (encode-coding-string filename 'utf-8 t))
-                    skroad--max-file-name-bytes)
-            filename))))))
+        (save-match-data
+          (let* ((encoded
+                  (replace-regexp-in-string
+                   (rx (| (any "\x00-\x1f\x7f" ?/ ?\\ ?: ?* ?? ?\" ?< ?> ?| ?%)
+                          (seq bos (| (+ ".") "~"))
+                          (seq (+ ".") eos)))
+                   #'(lambda (m)
+                       (mapconcat (lambda (ch) (format "%%%02X" ch)) m ""))
+                   node-nowhite t t))
+                 (filename (skroad--append-extension encoded)))
+            (when (<= (length (encode-coding-string filename 'utf-8 t))
+                      skroad--max-file-name-bytes)
+              filename)))))))
 
-(defun skroad--node-title-to-filename-procrusted (title &optional suffix)
+(defun skroad--node-title-and-path-procrust (title &optional suffix)
   "Encode the longest prefix of TITLE such that PREFIX + SUFFIX (if given)
 fits the filename byte budget, keeping SUFFIX intact;
-nil only when SUFFIX alone is unencodable."
+nil only when SUFFIX alone is unencodable.
+Return the resulting title and the corresponding path."
   (let ((s (substring title 0 (min (length title) skroad--max-file-name-bytes)))
         f)
     (while (and
             (null (setq f (skroad--node-title-to-filename (concat s suffix))))
             (> (length s) 0))
       (setq s (substring s 0 -1))) ;; Stepwise shave, on account of utf8.
-    f))
+    (cons s f)))
+
+(defun skroad--node-title-procrusted (title)
+  "Return the longest prefix of TITLE that fits the filename budget."
+  (car (skroad--node-title-and-path-procrust title)))
+
+(defun skroad--node-title-procrusted-to-filename (title &optional suffix)
+  "Return the filename found by `skroad--node-title-and-path-procrust'."
+  (cdr (skroad--node-title-and-path-procrust title suffix)))
 
 (defun skroad--file-path-uncollide-node (path)
   "Return a collision-free path for PATH's title: PATH itself when it has no
@@ -1023,7 +1033,7 @@ and re-encoding (truncating the title as needed).  Always returns a free path."
       (let ((title (skroad--file-path-to-node-title path)) (k 0) fp)
         (while (file-exists-p
                 (setq fp (skroad--file-path-in-data-directory
-                          (skroad--node-title-to-filename-procrusted
+                          (skroad--node-title-procrusted-to-filename
                            title (format "~%d" (setq k (1+ k))))))))
         fp)
     path))
@@ -1127,11 +1137,9 @@ title when blank), and picks a free canonical TARGET.  When the loaded content
 already needs no change -- title already canonical, first line newline-
 terminated, and no charset conversion pending (so re-encoding to UTF-8 would be
 a byte no-op) -- the file is bare-renamed to TARGET (one rename, inode kept).
-Otherwise the first line is replaced with the corrected-title title, recording
-`title changed from: `PREVIOUS' on a second line when it differs (PREVIOUS
-verbatim, so a blank original shows as ''), the trailing newline is preserved or
-added, UTF-8 is forced, and the buffer is committed to TARGET, which atomically
-publishes it and retires the old name."
+Otherwise the first line is replaced with the corrected-title title,
+the trailing newline is preserved or added, UTF-8 is forced, and the buffer is
+committed to TARGET, which atomically publishes it and retires the old name."
   (let ((current-node-buf (find-buffer-visiting path)))
     (when current-node-buf
       (lwarn 'skroad :warning "Tried to repair open node at '%s', closing it."
@@ -1150,7 +1158,7 @@ publishes it and retires the old name."
                                (skroad--file-path-to-node-title path) first))
                  (desired
                   (skroad--file-path-in-data-directory
-                   (skroad--node-title-to-filename-procrusted internal)))
+                   (skroad--node-title-procrusted-to-filename internal)))
                  (self (and (file-exists-p desired)
                             (file-equal-p desired path)))
                  (target
@@ -1511,14 +1519,15 @@ Runs text type actions, unless NO-ACTIONS is t or the current node is special."
               ;; Rectify, if not removing, undoing, or already canonical:
               (when (and (= delta 1) (not undo-in-progress)
                          (not (string-equal raw-match escaped-payload)))
-                (if skroad--change-hook-in-progress ;; Must defer if in chg hook
-                    (skroad--deferred-replace
-                     (match-beginning match-number)
-                     (match-end match-number)
-                     escaped-payload)
-                  (let ((inhibit-read-only t) ;; ... else, do it right here:
-                        (inhibit-modification-hooks t))
-                    (funcall swap-match escaped-payload t)))))))))
+                (let ((inhibit-read-only t)
+                      (inhibit-modification-hooks t))
+                  (if skroad--change-hook-in-progress ;; Must defer if in chg hook
+                      (skroad--deferred-replace
+                       (match-beginning match-number)
+                       (match-end match-number)
+                       escaped-payload)
+                    (funcall swap-match escaped-payload t)))) ;; ...if not, now.
+              )))))
   :register 'skroad--text-types-indexed)
 
 (defun skroad--scan-region (start end delta)
@@ -2487,13 +2496,21 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
                 'help-echo-inhibit-substitution t))) ;; Emacs 29+
             (t "A deleted node.")))))
 
-(defun skroad--link-escaper (payload)
-  "Escape PAYLOAD for links."
+(defun skroad--node-link-encode (payload)
+  "Encode the PAYLOAD for a node link."
   (skroad--bracket-escape payload))
 
-(defun skroad--link-unescaper (payload)
-  "Unescape PAYLOAD for links."
-  (skroad--bracket-unescape payload))
+(defun skroad--node-link-decode (payload)
+  "Decode (and procrust, if required) the PAYLOAD of a node link."
+  (save-match-data
+    (let* ((unescaped (skroad--bracket-unescape payload))
+           (fitted (skroad--node-title-procrusted unescaped)))
+      (when (and (not (string-equal unescaped fitted))
+                 skroad--scan-in-progress) ;; Only report in scan, not font-lock
+        (skroad--lint-report
+         (format "Link '%s' is too long; will become '%s'" unescaped fitted)
+         (skroad--current-node)))
+      fitted)))
 
 ;; TODO: [[test\[123\]] matches early if inserted manually
 (defconst skroad--regexp-text-in-brackets
@@ -2504,21 +2521,6 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
               (not (any "[]\n")))))
   "Regexp matching text that could be delimited by square brackets.")
 
-;; TODO: simply procrust
-(defun skroad--link-validate (payload)
-  "Validate a proposed PAYLOAD (unescaped) representing a node link.
-If an invalid link was seen during indexing, report it to the lint."
-  (let ((valid
-         (or (skroad--node-p payload) ;; Already in the cache? valid!
-             (skroad--validate-node-title payload)))) ;; or actually validate.
-    (when (and (not valid)
-               skroad--scan-in-progress ;; Only report in scan, not font-lock
-               (or (not skroad--at-a-distance) ;; Only report if interactive...
-                   skroad--lint-in-progress)) ;; ... or during lint.
-      (skroad--lint-report
-       (format "Invalid link: '%s'" payload) (skroad--current-node)))
-    valid))
-
 (skroad--deftype skroad--text-link-node
   :doc "Fundamental type for skroad node links (live or dead)."
   :use 'skroad--text-atomic
@@ -2527,9 +2529,8 @@ If an invalid link was seen during indexing, report it to the lint."
   :payload-regex skroad--regexp-text-in-brackets
   :visible-match-number 1
   :hide-escapes t
-  :escape #'skroad--link-escaper
-  :unescape #'skroad--link-unescaper
-  :validator #'skroad--link-validate
+  :escape #'skroad--node-link-encode
+  :unescape #'skroad--node-link-decode
   :index-filter ;; Do not index self-links or links to special nodes
   '(lambda (node)
      (not (or (skroad--node-self-p node)
@@ -2700,6 +2701,7 @@ Do NOT run type actions in either node.  Log any resulting changes to lint."
                (skroad--link-generate-dead remote))
        local))))
 
+;; TODO: don't allow creating nodes from logs
 (defun skroad--node-connect-back-create (local remote)
   "A live link to REMOTE was introduced into LOCAL, which previously had none.
 Ensure that if LOCAL still exists, REMOTE will exist and have a live link to it.
@@ -4478,8 +4480,9 @@ Warning: undo info is lost in all affected buffers!"
     (skroad--complete-all-deferred) ;; Ensure no ops are pending
     (message "Starting lint...")
     (setq skroad--lint-in-progress t)
-    (skroad--with-node skroad--special-node-lint nil ;; Zap lint log
-      (skroad--node-delete-all))
+    (unless skroad--lint-on-boot
+      (skroad--with-node skroad--special-node-lint nil ;; Zap lint log
+        (skroad--node-delete-all)))
     (dolist (node ;; Hollow out (don't delete) the nodes we regenerate :
              (list skroad--special-node-orphans
                    skroad--special-node-stubs))
