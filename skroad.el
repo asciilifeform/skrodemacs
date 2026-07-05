@@ -749,21 +749,21 @@ When a resident node is displayed, its buffer is unhidden and refontified.")
   "Find or create NODE, and ensure that it is interned in the cache.
 Return the path where the node is found on disk."
   (let ((node-path (skroad--node-path node))) ;; Path where it would exist
-    (unless (skroad--node-p node) ;; Do nothing if node is already active
-      (cond
-       (skroad--graveyard-directory ;; If there's a graveyard, try exhuming:
-        (when (skroad--mv-file (skroad--node-graveyard-path node) node-path)
-          (skroad--cache-intern-unindexed node) ;; Index on demand
-          (skroad--log-node-create node "Exhumed") ;; Report exhumation
-          t))
-       ((file-writable-p node-path) ;; Not found, but can be made:
-        (write-region
-         (concat node "\n" skroad--node-tail-indicator)
-         nil node-path nil 0) ;; Insert title and tail indicator.
-        (skroad--cache-write node nil) ;; Intern the node with an empty index
-        (skroad--node-set-stub node t) ;; It starts as a stub (unless special)
-        (skroad--log-node-create node)) ;; Report creation to log.
-       (t (error "Could not activate node '%s'!" node))))
+    (cond
+     ((skroad--node-p node) t) ;; Do nothing if node is already active
+     (skroad--graveyard-directory ;; If there's a graveyard, try exhuming:
+      (when (skroad--mv-file (skroad--node-graveyard-path node) node-path)
+        (skroad--cache-intern-unindexed node) ;; Index on demand
+        (skroad--log-node-create node "Exhumed") ;; Report exhumation
+        t))
+     ((file-writable-p node-path) ;; Not found, but can be made:
+      (write-region
+       (concat node "\n" skroad--node-tail-indicator)
+       nil node-path nil 0) ;; Insert title and tail indicator.
+      (skroad--cache-write node nil) ;; Intern the node with an empty index
+      (skroad--node-set-stub node t) ;; It starts as a stub (unless special)
+      (skroad--log-node-create node)) ;; Report creation to log.
+     (t (error "Could not activate node '%s'!" node)))
     node-path))
 
 (defun skroad--close-current-node ()
