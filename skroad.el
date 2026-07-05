@@ -53,7 +53,7 @@ File read/writeability is always verified before a node may be interned.")
 (defvar skroad--graveyard-directory "~/skrode_graveyard"
   "Unless nil: a node which is about to be deleted is first copied to this dir.
 The graveyard is also checked prior to creating a node; if that node is found
-in the graveyard, it will be resurrected rather than created de novo.
+in the graveyard, it will be exhumed, rather than created de novo.
 The graveyard should be inspected and emptied manually on occasion.")
 
 (defvar skroad--deleted-node-file-extension "txt"
@@ -4434,7 +4434,7 @@ Before deleting, disconnect any remaining live links."
           (ignore-errors ;; Overwrite if exists, and try to preserve timestamp:
             (copy-file node-path (skroad--node-graveyard-path node) t t)))
         (when skroad--lint-in-progress
-          (skroad--lint-report "Deleted during lint!") node)
+          (skroad--lint-report "Deleting during lint!") node)
         (skroad--with-node node nil ;; Run actions to disconnect all peers
           (skroad--node-delete-all))
         (dolist (special-node skroad--special-nodes) ;; Clear in all specials
