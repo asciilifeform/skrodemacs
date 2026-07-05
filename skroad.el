@@ -17,21 +17,47 @@
 (unless skroad--debug
   (setq byte-compile-warnings nil))
 
-(defconst skroad--lint-on-boot t "If t, Skroad will lint when Emacs loads.")
+(defvar skroad--lint-on-boot t "If t, Skroad will lint when Emacs loads.")
 
-(defconst skroad--validate-node-titles-on-boot t
+(defvar skroad--validate-node-titles-on-boot t
   "When t, node titles are validate/repaired during initial node internment.
 File read/writeability is always verified before a node may be interned.")
 
 (defvar skroad--floating-title-enable t
   "Display floating title at the top of the window if title is not in view.")
 
+(defvar skroad--idle-work-epsilon 0.01
+  "Idle seconds before the work queue starts draining.")
+
+(defvar skroad--idle-work-quantum 0.25
+  "Max wall-clock seconds to spend draining per idle cycle.")
+
 ;;; User data and Special Nodes. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defconst skroad--data-directory "~/skrode" "All user data is found here.")
+;; (defvar skroad--nodes-directory "~/skrode" "Nodes are found here.")
 
-(defconst skroad--file-extension "skroad"
+;; (defvar skroad--node-file-extension "skroad"
+;;   "File extension denoting a skroad node.")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Test!
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defvar skroad--nodes-directory "~/dvat_skr_copy" "Nodes are found here.")
+
+(defvar skroad--node-file-extension "skrd"
   "File extension denoting a skroad node.")
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Test!
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defvar skroad--graveyard-directory "~/skrode_graveyard"
+  "Unless nil: a node which is about to be deleted is first copied to this dir.
+The graveyard is also checked prior to creating a node; if that node is found
+in the graveyard, it will be resurrected rather than created de novo.
+The graveyard should be inspected and emptied manually on occasion.")
+
+(defvar skroad--deleted-node-file-extension "txt"
+  "File extension assigned to nodes residing in the graveyard.")
 
 (defconst skroad--max-file-name-bytes 253
   "Max bytes permitted in file name.  (Leaves room for lock file suffixes).")
@@ -278,6 +304,19 @@ in read-only buffers.  Accepts :parent MAP among PAIRS."
 (defun skroad--last-ev-was-mouse-p ()
   "Return t when the last input event was a mouse event."
   (listp last-input-event))
+
+(defvar skroad--message-with-time--last-time nil
+  "Time of the previous `skroad--message-with-time' call; nil if never called.")
+
+(defun skroad--message-with-time (format-string &rest args)
+  "Like `message', but prefix with seconds elapsed since the previous call."
+  (let* ((now (current-time))
+         (elapsed (if skroad--message-with-time--last-time
+                      (float-time (time-subtract
+                                   now skroad--message-with-time--last-time))
+                    0.0)))
+    (setq skroad--message-with-time--last-time now)
+    (apply #'message (concat "[+%.3fs] " format-string) elapsed args)))
 
 (defun skroad--toggle-cursor-state (toggle)
   "Set the cursor and paren mode state for the current buffer to TOGGLE."
@@ -637,7 +676,7 @@ If we're in ephemeral mode, return the name of the buffer."
       (and buffer-file-name
            (when-let* ((file buffer-file-name)
                        (extension (file-name-extension file)))
-             (string-equal extension skroad--file-extension)))))
+             (string-equal extension skroad--node-file-extension)))))
 
 (defun skroad--current-internal-title ()
   "Get the current node's title from the buffer."
@@ -712,6 +751,11 @@ Return the path where the node is found on disk."
   (let ((node-path (skroad--node-path node))) ;; Path where it would exist
     (unless (skroad--node-p node) ;; Do nothing if node is already active
       (cond
+       (skroad--graveyard-directory ;; Try exhuming if there's a graveyard:
+        (when (skroad--mv-file (skroad--node-graveyard-path node) node-path)
+          (skroad--cache-intern-unindexed node) ;; Index on demand
+          (skroad--log-node-create node "Exhumed")
+          t))
        ((file-writable-p node-path) ;; Not found, but can be made:
         (write-region
          (concat node "\n" skroad--node-tail-indicator)
@@ -774,7 +818,7 @@ Return the path where the node is found on disk."
                   #'skroad--current-buf-bury-and-hide nil t)
         (add-hook 'window-buffer-change-functions #'skroad--win-expose-buf nil t)
         (setq-local skroad--buf-is-resident t)
-        (message "Node '%s' is now resident." node)
+        (skroad--message-with-time "Node '%s' is now resident." node)
         (if (get-buffer-window buf t)
             (skroad--buf-unhide buf)
           (skroad--buf-hide buf))
@@ -847,12 +891,6 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
 (defvar skroad--idle-work-timer nil
   "The idle timer driving the work queue, or nil if not scheduled.")
 
-(defconst skroad--idle-work-epsilon 0.05
-  "Idle seconds before the work queue starts draining.")
-
-(defconst skroad--idle-work-quantum 0.1
-  "Max wall-clock seconds to spend draining per idle cycle.")
-
 (defun skroad--idle-enqueue (fn)
   "Push FN onto the back of the idle queue."
   (setq skroad--idle-work-count (1+ skroad--idle-work-count))
@@ -888,7 +926,8 @@ When NO-ACTIONS is nil, changes made by BODY may trigger text type actions."
 If FLUSH is true, ignore the quantum and work until the queue is empty."
   (let ((deadline (+ (float-time) skroad--idle-work-quantum)))
     (while (and skroad--idle-work-queue
-                (or flush (< (float-time) deadline)))
+                (or flush (< (float-time) deadline))
+                (not (input-pending-p))) ;; Yield if input if pending
       (when flush (skroad--idle-report))
       (with-demoted-errors "skroad--idle-work: %S"
         (funcall (skroad--idle-pop))))
@@ -897,7 +936,10 @@ If FLUSH is true, ignore the quantum and work until the queue is empty."
       (setq skroad--idle-work-timer nil))
     (cond (skroad--idle-work-queue
            (skroad--idle-report)
-           (run-at-time 0 nil #'skroad--idle-ensure-timer))
+           (run-at-time
+            skroad--idle-work-epsilon nil #'skroad--idle-ensure-timer)
+           ;; (run-at-time 0 nil #'skroad--idle-ensure-timer)
+           )
           (t ;; The work queue has emptied:
            (skroad--info nil) ;; Zap the progress indicator, if active
            (skroad--maybe-refontify-now))))) ;; If refontify is pending, do it
@@ -954,18 +996,23 @@ so the correction leaves neither a duplicate nor a half-applied state."
 (defun skroad--mv-file (old-file new-file &optional overwrite)
   "Move OLD-FILE to NEW-FILE (may NOT be equal), updating buffers if required.
 If OVERWRITE is t, allow overwriting.  Return success."
-  (when (and
-         (file-readable-p old-file)
-         (or overwrite (not (file-exists-p new-file)))
-         (file-writable-p new-file)
-         (not (file-equal-p old-file new-file)))
-    (rename-file old-file new-file overwrite)
-    (when (and (not (file-exists-p old-file)) (file-readable-p new-file))
-      (let ((visiting-buffer (find-buffer-visiting old-file)))
-        (when visiting-buffer
-          (with-current-buffer visiting-buffer
-            (set-visited-file-name new-file t t))))
-      t)))
+  (and
+   (stringp old-file)
+   (stringp new-file)
+   (file-readable-p old-file)
+   (or overwrite (not (file-exists-p new-file)))
+   (file-writable-p new-file)
+   (not (file-equal-p old-file new-file))
+   (ignore-errors
+     (rename-file old-file new-file overwrite)
+     t)
+   (and (not (file-exists-p old-file)) (file-readable-p new-file))
+   (progn
+     (let ((visiting-buffer (find-buffer-visiting old-file)))
+       (when visiting-buffer
+         (with-current-buffer visiting-buffer
+           (set-visited-file-name new-file t t))))
+     t)))
 
 (defun skroad--ensure-directory (dir)
   "Ensure that DIR exists, and return t on success."
@@ -974,12 +1021,23 @@ If OVERWRITE is t, allow overwriting.  Return success."
 
 (defun skroad--storage-ensure ()
   "Ensure that the data directories exist and may be accessed."
-  (unless (skroad--ensure-directory skroad--data-directory)
-    (error "Unable to access or create skroad data directory!")))
+  (unless (skroad--ensure-directory skroad--nodes-directory)
+    (error "Unable to access or create the Skroad data directory!"))
+  (when skroad--graveyard-directory
+    (unless (skroad--ensure-directory skroad--graveyard-directory)
+      (error "Unable to access or create the Skroad graveyard directory!"))))
 
-(defun skroad--append-extension (filename)
-  "Append the Skroad file extension to FILENAME."
-  (concat filename "." skroad--file-extension))
+(defun skroad--append-file-extension (filename extension)
+  "Return FILENAME with the file EXTENSION appended."
+  (concat filename "." extension))
+
+(defun skroad--append-node-file-extension (filename)
+  "Return FILENAME with the Skroad node file extension appended."
+  (skroad--append-file-extension filename skroad--node-file-extension))
+
+(defun skroad--append-deleted-node-file-extension (filename)
+  "Return FILENAME with the Skroad deleted node file extension appended."
+  (skroad--append-file-extension filename skroad--deleted-node-file-extension))
 
 (defun skroad--node-title-to-filename (node)
   "Encode the NODE title into an appropriate filename (with our extension).
@@ -999,7 +1057,7 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
                    #'(lambda (m)
                        (mapconcat (lambda (ch) (format "%%%02X" ch)) m ""))
                    node-nowhite t t))
-                 (filename (skroad--append-extension encoded)))
+                 (filename (skroad--append-node-file-extension encoded)))
             (when (<= (length (encode-coding-string filename 'utf-8 t))
                       skroad--max-file-name-bytes)
               filename)))))))
@@ -1032,7 +1090,7 @@ and re-encoding (truncating the title as needed).  Always returns a free path."
   (if (file-exists-p path)
       (let ((title (skroad--file-path-to-node-title path)) (k 0) fp)
         (while (file-exists-p
-                (setq fp (skroad--file-path-in-data-directory
+                (setq fp (skroad--file-path-in-nodes-directory
                           (skroad--node-title-procrusted-to-filename
                            title (format "~%d" (setq k (1+ k))))))))
         fp)
@@ -1046,22 +1104,37 @@ and re-encoding (truncating the title as needed).  Always returns a free path."
      (char-to-string (string-to-number (substring match 1) 16)))
    (file-name-base file) t t))
 
-(defun skroad--file-path-in-data-directory (file)
-  "Generate the path where FILE would reside in the data directory."
+(defun skroad--file-path-in-directory (file directory)
+  "Generate the path where FILE would reside in the given DIRECTORY."
   (when (null file)
     (error "Filename '%s' is invalid!" file))
-  (expand-file-name (file-name-concat skroad--data-directory file)))
+  (expand-file-name (file-name-concat directory file)))
+
+(defun skroad--file-path-in-nodes-directory (file)
+  "Generate the path where FILE would reside in the nodes directory."
+  (skroad--file-path-in-directory file skroad--nodes-directory))
+
+(defun skroad--file-path-in-graveyard-directory (file)
+  "Generate the path where FILE would reside in the graveyard directory."
+  (skroad--file-path-in-directory file skroad--graveyard-directory))
 
 (defun skroad--storage-list-files ()
   "Return a list of all node files currently found in the data directory."
   (skroad--storage-ensure)
   (file-expand-wildcards
-   (skroad--file-path-in-data-directory
-    (skroad--append-extension "*"))))
+   (skroad--file-path-in-nodes-directory
+    (skroad--append-node-file-extension "*"))))
 
 (defun skroad--node-path (node)
   "Generate the canonical file path where NODE would be found if it exists."
-  (skroad--file-path-in-data-directory (skroad--node-title-to-filename node)))
+  (skroad--file-path-in-nodes-directory (skroad--node-title-to-filename node)))
+
+(defun skroad--node-graveyard-path (node)
+  "Generate the canonical file path where NODE would be found in the graveyard."
+  (skroad--file-path-in-graveyard-directory
+   (skroad--append-deleted-node-file-extension
+    (file-name-sans-extension
+     (skroad--node-title-to-filename node)))))
 
 (defun skroad--validate-node-title (title)
   "Return t when TITLE is a validly-encodable node title."
@@ -1157,7 +1230,7 @@ committed to TARGET, which atomically publishes it and retires the old name."
                  (internal (if (string-empty-p (skroad--clean-whitespace first))
                                (skroad--file-path-to-node-title path) first))
                  (desired
-                  (skroad--file-path-in-data-directory
+                  (skroad--file-path-in-nodes-directory
                    (skroad--node-title-procrusted-to-filename internal)))
                  (self (and (file-exists-p desired)
                             (file-equal-p desired path)))
@@ -1174,9 +1247,10 @@ committed to TARGET, which atomically publishes it and retires the old name."
               ;; Requires correction and/or re-encoding :
               (delete-region (point-min) (line-end-position))
               (insert corrected-title)
-              (unless title-unchanged
-                (insert ;; TODO: log?
-                 "\n\nNode title was auto-corrected from: '" first "'\n"))
+              (unless title-unchanged ;; TODO: log?
+                (insert "\n")
+                (skroad--atomic-comment-insert
+                 (format "Node title auto-fixed, was: '%s'" first)))
               (set-buffer-file-coding-system 'utf-8)
               (skroad--buf-commit-atomically (if self path target)))
             corrected-title))
@@ -1229,7 +1303,7 @@ or the node's indices, if it has been indexed; or `empty' (indices are null).")
 (defvar skroad--cache-read-through-enabled t
   "When t, after a cache miss, look on disk.")
 
-(defun skroad--cache-start-init-fill ()
+(defun skroad--cache-start-fill ()
   "Validate and intern (if possible) each node found in the storage directory.
 Nodes which have already been interned are skipped.  This op is asynchronous.
 A node on which `skroad--cache-seek' is invoked prior to its completion will
@@ -1245,8 +1319,9 @@ be interned eagerly if it is accessible."
      (setq skroad--cache-read-through-enabled nil)
      (let* ((final-nodes-count (skroad--cache-count))
             (interned-nodes-count (- final-nodes-count orig-nodes-count)))
-       (message "Interned %s additional stored nodes (%s total)."
-                interned-nodes-count final-nodes-count)))))
+       (skroad--message-with-time
+        "Interned %s additional stored nodes (%s total)."
+        interned-nodes-count final-nodes-count)))))
 
 (defun skroad--cache-seek (node)
   "If NODE is already in the cache, return its indices.
@@ -2688,7 +2763,7 @@ assuming that the node was actually shown."
 Ensure that if LOCAL still exists, REMOTE (if it exists) has a live link to it.
 If REMOTE does not exist, ensure that LOCAL does NOT have any live links to it.
 Do NOT run type actions in either node.  Log any resulting changes to lint."
-  (message "live init: local=%s remote=%s" local remote)
+  ;; (message "live init: local=%s remote=%s" local remote)
   (if (skroad--node-p remote)
       (when (skroad--node-connect remote local)
         (skroad--lint-report
@@ -2706,7 +2781,7 @@ Do NOT run type actions in either node.  Log any resulting changes to lint."
   "A live link to REMOTE was introduced into LOCAL, which previously had none.
 Ensure that if LOCAL still exists, REMOTE will exist and have a live link to it.
 No-op if LOCAL no longer exists.  Do NOT run type actions in either node."
-  (message "connected: local=%s remote=%s" local remote)
+  ;; (message "connected: local=%s remote=%s" local remote)
   (unless (skroad--node-connect remote local t)
     (skroad--lint-report
      (format "Did not back-connect '%s' (already connected, or deleted?)" local)
@@ -2716,7 +2791,7 @@ No-op if LOCAL no longer exists.  Do NOT run type actions in either node."
   "The node LOCAL once had live link(s) to REMOTE, but the last one was removed.
 Ensure that REMOTE (if it still exists) does NOT have any live links to LOCAL.
 Do NOT run type actions in either node."
-  (message "disconnected: local=%s remote=%s" local remote)
+  ;; (message "disconnected: local=%s remote=%s" local remote)
   (unless (skroad--node-disconnect remote local)
     (skroad--lint-report
      (format "Did not back-disconnect '%s' (already disconnected, or deleted?)"
@@ -2827,13 +2902,13 @@ The returned result may be a single face or a list with mixins on a base face."
 
 (defun skroad--action-dead-link-init (origin target)
   "A dead link to TARGET was found to exist during the indexing of ORIGIN."
-  (message "dead init: origin=%s target=%s" origin target)
+  ;; (message "dead init: origin=%s target=%s" origin target)
   )
 
 (defun skroad--action-dead-link-create (origin target)
   "A dead link to TARGET was first introduced into an already-indexed ORIGIN."
-  (message "dead create: origin=%s target=%s dist=%s" origin target
-           skroad--at-a-distance)
+  ;; (message "dead create: origin=%s target=%s dist=%s" origin target
+  ;;          skroad--at-a-distance)
   )
 
 (skroad--deftype skroad--text-link-node-dead
@@ -3540,7 +3615,7 @@ If AUX-NODE is given, refresh its history as well as that of NODE."
   (setq-local skroad--buf-tail-overlay (make-overlay start end nil t nil))
   (when (skroad--mode-p) ;; Only do these when in an interactive buffer:
     (overlay-put skroad--buf-tail-overlay
-               'modification-hooks '(skroad--tail-indicator-modified))
+                 'modification-hooks '(skroad--tail-indicator-modified))
     (skroad--refontify-current-buffer)))
 
 (defun skroad--emplace-tail-indicator ()
@@ -4355,6 +4430,13 @@ Before deleting, disconnect any remaining live links."
                 force ;; If force is t, just close the node silently right now
                 skroad--lint-in-progress ;; ... or if we're linting;
                 (skroad--prompt-delete-node node)) ;; else, ask first.
+        (when skroad--graveyard-directory ;; Copy to graveyard if there is one
+          (ignore-errors
+            (copy-file
+             node-path
+             (skroad--node-graveyard-path node)
+             t ;; Overwrite if already exists
+             t))) ;; Preserve timestamp
         (when skroad--lint-in-progress
           (skroad--lint-report "Deleted during lint!") node)
         (skroad--with-node node nil ;; Run actions to disconnect all peers
@@ -4474,21 +4556,23 @@ Warning: undo info is lost in all affected buffers!"
       (skroad--change-internal-title external-title)
       )))
 
-(defun skroad--lint ()
-  "Perform a full rescan of all known nodes."
+(defun skroad--lint (&optional no-clear)
+  "Perform a full rescan of all known nodes.  Don't zap lint log if NO-CLEAR."
   (unless skroad--lint-in-progress
+    (skroad--message-with-time "Waiting to start lint...")
     (skroad--complete-all-deferred) ;; Ensure no ops are pending
-    (message "Starting lint...")
+    (skroad--message-with-time "Starting lint...")
     (setq skroad--lint-in-progress t)
-    (unless skroad--lint-on-boot
+    (unless no-clear
       (skroad--with-node skroad--special-node-lint nil ;; Zap lint log
         (skroad--node-delete-all)))
     (dolist (node ;; Hollow out (don't delete) the nodes we regenerate :
              (list skroad--special-node-orphans
                    skroad--special-node-stubs))
       (skroad--reset-special-node node))
-    (message "Will lint %s nodes..." (- (skroad--cache-count)
-                                        (length skroad--special-nodes)))
+    (skroad--message-with-time
+     "Will lint %s nodes..." (- (skroad--cache-count)
+                                (length skroad--special-nodes)))
     (let ((count 0))
       (skroad--cache-foreach ;; Dispatch for each known non-special node:
        #'(lambda (node)
@@ -4505,6 +4589,7 @@ Warning: undo info is lost in all affected buffers!"
        (skroad--defer
         (skroad--lint-report
          (format "Lint complete, linted %s nodes." count))
+        (skroad--message-with-time "Lint complete.")
         (skroad--request-refontify) ;; Schedule a refontification.
         (setq skroad--lint-in-progress nil)
         (skroad--save-all-resident)))))) ;; Finally save the residents.
@@ -4708,7 +4793,7 @@ repeating a search already in progress is a no-op."
   "Perform the mode global init if it has not been done in this session."
   (unless skroad--global-init-done
     (setq skroad--global-init-done t)
-    (message "Skroad Global Init starting...")
+    (skroad--message-with-time "Skroad Init starting...")
     ;; Prohibit change hooks firing when only text properties have changed:
     (skroad--silence-modifications 'put-text-property)
     (skroad--silence-modifications 'add-text-properties)
@@ -4720,11 +4805,11 @@ repeating a search already in progress is a no-op."
     (add-hook 'kill-emacs-hook #'skroad--disable-resident-all -90)
     ;; Init:
     (skroad--init-special-nodes)
-    (skroad--cache-start-init-fill) ;; Start interning nodes from store
     (skroad--get-current-log-node) ;; Init the current log
+    (skroad--cache-start-fill) ;; Start interning nodes from store
     (when skroad--lint-on-boot ;; Perform a lint on boot?
-      (skroad--defer (skroad--lint)))
-    (message "Skroad Global Init started.")))
+      (skroad--defer (skroad--lint t)))
+    (skroad--message-with-time "Skroad Init started.")))
 
 (defun skroad--boot ()
   "Request the global mode init."
