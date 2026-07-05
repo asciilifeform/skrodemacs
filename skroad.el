@@ -754,7 +754,7 @@ Return the path where the node is found on disk."
      (skroad--graveyard-directory ;; If there's a graveyard, try exhuming:
       (when (skroad--mv-file (skroad--node-graveyard-path node) node-path)
         (skroad--cache-intern-unindexed node) ;; Index on demand
-        (skroad--log-node-create node "Exhumed") ;; Report exhumation
+        (skroad--log-node-create node "Exhumed") ;; Report exhumation to log.
         t))
      ((file-writable-p node-path) ;; Not found, but can be made:
       (write-region
