@@ -4431,12 +4431,8 @@ Before deleting, disconnect any remaining live links."
                 skroad--lint-in-progress ;; ... or if we're linting;
                 (skroad--prompt-delete-node node)) ;; else, ask first.
         (when skroad--graveyard-directory ;; Copy to graveyard if there is one
-          (ignore-errors
-            (copy-file
-             node-path
-             (skroad--node-graveyard-path node)
-             t ;; Overwrite if already exists
-             t))) ;; Preserve timestamp
+          (ignore-errors ;; Overwrite if exists, and try to preserve timestamp:
+            (copy-file node-path (skroad--node-graveyard-path node) t t)))
         (when skroad--lint-in-progress
           (skroad--lint-report "Deleted during lint!") node)
         (skroad--with-node node nil ;; Run actions to disconnect all peers
