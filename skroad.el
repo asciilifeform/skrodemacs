@@ -751,11 +751,11 @@ Return the path where the node is found on disk."
   (let ((node-path (skroad--node-path node))) ;; Path where it would exist
     (cond
      ((skroad--node-p node) t) ;; Do nothing if node is already active
-     (skroad--graveyard-directory ;; If there's a graveyard, try exhuming:
-      (when (skroad--mv-file (skroad--node-graveyard-path node) node-path)
-        (skroad--cache-intern-unindexed node) ;; Index on demand
-        (skroad--log-node-create node "Exhumed") ;; Report exhumation to log.
-        t))
+     ((and skroad--graveyard-directory ;; If there's a graveyard, try exhuming:
+           (skroad--mv-file (skroad--node-graveyard-path node) node-path))
+      (skroad--cache-intern-unindexed node) ;; Index on demand
+      (skroad--log-node-create node "Exhumed") ;; Report exhumation to log.
+      t)
      ((file-writable-p node-path) ;; Not found, but can be made:
       (write-region
        (concat node "\n" skroad--node-tail-indicator)
