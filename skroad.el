@@ -2788,7 +2788,8 @@ No-op if LOCAL no longer exists.  Do NOT run type actions in either node."
   ;; (message "connected: local=%s remote=%s" local remote)
   (unless (skroad--node-connect remote local t)
     (skroad--lint-report
-     (format "Did not back-connect '%s' (already connected, or deleted?)" local)
+     (format "Did not back-connect %s (already connected, or deleted?)"
+             (skroad--link-generate-live local))
      remote)))
 
 (defun skroad--node-disconnect-back (local remote)
@@ -2798,8 +2799,8 @@ Do NOT run type actions in either node."
   ;; (message "disconnected: local=%s remote=%s" local remote)
   (unless (skroad--node-disconnect remote local)
     (skroad--lint-report
-     (format "Did not back-disconnect '%s' (already disconnected, or deleted?)"
-             local)
+     (format "Did not back-disconnect %s (already disconnected, or deleted?)"
+             (skroad--link-generate-dead local))
      remote)))
 
 (defun skroad--link-face (node &optional dead ac)
