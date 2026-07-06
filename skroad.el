@@ -1527,31 +1527,34 @@ Also execute the following text type actions (unless NO-ACTIONS) :
   "If the current node has not been indexed yet, create its text type indices.
 Otherwise, apply any pending changes.  Then write the indices back to the cache.
 Runs text type actions, unless NO-ACTIONS is t or the current node is special."
-  (let* ((indices (skroad--buf-indices))
-         (init (eq indices 'index-me))
-         (have-changes (skroad--buf-indices-have-pending-changes-p)))
-    (skroad--buf-indices-ensure-change-tracker) ;; Init tracker if not yet
-    (when init
+  (when (skroad--mode-p)
+    (let* ((indices (skroad--buf-indices))
+           (init (eq indices 'index-me))
+           (have-changes (skroad--buf-indices-have-pending-changes-p)))
+      (skroad--buf-indices-ensure-change-tracker) ;; Init tracker if not yet
+      (when init
+        (when have-changes
+          (lwarn 'skroad :warning
+                 "Tried to apply changes to unindexed node: '%s', rescanning!"
+                 (skroad--current-node))
+          (setq-local skroad--buf-indices-pending nil))
+        (skroad--scan-region (point-min) (point-max) 1)
+        (setq have-changes t)
+        (setq indices nil)
+        (skroad--clear-buf-undo-info) ;; May have rectified links, so zap undo;
+        (skroad--save-current-node)) ;; ... and save the node.
       (when have-changes
-        (lwarn 'skroad :warning
-               "Tried to apply changes to unindexed node: '%s', rescanning!"
-               (skroad--current-node))
-        (setq-local skroad--buf-indices-pending nil))
-      (skroad--scan-region (point-min) (point-max) 1)
-      (setq have-changes t)
-      (setq indices nil)
-      (skroad--clear-buf-undo-info) ;; May have rectified links, so zap undo;
-      (skroad--save-current-node)) ;; ... and save the node.
-    (when have-changes
-      (let ((prohibit-actions
-             (or no-actions (skroad--node-special-p) (null buffer-file-name))))
-        (setq indices
-              (skroad--indices-update
-               indices skroad--buf-indices-pending prohibit-actions init)))
-      (setq-local skroad--buf-indices-table indices)
-      (skroad--cache-write (skroad--current-node) indices)
-      (skroad--current-node-update-orphan-and-leaf-status)
-      (skroad--update-modeline-node-link-count-label))))
+        (let ((prohibit-actions
+               (or no-actions
+                   (skroad--node-special-p)
+                   (null buffer-file-name))))
+          (setq indices
+                (skroad--indices-update
+                 indices skroad--buf-indices-pending prohibit-actions init)))
+        (setq-local skroad--buf-indices-table indices)
+        (skroad--cache-write (skroad--current-node) indices)
+        (skroad--current-node-update-orphan-and-leaf-status)
+        (skroad--update-modeline-node-link-count-label)))))
 
 (defvar-local skroad--scan-in-progress nil
   "When true, indicates that scan is currently in progress.")
