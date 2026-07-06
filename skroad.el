@@ -1526,8 +1526,9 @@ Also execute the following text type actions (unless NO-ACTIONS) :
 (defun skroad--buf-indices-sync (&optional no-actions)
   "If the current node has not been indexed yet, create its text type indices.
 Otherwise, apply any pending changes.  Then write the indices back to the cache.
-Runs text type actions, unless NO-ACTIONS is t or the current node is special."
-  (when (skroad--mode-p)
+Runs text type actions, unless NO-ACTIONS is t or the current node is special.
+No-op in ephemeral mode."
+  (unless (skroad--ephemeral-mode-p)
     (let* ((indices (skroad--buf-indices))
            (init (eq indices 'index-me))
            (have-changes (skroad--buf-indices-have-pending-changes-p)))
@@ -4376,8 +4377,11 @@ If the tail did not previously exist in the current node, it is emplaced."
       (= (point) body-end))))
 
 (defun skroad--current-node-update-stub-status ()
-  "Update the current node's saved stub status.  No-op when renamer is active."
-  (unless (skroad--renamer-active-p)
+  "Update the current node's saved stub status.
+No-op when renamer is active, or the node is a log, or in ephemeral mode."
+  (unless (or (skroad--renamer-active-p)
+              (skroad--node-log-p)
+              (skroad--ephemeral-mode-p))
     (when (skroad--node-set-stub
            (skroad--current-node) (skroad--current-node-stubbed-p))
       (skroad--update-modeline-node-label))))
@@ -4400,8 +4404,10 @@ or until a lint is performed (node will be silently deleted unless open.)"
 
 (defun skroad--current-node-update-orphan-and-leaf-status ()
   "Update the current node's saved orphan and leaf status.
-No-op if the node is a special or log."
-  (unless (or (skroad--node-special-p) (skroad--node-log-p))
+No-op if the node is a special or log, or in ephemeral mode."
+  (unless (or (skroad--node-special-p)
+              (skroad--node-log-p)
+              (skroad--ephemeral-mode-p))
     (let* ((peer-count
             (skroad--indices-count-pred
              (skroad--buf-indices)
