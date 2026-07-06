@@ -52,8 +52,8 @@ File read/writeability is always verified before a node may be interned.")
 
 (defvar skroad--graveyard-directory "~/skrode_graveyard"
   "Unless nil: a node which is about to be deleted is first copied to this dir.
-The graveyard is also checked prior to creating a node; if that node is found
-in the graveyard, it will be exhumed, rather than created de novo.
+Prior to creating a node, we look for it in the graveyard; if it is found there,
+it will be exhumed and re-interned, rather than created de novo.
 The graveyard should be inspected and emptied manually on occasion.")
 
 (defvar skroad--deleted-node-file-extension "txt"
