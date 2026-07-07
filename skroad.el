@@ -3354,7 +3354,8 @@ If the node does not exist, return nil; if no history is found: empty string."
        (point-max)
        #'(lambda ()
            (let ((peer (funcall
-                        (get 'skroad--text-link-node-live 'get-match))))
+                        (get 'skroad--text-link-node-live
+                             'get-decoded-payload))))
              (when (and (skroad--node-log-p peer) ;; Log link?
                         (skroad--node-p peer)) ;; ... actually exists?
                (let ((node-history ;; Get the relevant history, if any:
@@ -3628,6 +3629,15 @@ If AUX-NODE is given, refresh its history as well as that of NODE."
   (skroad--buf-register-tail-indicator
    (prog1 (point) (insert skroad--node-tail-indicator)) (point)))
 
+(defun skroad--destroy-tail-indicator ()
+  "Destroy the current tail indicator, if there is one."
+  (when (skroad--buf-have-tail-indicator-p)
+    (let ((inhibit-read-only t)
+          (indic-start (overlay-start skroad--buf-tail-overlay))
+          (indic-end (overlay-end skroad--buf-tail-overlay)))
+      (delete-overlay skroad--buf-tail-overlay)
+      (delete-region indic-start indic-end))))
+
 (defun skroad--move-tail-indicator-here ()
   "Move (and reregister) the tail indicator of the current node to the point.
 Let the user know whether the tail had actually moved (or was already here.)
@@ -3648,27 +3658,38 @@ For use in interactive commands only."
             (insert "\n"))))
       (skroad--info "The tail has been moved."))))
 
-(defun skroad--jump-to-suggested-node-tail (&optional delete-dead)
+(defun skroad--create-suggested-node-tail ()
   "Find where the node tail ought to be per the tail heuristic, and go there:
-Starting at the end, move up, skipping dead links (if DELETE-DEAD is t: delete),
-live links, and whitespace until something that is neither a node link nor
-whitespace is encountered.  The proposed tail will start just below that point."
+Starting at point-max, move up, skipping dead links, live links, and whitespace
+until something that is neither a node link nor whitespace is encountered.
+The proposed tail will start just below that point.  After this, everything
+that was found in the tail is replaced with a sequence consisting of only the
+unique live links, one per line."
   (goto-char (point-max))
-  (let ((climb
-         #'(lambda (type &optional delete)
-             (let ((prev-pos (point)))
-               (save-mark-and-excursion
-                 (when (funcall (get type 'find-any-backward))
-                   (goto-char (match-end 0))
-                   (skroad--skip-whitespace-forward)
-                   (when (= prev-pos (point))
-                     (let ((new-pos (match-beginning 0)))
-                       (when delete (delete-region new-pos prev-pos))
-                       new-pos))))))))
-    (while (let ((prev (or (funcall climb 'skroad--text-link-node-live)
-                           (funcall climb 'skroad--text-link-node-dead
-                                    delete-dead))))
-             (when prev (goto-char prev))))))
+  (let ((inhibit-read-only t)
+        (links nil)
+        (links-seen (make-hash-table :test 'equal)))
+    (let ((climb
+           #'(lambda (type &optional keep)
+               (let ((prev-pos (point)))
+                 (save-mark-and-excursion
+                   (when (funcall (get type 'find-any-backward))
+                     (goto-char (match-end 0))
+                     (skroad--skip-whitespace-forward)
+                     (when (= prev-pos (point))
+                       (when keep
+                         (let ((link (funcall (get type 'get-decoded-payload))))
+                           (unless (gethash link links-seen)
+                             (puthash link t links-seen)
+                             (push link links))))
+                       (match-beginning 0))))))))
+      (while (let ((prev (or (funcall climb 'skroad--text-link-node-live t)
+                             (funcall climb 'skroad--text-link-node-dead))))
+               (when prev (goto-char prev))))
+      (skroad--emplace-tail-indicator)
+      (skroad--node-delete-tail)
+      (dolist (link (reverse links))
+        (skroad--link-insert-live-in-tail link)))))
 
 (defun skroad--node-tail-ensure ()
   "Ensure that the tail indicator exists in the current node, and register it.
@@ -3681,11 +3702,9 @@ Return true when an existing one was not found and a new one was inserted."
          nil)
         (t ;; Looked but did not find? Emplace a new tail indicator:
          (save-mark-and-excursion
-           (let ((inhibit-read-only t))
-             (skroad--jump-to-suggested-node-tail t)
-             (skroad--emplace-tail-indicator)
-             (skroad--lint-report
-              "Tail was auto-positioned." (skroad--current-node))))
+           (skroad--create-suggested-node-tail)
+           (skroad--lint-report
+            "Tail was created." (skroad--current-node)))
          t)))
 
 (defun skroad--node-body-end-pos ()
@@ -3822,10 +3841,9 @@ If this node did not have a tail indicator, this is a no-op."
     (if buffer-read-only
         (user-error "This node's tail cannot be moved!")
       (when (y-or-n-p (format "Auto-reposition the tail of node '%s' ?" node))
-        (skroad--node-tail-ensure)
-        (save-mark-and-excursion
-          (skroad--jump-to-suggested-node-tail)
-          (skroad--move-tail-indicator-here))))))
+        (skroad--destroy-tail-indicator)
+        (skroad--create-suggested-node-tail)
+        (goto-char (skroad--node-tail-start-pos))))))
 
 (defun skroad--cmd-title-show-node-history ()
   "History"
