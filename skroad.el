@@ -3703,8 +3703,7 @@ Return true when an existing one was not found and a new one was inserted."
         (t ;; Looked but did not find? Emplace a new tail indicator:
          (save-mark-and-excursion
            (skroad--create-suggested-node-tail)
-           (skroad--lint-report
-            "Tail was created." (skroad--current-node)))
+           (skroad--lint-report "Tail was created." (skroad--current-node)))
          t)))
 
 (defun skroad--node-body-end-pos ()
