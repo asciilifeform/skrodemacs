@@ -4599,6 +4599,7 @@ Warning: undo info is lost in all affected buffers!"
     (skroad--message-with-time "Starting lint...")
     (dolist (node ;; Hollow out (don't delete) the nodes we regenerate :
              (list skroad--special-node-orphans
+                   skroad--special-node-leaves
                    skroad--special-node-stubs))
       (skroad--reset-special-node node))
     (skroad--message-with-time
