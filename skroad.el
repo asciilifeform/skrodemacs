@@ -1321,7 +1321,12 @@ be interned eagerly if it is accessible."
             (interned-nodes-count (- final-nodes-count orig-nodes-count)))
        (skroad--message-with-time
         "Interned %s additional stored nodes (%s total)."
-        interned-nodes-count final-nodes-count)))))
+        interned-nodes-count final-nodes-count)
+       (skroad--get-current-log-node) ;; Init the current log
+       (when skroad--lint-on-boot ;; Perform a lint on boot?
+         (skroad--lint t))))
+    (skroad--message-with-time
+     "Filling cache... (already had %s nodes)" orig-nodes-count)))
 
 (defun skroad--cache-seek (node)
   "If NODE is already in the cache, return its indices.
@@ -4129,17 +4134,20 @@ If this node did not have a tail indicator, this is a no-op."
 
 (defun skroad--open-node ()
   "Open a skroad node."
+  (setq-local buffer-read-only t) ;; Read-only until indexed
   (face-remap-add-relative 'header-line 'skroad--title-face)
   (skroad--deactivate-mark) ;; Zap spurious mark from opening links via mouse
-  (skroad--set-writability) ;; If special node, open it as read-only
   (skroad--cache-intern (skroad--current-node)) ;; TODO?
   (skroad--init-font-lock)
   (skroad--node-tail-ensure)
   (skroad--current-node-update-stub-status) ;; TODO: do we want this here?
-  (skroad--defer-in-current-buffer (skroad--buf-indices-sync))
-  (skroad--skip-whitespace-forward)
   (skroad--update-modeline-node-label)
-  (skroad--update-modeline-node-link-count-label)
+  (skroad--defer-in-current-buffer
+   (skroad--buf-indices-sync)
+   (skroad--update-modeline-node-link-count-label)
+   (skroad--set-writability)) ;; If special node, will stay read-only
+  (skroad--skip-whitespace-forward)
+  ;; (message "Opened node: '%s'" (skroad--current-node))
   )
 
 ;; Floating header line. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -4579,16 +4587,16 @@ Warning: undo info is lost in all affected buffers!"
       (skroad--change-internal-title external-title)
       )))
 
-(defun skroad--lint (&optional no-clear)
-  "Perform a full rescan of all known nodes.  Don't zap lint log if NO-CLEAR."
+(defun skroad--lint (&optional boot)
+  "Perform a full rescan of all known nodes.  Don't zap lint log if BOOT."
   (unless skroad--lint-in-progress
-    (skroad--message-with-time "Waiting to start lint...")
-    (skroad--complete-all-deferred) ;; Ensure no ops are pending
-    (skroad--message-with-time "Starting lint...")
     (setq skroad--lint-in-progress t)
-    (unless no-clear
+    (unless boot
+      (skroad--message-with-time "Waiting to start lint...")
+      (skroad--complete-all-deferred) ;; Ensure no ops are pending
       (skroad--with-node skroad--special-node-lint nil ;; Zap lint log
         (skroad--node-delete-all)))
+    (skroad--message-with-time "Starting lint...")
     (dolist (node ;; Hollow out (don't delete) the nodes we regenerate :
              (list skroad--special-node-orphans
                    skroad--special-node-stubs))
@@ -4828,10 +4836,7 @@ repeating a search already in progress is a no-op."
     (add-hook 'kill-emacs-hook #'skroad--disable-resident-all -90)
     ;; Init:
     (skroad--init-special-nodes)
-    (skroad--get-current-log-node) ;; Init the current log
     (skroad--cache-start-fill) ;; Start interning nodes from store
-    (when skroad--lint-on-boot ;; Perform a lint on boot?
-      (skroad--defer (skroad--lint t)))
     (skroad--message-with-time "Skroad Init started.")))
 
 (defun skroad--boot ()
