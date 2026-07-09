@@ -670,13 +670,21 @@ If we're in ephemeral mode, return the name of the buffer."
   (and (skroad--mode-p) ;; No node is considered equal to an ephemeral
        (string-equal node (skroad--current-node))))
 
+(defun skroad--file-name-extension (filename)
+  "Return the unaltered file extension of FILENAME."
+  (let* ((name (file-name-nondirectory filename))
+         (pos (string-match-p "\\.[^.]*\\'" name)))
+    (and pos (substring name (1+ pos)))))
+
 (defun skroad--current-buffer-node-p ()
   "Return t when the current buffer contains a Skroad node."
-  (or (skroad--mode-p)
-      (and buffer-file-name
-           (when-let* ((file buffer-file-name)
-                       (extension (file-name-extension file)))
-             (string-equal extension skroad--node-file-extension)))))
+  (and (stringp buffer-file-name)
+       (string-prefix-p (file-name-as-directory
+                         (expand-file-name skroad--nodes-directory))
+                        (expand-file-name buffer-file-name))
+       (string-equal (skroad--file-name-extension buffer-file-name)
+                     skroad--node-file-extension)
+       (not (string-empty-p (skroad--file-name-base buffer-file-name)))))
 
 (defun skroad--current-internal-title ()
   "Get the current node's title from the buffer."
@@ -1096,13 +1104,19 @@ and re-encoding (truncating the title as needed).  Always returns a free path."
         fp)
     path))
 
+(defun skroad--file-name-base (file)
+  "Return the base name of FILE.  Empty if the file has only an extension."
+  (let ((name (file-name-nondirectory file)))
+    (substring name 0 (string-match-p "\\.[^.]*\\'" name))))
+
 (defun skroad--file-path-to-node-title (file)
   "Get the base name and parse escapes to decode FILE name to a node title."
   (replace-regexp-in-string
    "%[0-9A-F][0-9A-F]"
    (lambda (match)
      (char-to-string (string-to-number (substring match 1) 16)))
-   (file-name-base file) t t))
+   (skroad--file-name-base file)
+   t t))
 
 (defun skroad--file-path-in-directory (file directory)
   "Generate the path where FILE would reside in the given DIRECTORY."
@@ -1213,12 +1227,12 @@ a byte no-op) -- the file is bare-renamed to TARGET (one rename, inode kept).
 Otherwise the first line is replaced with the corrected-title title,
 the trailing newline is preserved or added, UTF-8 is forced, and the buffer is
 committed to TARGET, which atomically publishes it and retires the old name."
-  (let ((current-node-buf (find-buffer-visiting path)))
-    (when current-node-buf
-      (lwarn 'skroad :warning "Tried to repair open node at '%s', closing it."
-             (skroad--file-path-to-node-title path))
-      (with-current-buffer current-node-buf
-        (skroad--close-current-node))))
+  ;; (let ((current-node-buf (find-buffer-visiting path)))
+  ;;   (when current-node-buf
+  ;;     (lwarn 'skroad :warning "Tried to repair open node at '%s', closing it."
+  ;;            (skroad--file-path-to-node-title path))
+  ;;     (with-current-buffer current-node-buf
+  ;;       (skroad--close-current-node))))
   (let ((buf (generate-new-buffer " *skroad-node-repair*" t))
         (create-lockfiles nil))
     (unwind-protect
@@ -1243,14 +1257,19 @@ committed to TARGET, which atomically publishes it and retires the old name."
                            '(utf-8 undecided)))
                 ;; First line already canonical, newline-terminated, no charset
                 ;; Conversion pending: only the name is wrong -> bare rename
-                (rename-file path target) ;; TODO: log?
+                (prog1 (rename-file path target)
+                  (skroad--lint-report "Fixed file name." corrected-title t))
               ;; Requires correction and/or re-encoding :
               (delete-region (point-min) (line-end-position))
               (insert corrected-title)
-              (unless title-unchanged ;; TODO: log?
+              (unless title-unchanged
                 (insert "\n")
-                (skroad--atomic-comment-insert
-                 (format "Node title auto-fixed, was: '%s'" first)))
+                (let ((comment
+                       (format "Auto-corrected from: '%s'" first)))
+                  ;; (skroad--atomic-comment-insert comment)
+                  (skroad--lint-report comment corrected-title t)
+                  ;; (message "%s: %s" corrected-title first)
+                  ))
               (set-buffer-file-coding-system 'utf-8)
               (skroad--buf-commit-atomically (if self path target)))
             corrected-title))
@@ -1262,15 +1281,18 @@ committed to TARGET, which atomically publishes it and retires the old name."
   "Validate/repair node file at PATH.  Return the node title if succeeded."
   (condition-case err
       (progn
-        (unless (file-readable-p path) (error "Not readable"))
-        (unless (file-writable-p path) (error "Not writable"))
+        (unless (file-readable-p path)
+          (error "Not readable (check permissions?)"))
+        (unless (file-writable-p path)
+          (error "Not writable (check permissions?)"))
         (or (and (not skroad--validate-node-titles-on-boot)
                  (skroad--file-path-to-node-title path))
             (skroad--node-file-title-quick-validate path)
             (skroad--node-file-title-repair path)))
     (error
-     (lwarn 'skroad :warning "Node file '%s' cannot be used : %s"
-            path (error-message-string err))
+     (skroad--lint-report
+      (format "Node file %s cannot be used : %s"
+              (browse-url-file-url path) (error-message-string err)))
      nil)))
 
 ;; Node indices cache. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1280,6 +1302,10 @@ committed to TARGET, which atomically publishes it and retires the old name."
 Key is the node title.  Value is `index-me' (this node was not indexed yet);
 or the node's indices, if it has been indexed; or `empty' (indices are null).")
 
+(defun skroad--cache-peek (node)
+  "Return the raw value associated with NODE in the cache; nil if not interned."
+  (gethash node skroad--cache))
+
 (defun skroad--cache-write (node data)
   "Update NODE with DATA (using `empty' to represent nil) in the cache."
   (puthash node (or data 'empty) skroad--cache))
@@ -1288,17 +1314,16 @@ or the node's indices, if it has been indexed; or `empty' (indices are null).")
   "Intern NODE in the cache with a marker indicating that it needs indexing."
   (skroad--cache-write node 'index-me))
 
-(defun skroad--cache-peek (node)
-  "Return the raw value associated with NODE in the cache; nil if not interned."
-  (gethash node skroad--cache))
+(defun skroad--cache-intern (node)
+  "If NODE is already in the cache, do nothing.  Otherwise, intern it."
+  (unless (or (null node) (skroad--cache-peek node))
+    (skroad--cache-intern-unindexed node)))
 
 (defun skroad--cache-try-intern-node-file (path)
   "Try to intern the node file at PATH.  Return t if succeeded."
   (when (file-exists-p path)
-    (let ((node (skroad--node-file-probe path)))
-      (when node
-        (skroad--cache-intern-unindexed node)
-        t))))
+    (skroad--cache-intern (skroad--node-file-probe path))
+    t))
 
 (defvar skroad--cache-read-through-enabled t
   "When t, after a cache miss, look on disk.")
@@ -1312,8 +1337,7 @@ be interned eagerly if it is accessible."
   (let ((orig-nodes-count (skroad--cache-count)))
     (dolist (path (skroad--storage-list-files))
       (skroad--defer
-       (unless (skroad--cache-peek (skroad--file-path-to-node-title path))
-         (skroad--cache-try-intern-node-file path))))
+       (skroad--cache-try-intern-node-file path)))
     (skroad--defer
      (skroad--close-fast-raw-buffer)
      (setq skroad--cache-read-through-enabled nil)
@@ -1344,10 +1368,6 @@ and then peek in the cache once again."
 (defun skroad--cache-fetch (node)
   "Return indices for NODE; or `index-me' if not indexed; or nil if empty."
   (let ((data (skroad--cache-peek node))) (when (not (eq data 'empty)) data)))
-
-(defun skroad--cache-intern (node)
-  "If NODE is already in the cache, do nothing.  Otherwise, intern it."
-  (unless (skroad--cache-peek node) (skroad--cache-intern-unindexed node)))
 
 (defun skroad--cache-invalidate (node)
   "If NODE is in the cache, mark it as unindexed.  Otherwise, do nothing."
@@ -1436,6 +1456,7 @@ If ORIGIN does not exist, has no index, or if TARGET is special, return nil."
 
 (defun skroad--node-connect (origin target &optional create-origin)
   "If ORIGIN and TARGET exist, ensure that ORIGIN has a live link to TARGET.
+No-op (and returns nil) if TARGET does not exist.
 If ORIGIN does not exist, create it (if CREATE-ORIGIN is t; otherwise, no-op.)
 Do not run type actions.  ORIGIN is indexed if it had not been indexed prior.
 Return t strictly when ORIGIN has been newly-connected to TARGET."
@@ -1443,11 +1464,12 @@ Return t strictly when ORIGIN has been newly-connected to TARGET."
     (let ((origin-indices (skroad--cache-seek origin)))
       (when (if origin-indices ;; Make sure there isn't a known connection yet:
                 (not (skroad--indices-connected-p origin-indices target))
-              create-origin) ;; Origin doesn't exist? Check if we may create it.
+              create-origin) ;; Origin doesn't exist, but we may create it
         (skroad--with-node origin t (skroad--link-connect target))))))
 
 (defun skroad--node-disconnect (origin target)
   "If node ORIGIN exists, ensure that it has NO live links to node TARGET.
+No-op (and returns nil) if ORIGIN does not exist.
 Do not run type actions.  ORIGIN is indexed if it had not been indexed prior.
 Return t strictly when ORIGIN has been newly-disconnected from TARGET."
   (let ((origin-indices (skroad--cache-seek origin)))
@@ -1539,6 +1561,9 @@ No-op in ephemeral mode."
            (have-changes (skroad--buf-indices-have-pending-changes-p)))
       (skroad--buf-indices-ensure-change-tracker) ;; Init tracker if not yet
       (when init
+        ;;;;
+        (message "Init sync of node: '%s'" (skroad--current-node))
+        ;;;;
         (when have-changes
           (lwarn 'skroad :warning
                  "Tried to apply changes to unindexed node: '%s', rescanning!"
@@ -2617,7 +2642,8 @@ DISPLAY-MODE is passed to `skroad--do-link-action'."
   :decode #'skroad--node-link-decode
   :index-filter ;; Do not index self-links or links to special nodes
   '(lambda (node)
-     (not (or (skroad--node-self-p node)
+     (not (or (string-empty-p node)
+              (skroad--node-self-p node)
               (skroad--node-special-p node)))))
 
 (defun skroad--buf-pop-win (buf)
@@ -2783,7 +2809,8 @@ Do NOT run type actions in either node.  Log any resulting changes to lint."
       (skroad--lint-report
        (format "Link to missing node %s was disabled."
                (skroad--link-generate-dead remote))
-       local))))
+       local)))
+  )
 
 ;; TODO: don't allow creating nodes from logs
 (defun skroad--node-connect-back-create (local remote)
@@ -3573,7 +3600,7 @@ If AUX-NODE is given, refresh its history as well as that of NODE."
                   (skroad--link-generate-dead node)))
           (annotation (or (and (stringp reason) (concat " (" reason ")")) ""))
           (log-entry (concat op " " link annotation)))
-     (message (concat "Skroad Log Entry: " log-entry))
+     (message "%s" (concat "Skroad Log Entry: " log-entry))
      (skroad--with-node (skroad--get-current-log-node) nil ;; Run actions!
        (when node-exists
          (skroad--link-revive-to node)) ;; Revive if adding a live link
@@ -3708,7 +3735,8 @@ Return true when an existing one was not found and a new one was inserted."
         (t ;; Looked but did not find? Emplace a new tail indicator:
          (save-mark-and-excursion
            (skroad--create-suggested-node-tail)
-           (skroad--lint-report "Tail was created." (skroad--current-node)))
+           ;; (skroad--lint-report "Tail was created." (skroad--current-node))
+           )
          t)))
 
 (defun skroad--node-body-end-pos ()
@@ -4134,6 +4162,9 @@ If this node did not have a tail indicator, this is a no-op."
 
 (defun skroad--open-node ()
   "Open a skroad node."
+  (unless (skroad--current-buffer-node-p) ;; Exit mode if this isn't a node!
+    (fundamental-mode)
+    (user-error "This is not a Skroad node!"))
   (setq-local buffer-read-only t) ;; Read-only until indexed
   (face-remap-add-relative 'header-line 'skroad--title-face)
   (skroad--deactivate-mark) ;; Zap spurious mark from opening links via mouse
@@ -4332,16 +4363,17 @@ Return t only when the connection status of NODE from SPECIAL actually changed."
 (skroad--define-special-node skroad--special-node-lint "#Lint"
   "Record of all lint output (including problems found/corrected at run time).")
 
-(defun skroad--lint-report (text &optional node)
+(defun skroad--lint-report (text &optional node force-live)
   "Log TEXT to the current lint report (when it does not already appear there.)
-If NODE is given, prefix the report with a link to it."
+If NODE is given, prefix the report with a link to it.
+If FORCE-LIVE is true, do not attempt to determine whether NODE is live."
   (let* ((prefix
-          (or (and node
-                   (concat (if (skroad--node-p node)
-                               (skroad--link-generate-live node)
-                             (skroad--link-generate-dead node)) ": ")) ""))
+          (and node
+               (concat (if (or force-live (skroad--node-p node))
+                           (skroad--link-generate-live node)
+                         (skroad--link-generate-dead node)) ": ")))
          (report (concat prefix text)))
-    (message (concat "Skroad Lint: " report)) ;; Always print to console also
+    (message "%s" (concat "Skroad Lint: " report)) ;; Always print to console also
     (skroad--with-node skroad--special-node-lint t
       (skroad--emplace-log-entry report t))))
 
