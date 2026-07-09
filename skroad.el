@@ -1257,7 +1257,8 @@ committed to TARGET, which atomically publishes it and retires the old name."
                            '(utf-8 undecided)))
                 ;; First line already canonical, newline-terminated, no charset
                 ;; Conversion pending: only the name is wrong -> bare rename
-                (prog1 (rename-file path target)
+                (progn
+                  (rename-file path target)
                   (skroad--lint-report "Fixed file name." corrected-title t))
               ;; Requires correction and/or re-encoding :
               (delete-region (point-min) (line-end-position))
@@ -3690,16 +3691,14 @@ For use in interactive commands only."
             (insert "\n"))))
       (skroad--info "The tail has been moved."))))
 
-(defun skroad--create-suggested-node-tail ()
+(defun skroad--find-and-collect-suggested-node-tail ()
   "Find where the node tail ought to be per the tail heuristic, and go there:
 Starting at point-max, move up, skipping dead links, live links, and whitespace
 until something that is neither a node link nor whitespace is encountered.
-The proposed tail will start just below that point.  After this, everything
-that was found in the tail is replaced with a sequence consisting of only the
-unique live links, one per line."
+The proposed tail will start just below that point; jump there.
+Return a list of the unique live links found while searching for the tail."
   (goto-char (point-max))
-  (let ((inhibit-read-only t)
-        (links nil)
+  (let ((links nil)
         (links-seen (make-hash-table :test 'equal)))
     (let ((climb
            #'(lambda (type &optional keep)
@@ -3718,10 +3717,18 @@ unique live links, one per line."
       (while (let ((prev (or (funcall climb 'skroad--text-link-node-live t)
                              (funcall climb 'skroad--text-link-node-dead))))
                (when prev (goto-char prev))))
-      (skroad--emplace-tail-indicator)
-      (skroad--node-delete-tail)
-      (dolist (link (reverse links))
-        (skroad--link-insert-live-in-tail link)))))
+      links)))
+
+(defun skroad--create-suggested-node-tail ()
+  "Emplace the node tail of the current node using the suggested tail heuristic.
+After this, replace everything that was found in the tail with a text block
+consisting of only the unique live links that were found there, one per line."
+  (let ((inhibit-read-only t)
+        (links (skroad--find-and-collect-suggested-node-tail)))
+    (skroad--emplace-tail-indicator)
+    (skroad--node-delete-tail)
+    (dolist (link (reverse links))
+      (skroad--link-insert-live-in-tail link))))
 
 (defun skroad--node-tail-ensure ()
   "Ensure that the tail indicator exists in the current node, and register it.
