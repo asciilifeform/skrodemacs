@@ -1261,9 +1261,9 @@ committed to TARGET, which atomically publishes it and retires the old name."
                   (rename-file path target)
                   (skroad--lint-report "Fixed file name." corrected-title t))
               ;; Requires correction and/or re-encoding :
-              (delete-region (point-min) (line-end-position))
-              (insert corrected-title)
               (unless title-unchanged
+                (delete-region (point-min) (line-end-position))
+                (insert corrected-title)
                 (insert "\n")
                 (let ((comment
                        (format "Auto-corrected from: '%s'" first)))
