@@ -1243,13 +1243,17 @@ committed to TARGET, which atomically publishes it and retires the old name."
                  (had-newline (< (line-end-position) (point-max)))
                  (internal (if (string-empty-p (skroad--clean-whitespace first))
                                (skroad--file-path-to-node-title path) first))
-                 (desired
-                  (skroad--file-path-in-nodes-directory
-                   (skroad--node-title-procrusted-to-filename internal)))
-                 (self (and (file-exists-p desired)
-                            (file-equal-p desired path)))
+                 (procrusted (skroad--node-title-and-path-procrust internal))
+                 (desired-title (car procrusted))
+                 (desired-file (cdr procrusted))
+                 (desired-path
+                  (skroad--file-path-in-nodes-directory desired-file))
+                 (self (and (file-exists-p desired-path)
+                            (file-equal-p desired-path path)))
                  (target
-                  (if self desired (skroad--file-path-uncollide-node desired)))
+                  (if self
+                      desired-path
+                    (skroad--file-path-uncollide-node desired-path)))
                  (corrected-title (skroad--file-path-to-node-title target))
                  (title-unchanged (equal corrected-title first)))
             (if (and (not self) title-unchanged had-newline
@@ -1265,14 +1269,19 @@ committed to TARGET, which atomically publishes it and retires the old name."
                 (delete-region (point-min) (line-end-position))
                 (insert corrected-title)
                 (insert "\n")
-                (let ((comment
-                       (format "Auto-corrected from: '%s'" first)))
-                  ;; (skroad--atomic-comment-insert comment)
-                  (skroad--lint-report comment corrected-title t)
-                  ;; (message "%s: %s" corrected-title first)
-                  ))
+                (skroad--lint-report
+                 (format "Auto-corrected from: '%s'" first)
+                 corrected-title t)
+                ;; (when (skroad--cache-peek desired-title)
+                ;;   (skroad--lint-report
+                ;;    (format "Maybe merge into %s ?"
+                ;;            (skroad--link-generate-live desired-title))
+                ;;    corrected-title t)
+                ;;   )
+                )
               (set-buffer-file-coding-system 'utf-8)
-              (skroad--buf-commit-atomically (if self path target)))
+              (skroad--buf-commit-atomically target)
+              )
             corrected-title))
       (with-current-buffer buf
         (set-buffer-modified-p nil)
