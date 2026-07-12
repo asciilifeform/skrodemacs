@@ -1091,19 +1091,6 @@ Return the resulting title and the corresponding path."
   "Return the filename found by `skroad--node-title-and-path-procrust'."
   (cdr (skroad--node-title-and-path-procrust title suffix)))
 
-(defun skroad--file-path-uncollide-node (path)
-  "Return a collision-free path for PATH's title: PATH itself when it has no
-existing file, otherwise a distinct path appending `~N' (N=1,2,...) to the title
-and re-encoding (truncating the title as needed).  Always returns a free path."
-  (if (file-exists-p path)
-      (let ((title (skroad--file-path-to-node-title path)) (k 0) fp)
-        (while (file-exists-p
-                (setq fp (skroad--file-path-in-nodes-directory
-                          (skroad--node-title-procrusted-to-filename
-                           title (format "~%d" (setq k (1+ k))))))))
-        fp)
-    path))
-
 (defun skroad--file-name-base (file)
   "Return the base name of FILE.  Empty if the file has only an extension."
   (let ((name (file-name-nondirectory file)))
@@ -1216,6 +1203,19 @@ match AND its bytes begin with the title's UTF-8 then a newline (LF or CRLF)."
                (string-prefix-p (concat expected "\r\n") head)))
          title)))
 
+(defun skroad--file-path-uncollide-node (path)
+  "Return a collision-free path for PATH's title: PATH itself when it has no
+existing file, otherwise a distinct path appending `~N' (N=1,2,...) to the title
+and re-encoding (truncating the title as needed).  Always returns a free path."
+  (if (file-exists-p path)
+      (let ((title (skroad--file-path-to-node-title path)) (k 0) fp)
+        (while (file-exists-p
+                (setq fp (skroad--file-path-in-nodes-directory
+                          (skroad--node-title-procrusted-to-filename
+                           title (format "~%d" (setq k (1+ k))))))))
+        fp)
+    path))
+
 ;; TODO: if we closed a node here, reopen in the window where it had been?
 (defun skroad--node-file-title-repair (path)
   "Correct the invalid file at PATH and return its resulting title.
@@ -1248,7 +1248,8 @@ committed to TARGET, which atomically publishes it and retires the old name."
                  (desired-file (cdr procrusted))
                  (desired-path
                   (skroad--file-path-in-nodes-directory desired-file))
-                 (self (and (file-exists-p desired-path)
+                 (desired-exists (file-exists-p desired-path))
+                 (self (and desired-exists
                             (file-equal-p desired-path path)))
                  (target
                   (if self
