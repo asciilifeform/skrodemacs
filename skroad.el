@@ -1075,8 +1075,9 @@ The original NODE can be recovered using `skroad--file-path-to-node-title'."
 fits the filename byte budget, keeping SUFFIX intact;
 nil only when SUFFIX alone is unencodable.
 Return the resulting title and the corresponding path."
-  (let ((s (substring title 0 (min (length title) skroad--max-file-name-bytes)))
-        f)
+  (let* ((clean (skroad--clean-whitespace title))
+         (s (substring clean 0 (min (length clean) skroad--max-file-name-bytes)))
+         f)
     (while (and
             (null (setq f (skroad--node-title-to-filename (concat s suffix))))
             (> (length s) 0))
@@ -1091,10 +1092,18 @@ Return the resulting title and the corresponding path."
   "Return the filename found by `skroad--node-title-and-path-procrust'."
   (cdr (skroad--node-title-and-path-procrust title suffix)))
 
+(defun skroad--file-strip-extension (file)
+  "Remove the extension (if any) from FILE."
+  (substring file 0 (string-match-p "\\.[^.]*\\'" file)))
+
 (defun skroad--file-name-base (file)
   "Return the base name of FILE.  Empty if the file has only an extension."
-  (let ((name (file-name-nondirectory file)))
-    (substring name 0 (string-match-p "\\.[^.]*\\'" name))))
+  (skroad--file-strip-extension (file-name-nondirectory file)))
+
+(defun skroad--file-replace-extension (file new-extension)
+  "Replace the given FILE's extension, if any, with NEW-EXTENSION."
+  (skroad--append-file-extension
+   (skroad--file-strip-extension file) new-extension))
 
 (defun skroad--file-path-to-node-title (file)
   "Get the base name and parse escapes to decode FILE name to a node title."
@@ -1216,6 +1225,9 @@ and re-encoding (truncating the title as needed).  Always returns a free path."
         fp)
     path))
 
+(defconst skroad--merge-queue-extension "smrg"
+  "File extension for nodes with colliding titles which are to be merged.")
+
 ;; TODO: if we closed a node here, reopen in the window where it had been?
 (defun skroad--node-file-title-repair (path)
   "Correct the invalid file at PATH and return its resulting title.
@@ -1244,19 +1256,26 @@ committed to TARGET, which atomically publishes it and retires the old name."
                  (internal (if (string-empty-p (skroad--clean-whitespace first))
                                (skroad--file-path-to-node-title path) first))
                  (procrusted (skroad--node-title-and-path-procrust internal))
-                 (desired-title (car procrusted))
-                 (desired-file (cdr procrusted))
-                 (desired-path
-                  (skroad--file-path-in-nodes-directory desired-file))
-                 (desired-exists (file-exists-p desired-path))
-                 (self (and desired-exists
-                            (file-equal-p desired-path path)))
+                 (fixed-title (car procrusted))
+                 (fixed-path
+                  (skroad--file-path-in-nodes-directory (cdr procrusted)))
+                 (fixed-file-exists (file-exists-p fixed-path))
+                 (self nil)
+                 (merge-queued nil)
                  (target
-                  (if self
-                      desired-path
-                    (skroad--file-path-uncollide-node desired-path)))
-                 (corrected-title (skroad--file-path-to-node-title target))
-                 (title-unchanged (equal corrected-title first)))
+                  (if fixed-file-exists
+                      (if (file-equal-p fixed-path path)
+                          (progn
+                            (setq self t)
+                            fixed-path)
+                        (progn
+                          (setq merge-queued t)
+                          (skroad--file-replace-extension
+                           path skroad--merge-queue-extension))
+                        )
+                    fixed-path))
+                 (title-unchanged (equal fixed-title first))
+                 )
             (if (and (not self) title-unchanged had-newline
                      (memq (coding-system-base buffer-file-coding-system)
                            '(utf-8 undecided)))
@@ -1264,26 +1283,28 @@ committed to TARGET, which atomically publishes it and retires the old name."
                 ;; Conversion pending: only the name is wrong -> bare rename
                 (progn
                   (rename-file path target)
-                  (skroad--lint-report "Fixed file name." corrected-title t))
+                  (skroad--lint-report "Fixed file name." fixed-title t))
               ;; Requires correction and/or re-encoding :
               (unless title-unchanged
                 (delete-region (point-min) (line-end-position))
-                (insert corrected-title)
+                (insert fixed-title)
                 (insert "\n")
                 (skroad--lint-report
                  (format "Auto-corrected from: '%s'" first)
-                 corrected-title t)
-                ;; (when (skroad--cache-peek desired-title)
-                ;;   (skroad--lint-report
-                ;;    (format "Maybe merge into %s ?"
-                ;;            (skroad--link-generate-live desired-title))
-                ;;    corrected-title t)
-                ;;   )
-                )
+                 fixed-title t))
               (set-buffer-file-coding-system 'utf-8)
-              (skroad--buf-commit-atomically target)
+              (skroad--buf-commit-atomically target))
+            
+            (when merge-queued
+              (skroad--defer
+               (skroad--lint-report
+                (format "Will merge: '%s'" target)
+                fixed-title t)
+               )
+              (delete-file path)
               )
-            corrected-title))
+            
+            fixed-title))
       (with-current-buffer buf
         (set-buffer-modified-p nil)
         (kill-buffer)))))
