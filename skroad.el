@@ -1212,21 +1212,18 @@ match AND its bytes begin with the title's UTF-8 then a newline (LF or CRLF)."
                (string-prefix-p (concat expected "\r\n") head)))
          title)))
 
-(defun skroad--file-path-uncollide-node (path)
-  "Return a collision-free path for PATH's title: PATH itself when it has no
-existing file, otherwise a distinct path appending `~N' (N=1,2,...) to the title
-and re-encoding (truncating the title as needed).  Always returns a free path."
-  (if (file-exists-p path)
-      (let ((title (skroad--file-path-to-node-title path)) (k 0) fp)
-        (while (file-exists-p
-                (setq fp (skroad--file-path-in-nodes-directory
-                          (skroad--node-title-procrusted-to-filename
-                           title (format "~%d" (setq k (1+ k))))))))
-        fp)
-    path))
-
-(defconst skroad--merge-queue-extension "smrg"
-  "File extension for nodes with colliding titles which are to be merged.")
+;; (defun skroad--file-path-uncollide-node (path)
+;;   "Return a collision-free path for PATH's title: PATH itself when it has no
+;; existing file, otherwise a distinct path appending `~N' (N=1,2,...) to the title
+;; and re-encoding (truncating the title as needed).  Always returns a free path."
+;;   (if (file-exists-p path)
+;;       (let ((title (skroad--file-path-to-node-title path)) (k 0) fp)
+;;         (while (file-exists-p
+;;                 (setq fp (skroad--file-path-in-nodes-directory
+;;                           (skroad--node-title-procrusted-to-filename
+;;                            title (format "~%d" (setq k (1+ k))))))))
+;;         fp)
+;;     path))
 
 ;; TODO: if we closed a node here, reopen in the window where it had been?
 (defun skroad--node-file-title-repair (path)
@@ -1256,55 +1253,51 @@ committed to TARGET, which atomically publishes it and retires the old name."
                  (internal (if (string-empty-p (skroad--clean-whitespace first))
                                (skroad--file-path-to-node-title path) first))
                  (procrusted (skroad--node-title-and-path-procrust internal))
-                 (fixed-title (car procrusted))
-                 (fixed-path
+                 (new-title (car procrusted))
+                 (title-unchanged (equal new-title first))
+                 (new-path
                   (skroad--file-path-in-nodes-directory (cdr procrusted)))
-                 (fixed-file-exists (file-exists-p fixed-path))
-                 (self nil)
-                 (merge-queued nil)
-                 (target
-                  (if fixed-file-exists
-                      (if (file-equal-p fixed-path path)
-                          (progn
-                            (setq self t)
-                            fixed-path)
-                        (progn
-                          (setq merge-queued t)
-                          (skroad--file-replace-extension
-                           path skroad--merge-queue-extension))
-                        )
-                    fixed-path))
-                 (title-unchanged (equal fixed-title first))
-                 )
-            (if (and (not self) title-unchanged had-newline
-                     (memq (coding-system-base buffer-file-coding-system)
-                           '(utf-8 undecided)))
-                ;; First line already canonical, newline-terminated, no charset
-                ;; Conversion pending: only the name is wrong -> bare rename
-                (progn
-                  (rename-file path target)
-                  (skroad--lint-report "Fixed file name." fixed-title t))
-              ;; Requires correction and/or re-encoding :
+                 (same-path (file-equal-p new-path path))
+                 (new-file-exists (file-exists-p new-path))
+                 (self (and new-file-exists same-path))
+                 (merge (and new-file-exists (not same-path))))
+            (cond
+             (merge
+              (let ((merge-to new-title)
+                    (body (skroad--current-node-extract-body))
+                    (tail-links (skroad--get-tail-links)))
+                (skroad--defer
+                 (skroad--with-node merge-to nil ;; Run actions
+                   (atomic-change-group
+                     (unless (string-empty-p body)
+                       (goto-char (skroad--node-body-end-pos))
+                       (ensure-empty-lines)
+                       (insert body)
+                       (insert "\n"))
+                     (dolist (link tail-links)
+                       (skroad--link-connect link)))) ;; TODO: quash warnings
+                 (skroad--lint-report
+                  (format "Merged in: '%s' (deleted)" path)
+                  merge-to t)))
+              (delete-file path))
+             ((and (not self) title-unchanged had-newline
+                   (memq (coding-system-base buffer-file-coding-system)
+                         '(utf-8 undecided)))
+              ;; First line already canonical, newline-terminated, no charset
+              ;; Conversion pending: only the name is wrong -> bare rename
+              (rename-file path new-path)
+              (skroad--lint-report "Fixed file name." new-title t))
+             (t ;; Requires correction and/or re-encoding :
               (unless title-unchanged
                 (delete-region (point-min) (line-end-position))
-                (insert fixed-title)
+                (insert new-title)
                 (insert "\n")
                 (skroad--lint-report
                  (format "Auto-corrected from: '%s'" first)
-                 fixed-title t))
+                 new-title t))
               (set-buffer-file-coding-system 'utf-8)
-              (skroad--buf-commit-atomically target))
-            
-            (when merge-queued
-              (skroad--defer
-               (skroad--lint-report
-                (format "Will merge: '%s'" target)
-                fixed-title t)
-               )
-              (delete-file path)
-              )
-            
-            fixed-title))
+              (skroad--buf-commit-atomically new-path)))
+            new-title))
       (with-current-buffer buf
         (set-buffer-modified-p nil)
         (kill-buffer)))))
@@ -3843,6 +3836,19 @@ A non-log link is emplaced at the top of the tail, just below the indicator."
   (skroad--node-delete-body)
   (skroad--node-delete-tail))
 
+(defun skroad--get-tail-links ()
+  "Return a list of live links in the current node's tail."
+  (let (links)
+    (funcall
+     (get 'skroad--text-link-node-live 'for-all-in-region) ;; Backwards
+     (skroad--node-tail-start-pos)
+     (point-max)
+     #'(lambda ()
+         (push (funcall (get 'skroad--text-link-node-live
+                             'get-decoded-payload))
+               links)))
+    links))
+
 ;; Tail text highlighting. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun skroad--render-tail-indicator (limit)
@@ -3868,7 +3874,6 @@ If this node did not have a tail indicator, this is a no-op."
   :render-next #'skroad--render-tail-indicator
   :use 'skroad--text-mixin-rendered)
 
-;; TODO: suppose there's no tail indicator?
 (defun skroad--current-node-extract-body ()
   "Return the body of the current node."
   (save-mark-and-excursion
@@ -4539,7 +4544,7 @@ Before deleting, disconnect any remaining live links."
           (ignore-errors ;; Overwrite if exists, and try to preserve timestamp:
             (copy-file node-path (skroad--node-graveyard-path node) t t)))
         (when skroad--lint-in-progress
-          (skroad--lint-report "Deleting during lint!") node)
+          (skroad--lint-report "Deleting during lint!" node))
         (skroad--with-node node nil ;; Run actions to disconnect all peers
           (skroad--node-delete-all))
         (dolist (special-node skroad--special-nodes) ;; Clear in all specials
