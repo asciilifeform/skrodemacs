@@ -1267,7 +1267,7 @@ committed to TARGET, which atomically publishes it and retires the old name."
                     (body (skroad--current-node-extract-body))
                     (tail-links (skroad--get-tail-links)))
                 (skroad--defer
-                 (skroad--with-node merge-to nil ;; Run actions
+                 (skroad--with-node merge-to t ;; No actions
                    (atomic-change-group
                      (unless (string-empty-p body)
                        (goto-char (skroad--node-body-end-pos))
