@@ -1212,20 +1212,6 @@ match AND its bytes begin with the title's UTF-8 then a newline (LF or CRLF)."
                (string-prefix-p (concat expected "\r\n") head)))
          title)))
 
-;; (defun skroad--file-path-uncollide-node (path)
-;;   "Return a collision-free path for PATH's title: PATH itself when it has no
-;; existing file, otherwise a distinct path appending `~N' (N=1,2,...) to the title
-;; and re-encoding (truncating the title as needed).  Always returns a free path."
-;;   (if (file-exists-p path)
-;;       (let ((title (skroad--file-path-to-node-title path)) (k 0) fp)
-;;         (while (file-exists-p
-;;                 (setq fp (skroad--file-path-in-nodes-directory
-;;                           (skroad--node-title-procrusted-to-filename
-;;                            title (format "~%d" (setq k (1+ k))))))))
-;;         fp)
-;;     path))
-
-;; TODO: if we closed a node here, reopen in the window where it had been?
 (defun skroad--node-file-title-repair (path)
   "Correct the invalid file at PATH and return its resulting title.
 Loads PATH, takes the authoritative title (its first line, or the filename's
@@ -1262,10 +1248,11 @@ committed to TARGET, which atomically publishes it and retires the old name."
                  (self (and new-file-exists same-path))
                  (merge (and new-file-exists (not same-path))))
             (cond
-             (merge
+             (merge ;; This file collides with another; schedule a merge :
               (let ((merge-to new-title)
                     (body (skroad--current-node-extract-body))
                     (tail-links (skroad--get-tail-links)))
+                (delete-file path)
                 (skroad--defer
                  (skroad--with-node merge-to t ;; No actions
                    (atomic-change-group
@@ -1275,11 +1262,10 @@ committed to TARGET, which atomically publishes it and retires the old name."
                        (insert body)
                        (insert "\n"))
                      (dolist (link tail-links)
-                       (skroad--link-connect link)))) ;; TODO: quash warnings
+                       (skroad--link-connect link))))
                  (skroad--lint-report
                   (format "Merged in: '%s' (deleted)" path)
-                  merge-to t)))
-              (delete-file path))
+                  merge-to t))))
              ((and (not self) title-unchanged had-newline
                    (memq (coding-system-base buffer-file-coding-system)
                          '(utf-8 undecided)))
@@ -1297,7 +1283,7 @@ committed to TARGET, which atomically publishes it and retires the old name."
                  new-title t))
               (set-buffer-file-coding-system 'utf-8)
               (skroad--buf-commit-atomically new-path)))
-            new-title))
+            new-title)) ;; Always return the new title
       (with-current-buffer buf
         (set-buffer-modified-p nil)
         (kill-buffer)))))
@@ -2827,7 +2813,7 @@ Do NOT run type actions in either node.  Log any resulting changes to lint."
   (if (skroad--node-p remote)
       (when (skroad--node-connect remote local)
         (skroad--lint-report
-         (format "Restored missing back-link to %s."
+         (format "Restored missing backlink to %s."
                  (skroad--link-generate-live local))
          remote))
     (when (skroad--node-disconnect local remote)
