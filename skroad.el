@@ -64,6 +64,9 @@ The graveyard should be inspected and emptied manually on occasion.")
 
 (defconst skroad--log-node-prefix "@" "Prefix character denoting a log node.")
 
+;; TODO: change this to '#'
+(defconst skroad--tag-node-prefix "!" "Prefix character denoting a tag node.")
+
 (defconst skroad--node-tail-indicator "\n@@@\n"
   "Node tail indicator.  The newlines must NOT be removed.")
 
@@ -131,6 +134,11 @@ The graveyard should be inspected and emptied manually on occasion.")
 (defface skroad--face-mixin-link-log
   '((t :foreground "white"))
   "Face mixin for a link to a log node."
+  :group 'skroad-faces)
+
+(defface skroad--face-mixin-link-tag
+  '((t :foreground "green"))
+  "Face mixin for a link to a tag node."
   :group 'skroad-faces)
 
 (defface skroad--face-mixin-link-stub
@@ -2859,7 +2867,9 @@ The returned result may be a single face or a list with mixins on a base face."
               (cond
                ((skroad--node-self-p node) 'skroad--face-mixin-link-self)
                ((skroad--node-special-p node) 'skroad--face-mixin-link-special)
-               ((skroad--node-log-p node) 'skroad--face-mixin-link-log)))
+               ((skroad--node-log-p node) 'skroad--face-mixin-link-log)
+               ;; Tags may be stubs/leaves/orphans, but light up only as tags:
+               ((skroad--node-tag-p node) 'skroad--face-mixin-link-tag)))
              (stub (and (not irregular) (skroad--node-stub-p node)
                         'skroad--face-mixin-link-stub))
              (decor
@@ -3644,6 +3654,13 @@ If AUX-NODE is given, refresh its history as well as that of NODE."
    victim (concat "Merged into " (skroad--link-generate-live target)))
   (skroad--log-node-revise target))
 
+;; Tags. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun skroad--node-tag-p (&optional node)
+  "Return t when NODE (if not given: the current node) is a tag node."
+  (let ((n (or node (skroad--current-node))))
+    (and (stringp n) (string-prefix-p skroad--tag-node-prefix n))))
+
 ;; Node tail. ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar-local skroad--buf-tail-overlay nil
@@ -4262,7 +4279,8 @@ Otherwise (including if current buffer is not in the mode), simply return nil."
          (t (concat
              (cond ((skroad--node-leaf-p node) "Leaf ")
                    ((skroad--node-orphan-p node) "Orphan "))
-             (when (skroad--node-stub-p node) "Stub "))))
+             (when (skroad--node-stub-p node) "Stub ")
+             (when (skroad--node-tag-p node) "Tag "))))
    "Node"))
 
 (defvar-local skroad--buf-modeline-node-label nil
