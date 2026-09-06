@@ -4923,10 +4923,19 @@ repeating a search already in progress is a no-op."
   "Request the global mode init."
   (run-with-idle-timer 0 nil #'skroad--ensure-global-init))
 
+(defun skroad--run-mode-snoopers ()
+  "Run the global `after-change-major-mode-hook' with the buffer writable.
+Some broken minor modes (e.g. Corfu) refuse to engage in a read-only buffer."
+  (let ((buffer-read-only nil)
+        (after-change-major-mode-hook
+         (default-value 'after-change-major-mode-hook)))
+    (run-hooks 'after-change-major-mode-hook)))
+
 (defun skroad--mode-common-init ()
   "Init aspects common to both skroad-mode and skroad-ephemeral-mode."
   (font-lock-mode 1)
   (visual-line-mode 1)
+  (setq-local after-change-major-mode-hook '(skroad--run-mode-snoopers))
   (setq-local large-file-warning-threshold nil)
   ;; Handle word boundaries correctly (atomics are treated as unitary words) :
   (setq-local find-word-boundary-function-table
