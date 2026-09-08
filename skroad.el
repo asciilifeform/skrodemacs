@@ -2152,8 +2152,9 @@ Return the new position if the jump actually happened; otherwise nil."
   "Deactivate the mark and clear the alt-mark."
   (deactivate-mark) (setq-local skroad--buf-alt-mark nil))
 
-(defmacro skroad--define-atomics-region-cmd (wrap-command &optional i-arg)
-  "Wrap COMMAND to use region if exists, or use the atomic at point as region."
+(defmacro skroad--define-atomics-region-cmd (wrap-command &optional i-arg zap)
+  "Wrap COMMAND to use region if exists, or use the atomic at point as region.
+If ZAP is given, this is a deletion command."
   `(defun ,(read (concat "skroad--cmd-atomic-"
                          (symbol-name wrap-command))) ()
      (interactive ,i-arg skroad-mode skroad-ephemeral-mode)
@@ -2161,12 +2162,16 @@ Return the new position if the jump actually happened; otherwise nil."
      (if (use-region-p)
          (call-interactively ',wrap-command)
        (skroad--with-current-zone
-         (funcall #',wrap-command start end)))
+         (atomic-change-group
+           (funcall #',wrap-command start end)
+           ,(when zap
+              `(when (and (skroad--in-node-tail-p) (eolp))
+                 (delete-char 1))))))
      (skroad--deactivate-mark)))
 
 ;; TODO: don't sync link disconnects until obvious that we won't yank them back
-(skroad--define-atomics-region-cmd delete-region "*")
-(skroad--define-atomics-region-cmd kill-region "*")
+(skroad--define-atomics-region-cmd delete-region "*" t)
+(skroad--define-atomics-region-cmd kill-region "*" t)
 (skroad--define-atomics-region-cmd kill-ring-save)
 
 (defun skroad--cmd-atomic-set-mark ()
@@ -3044,7 +3049,8 @@ Return true if any such links were in fact revived."
 If it had dead links to NODE, liven them; else, test for existing live links;
 failing either of the above, emplace a new live link in the tail.
 Return t if there had previously been no live links to NODE."
-  (unless (skroad--node-self-p node) ;; May not connect to self
+  (unless (or (skroad--node-self-p node) ;; May not connect to self
+              (skroad--node-special-p node)) ;; ... or to specials
     (let ((had-live (skroad--current-node-connected-p node)))
       (unless (or (skroad--link-revive-to node) had-live)
         (skroad--link-insert-live-in-tail node))
@@ -4014,7 +4020,6 @@ If this node did not have a tail indicator, this is a no-op."
     (skroad--info))
   (skroad--toggle-cursor-state t))
 
-;; TODO: bug during undo of delete-line?
 (defun skroad--selector-update ()
   "Enable the selector if point is on an atomic zone; otherwise disable it."
   (let ((zone (skroad--prop-at 'zone)))
@@ -4090,7 +4095,9 @@ If this node did not have a tail indicator, this is a no-op."
 
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
-  (setq-local skroad--buf-pre-command-point-state (skroad--get-point-state)))
+  (setq-local skroad--buf-pre-command-point-state (skroad--get-point-state))
+  (when (eq this-command 'undo)
+    (skroad--selector-deactivate)))
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
@@ -4770,12 +4777,14 @@ Warning: undo info is lost in all affected buffers!"
   (setq-local completion-ignore-case t)
   (setq-local completion-auto-help 'always))
 
-(defun skroad--autocomplete-minibuffer-prompt (prompt)
-  "PROMPT in minibuffer for a node name; return it (or nil, if none selected)."
+(defun skroad--autocomplete-minibuffer-prompt (prompt &optional predicate)
+  "PROMPT in minibuffer for a node name; return it (or nil, if none selected).
+Optional PREDICATE filters the available matches."
   (minibuffer-with-setup-hook #'skroad--autocomplete-buf-init
     (unwind-protect
-        (let ((choice (completing-read
-                       prompt #'skroad--autocomplete-collection nil t)))
+        (let ((choice
+               (completing-read
+                prompt #'skroad--autocomplete-collection predicate t)))
           (when (and choice (not (string-empty-p choice)))
             choice))
       ;; runs on normal exit *and* on C-g
@@ -4858,6 +4867,17 @@ Warning: undo info is lost in all affected buffers!"
   (setq skroad--atomic-show-payload-only (not skroad--atomic-show-payload-only))
   (skroad--request-refontify)) ;; Schedule a refontification.
 
+(defun skroad--cmd-top-link-node ()
+  "Prompt for an existing node and ensure that the current node links to it.
+Does nothing if it is self, special, or already linked in the current node."
+  (interactive "*" skroad-mode)
+  (skroad--modes-only)
+  (let ((node (skroad--autocomplete-minibuffer-prompt
+               "Link Skroad node: ")))
+    (when node
+      (unless (skroad--link-connect node)
+        (skroad--info "No change.")))))
+
 (defvar skroad--mode-map
   (skroad--define-keymap
     ">" #'skroad--cmd-top-gt
@@ -4865,8 +4885,9 @@ Warning: undo info is lost in all affected buffers!"
     "<remap> <delete-backward-char>" #'skroad--cmd-top-backspace
     "TAB" #'skroad--cmd-top-tab ;; binding <tab> interferes with autocomplete
     "C-<tab>" #'skroad--cmd-top-jump-to-prev-atomic
-    "M-T" #'skroad--cmd-top-move-tail-here
+    "C-M-t" #'skroad--cmd-top-move-tail-here
     "M-t" #'skroad--cmd-top-goto-tail
+    "M-n" #'skroad--cmd-top-link-node
     "C-M-l" #'skroad--cmd-top-toggle-atomic-text-hiding ;; TODO: do we need it?
     )
   "Top-level command keymap for the skroad major mode.")
