@@ -4022,6 +4022,8 @@ If this node did not have a tail indicator, this is a no-op."
 
 (defun skroad--selector-update ()
   "Enable the selector if point is on an atomic zone; otherwise disable it."
+  (when (eq this-command 'undo)
+    (skroad--selector-deactivate))
   (let ((zone (skroad--prop-at 'zone)))
     (if zone
         (when (not (eq zone (skroad--selector-zone)))
@@ -4096,8 +4098,7 @@ If this node did not have a tail indicator, this is a no-op."
 (defun skroad--pre-command-hook ()
   "Triggers prior to every user-interactive command."
   (setq-local skroad--buf-pre-command-point-state (skroad--get-point-state))
-  (when (eq this-command 'undo)
-    (skroad--selector-deactivate)))
+  )
 
 (defun skroad--post-command-hook ()
   "Triggers following every user-interactive command."
