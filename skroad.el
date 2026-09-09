@@ -5025,4 +5025,26 @@ Some broken minor modes (e.g. Corfu) refuse to engage in a read-only buffer."
 
 (provide 'skroad)
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Suggested Corfu settings
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; (use-package corfu
+;;   :custom
+;;   (corfu-auto t)              ;; popup appears automatically as you type
+;;   (corfu-auto-delay 0.2)      ;; seconds of idle time before popup
+;;   (corfu-auto-prefix 2)       ;; minimum characters before auto-popup
+;;   (corfu-cycle t)             ;; allow cycling through candidates
+;;   (setq corfu-preselect 'first)
+;;   :init
+;;   (global-corfu-mode)         ;; enable in all buffers
+;;   (corfu-popupinfo-mode))     ;; show doc popup for selected candidate
+
+;; (use-package cape
+;;   :init
+;;   (add-hook 'completion-at-point-functions #'cape-file)
+;;   (add-hook 'completion-at-point-functions #'cape-dabbrev))
+
+;; (setq tab-always-indent 'complete)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ;;; skroad.el ends here
