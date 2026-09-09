@@ -4022,12 +4022,9 @@ If this node did not have a tail indicator, this is a no-op."
 
 (defun skroad--selector-update ()
   "Enable the selector if point is on an atomic zone; otherwise disable it."
-  (when (eq this-command 'undo)
-    (skroad--selector-deactivate))
   (let ((zone (skroad--prop-at 'zone)))
     (if zone
-        (when (not (eq zone (skroad--selector-zone)))
-          (skroad--selector-activate-in-current-zone))
+        (skroad--selector-activate-in-current-zone)
       (skroad--selector-deactivate))))
 
 (defun skroad--show-key-help ()
