@@ -1581,7 +1581,7 @@ No-op in ephemeral mode."
       (skroad--buf-indices-ensure-change-tracker) ;; Init tracker if not yet
       (when init
         ;;;;
-        (message "Init sync of node: '%s'" (skroad--current-node))
+        ;; (message "Init sync of node: '%s'" (skroad--current-node))
         ;;;;
         (when have-changes
           (lwarn 'skroad :warning
@@ -3827,7 +3827,7 @@ A non-log link is emplaced at the top of the tail, just below the indicator."
                        (goto-char (match-end 0))
                        (insert "\n")
                        nil)))
-             (insert link))
+             (insert link)) ;; TODO: fix
             (t (goto-char tail-start) ;; An ordinary link?
                (insert link "\n"))))))
 
